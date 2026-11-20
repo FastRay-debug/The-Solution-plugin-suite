@@ -14,8 +14,11 @@ public:
 
 private:
     void timerCallback() override;
+    static juce::File findSharedSkinsFolder();
 
     SolutionAudioProcessor& audioProcessor;
+    const juce::File sharedSkinsDir;   // must be declared before webView (used to build it)
+    const bool skinsAvailable;
     juce::WebBrowserComponent webView;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SolutionAudioProcessorEditor)

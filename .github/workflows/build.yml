@@ -33,7 +33,7 @@ jobs:
           if (-not (Test-Path "webview2/build/native/include/WebView2.h")) { throw "WebView2.h missing after download" }
 
       - name: Configure
-        run: cmake -B build -A x64 -DBUNDLE_SKINS=ON
+        run: cmake -B build -A x64 -DBUNDLE_SKINS=OFF
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -42,7 +42,8 @@ jobs:
         shell: pwsh
         run: |
           $out = "The Solution (Windows)"
-          New-Item -ItemType Directory -Force -Path "$out/VST3","$out/CLAP","$out/Standalone" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$out/VST3","$out/CLAP","$out/Standalone","$out/Skins" | Out-Null
+          Copy-Item "UI/skins/*.jpg" "$out/Skins"
           Get-ChildItem build -Directory -Filter *_artefacts | ForEach-Object {
             $rel = Join-Path $_.FullName "Release"
             Get-ChildItem "$rel/VST3" -Directory -Filter *.vst3 -ErrorAction SilentlyContinue | Copy-Item -Destination "$out/VST3" -Recurse -Force
@@ -72,7 +73,7 @@ jobs:
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=Release
-          -DBUNDLE_SKINS=ON
+          -DBUNDLE_SKINS=OFF
           -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
           -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
@@ -83,7 +84,8 @@ jobs:
         run: |
           set -euo pipefail
           out="The Solution (macOS)"
-          mkdir -p "$out/AU" "$out/VST3" "$out/CLAP" "$out/Standalone"
+          mkdir -p "$out/AU" "$out/VST3" "$out/CLAP" "$out/Standalone" "$out/Skins"
+          cp UI/skins/*.jpg "$out/Skins/"
           for rel in build/*_artefacts/Release; do
             cp -R "$rel"/AU/*.component        "$out/AU/"         2>/dev/null || true
             cp -R "$rel"/VST3/*.vst3           "$out/VST3/"       2>/dev/null || true

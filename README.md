@@ -18,7 +18,7 @@ Tagged versions (e.g. `v0.2.0`) are also published on the **Releases** page.
 `Install.bat` handles everything from a single interactive menu:
 - **Pre-flight dependency check & auto-install** (CMake, Git, Visual Studio C++ Build Tools, Microsoft WebView2 SDK)
 - **Build & Install** all 11 modules (`[0]`), specific module numbers (`1,2,4`), or missing-only (`[M]`)
-- **Cars & Places Skins toggle (`[T]`)** — build with all 50 `/cars` & `/places` skins (`ON`) or a lightweight no-skins build (`OFF`)
+- **Skins toggle (`[T]`)** — `OFF` (default) installs the 13 skin images once to `%ProgramData%\FastRayMedia\The Solution\Skins`, shared by every plugin; `ON` embeds a copy in each plugin
 - **Gather & Install** already-built VST3/CLAP/Standalone plugins (`[I]`)
 - **Clean** the build folder (`[C]`, preserving `deps_cache/` and `webview2/`) or collected plugins (`[X]`)
 

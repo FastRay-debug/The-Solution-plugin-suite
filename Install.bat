@@ -10,6 +10,7 @@ set "LOCAL_DIR=%~dp0The Solution"
 set "VST3_SYS=C:\Program Files\Common Files\VST3\The Solution"
 set "CLAP_SYS=C:\Program Files\Common Files\CLAP\The Solution"
 set "AAX_SYS=C:\Program Files\Common Files\Avid\Audio\Plug-Ins\The Solution"
+set "SKINS_SYS=%ProgramData%\FastRayMedia\The Solution\Skins"
 set "HAS_AAX=0"
 if exist "aax_sdk\Interfaces\AAX.h" set "HAS_AAX=1"
 if exist "C:\SDKs\AvidAAXSDK\Interfaces\AAX.h" set "HAS_AAX=1"
@@ -17,7 +18,7 @@ for /d %%A in ("C:\SDKs\AvidAAXSDK\*") do if exist "%%A\Interfaces\AAX.h" set "H
 
 :: Default Pre-Run Configuration
 set "AUTO_DEPS=ON"
-set "BUNDLE_SKINS=ON"
+set "BUNDLE_SKINS=OFF"
 set "CLEAN_BEFORE=OFF"
 set "AUTO_INSTALL=ON"
 set "BUILD_EXE=ON"
@@ -98,7 +99,7 @@ echo.
 echo   TOGGLE OPTIONS ^(Type letter + Enter to flip [x] ON / [ ] OFF^):
 echo   ------------------------------------------------------------
 echo     [D]  %CHK_D%  Auto-Install Missing Tools ^& WebView2 SDK
-echo     [T]  %CHK_T%  Bundle 50 Cars ^& Places Skins ^(OFF = Lightweight^)
+echo     [T]  %CHK_T%  Embed Skins In Every Plugin ^(OFF = One Shared Skins Folder, Smaller^)
 echo     [C]  %CHK_C%  Clean build\ Folder First ^(Keeps deps_cache^)
 echo     [A]  %CHK_A%  Install VST3/CLAP/AAX to System + Smoke Launch
 echo     [E]  %CHK_E%  Build Standalone The_Solution_Suite_Setup.exe ^(Inno Setup^)
@@ -286,6 +287,8 @@ if not exist "%LOCAL_DIR%\VST3" mkdir "%LOCAL_DIR%\VST3"
 if not exist "%LOCAL_DIR%\CLAP" mkdir "%LOCAL_DIR%\CLAP"
 if not exist "%LOCAL_DIR%\Standalone" mkdir "%LOCAL_DIR%\Standalone"
 if not exist "%LOCAL_DIR%\AAX" mkdir "%LOCAL_DIR%\AAX"
+if not exist "%LOCAL_DIR%\Skins" mkdir "%LOCAL_DIR%\Skins"
+copy /Y "UI\skins\*.jpg" "%LOCAL_DIR%\Skins\" >nul
 
 set /a COUNT=0
 if "%INST_ARG%"=="0" (
@@ -301,6 +304,9 @@ if "%INST_ARG%"=="0" (
 )
 
 if /i "%AUTO_INSTALL%"=="ON" if %COUNT% GTR 0 (
+    echo Installing shared skins to "%SKINS_SYS%"...
+    if not exist "%SKINS_SYS%" mkdir "%SKINS_SYS%"
+    copy /Y "%LOCAL_DIR%\Skins\*.jpg" "%SKINS_SYS%\" >nul
     echo Installing VST3 and CLAP plugins to system Common Files...
     powershell -NoProfile -Command "Start-Process cmd -Verb RunAs -Wait -ArgumentList '/c if not exist \"%VST3_SYS%\" mkdir \"%VST3_SYS%\" & xcopy \"%LOCAL_DIR%\VST3\*\" \"%VST3_SYS%\\\" /E /I /Y /Q & if not exist \"%CLAP_SYS%\" mkdir \"%CLAP_SYS%\" & copy /Y \"%LOCAL_DIR%\CLAP\*.clap\" \"%CLAP_SYS%\\\" & if exist \"%LOCAL_DIR%\AAX\*.aaxplugin\" (if not exist \"%AAX_SYS%\" mkdir \"%AAX_SYS%\" & xcopy \"%LOCAL_DIR%\AAX\*\" \"%AAX_SYS%\\\" /E /I /Y /Q)'"
     start "" "%LOCAL_DIR%"

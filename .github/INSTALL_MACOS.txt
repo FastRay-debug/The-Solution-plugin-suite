@@ -6,6 +6,9 @@ THE SOLUTION SUITE - macOS INSTALL
      AU   folder contents -> ~/Library/Audio/Plug-Ins/Components/
      VST3 folder contents -> ~/Library/Audio/Plug-Ins/VST3/
      CLAP folder contents -> ~/Library/Audio/Plug-Ins/CLAP/
+     Skins folder contents -> ~/Library/Application Support/FastRayMedia/The Solution/Skins/
+       (create the FastRayMedia/The Solution/Skins folders if needed;
+        all 13 plugins share these images)
    (In Finder: Go menu > Go to Folder..., paste the path.)
 3. These builds are not notarized by Apple, so macOS will block
    them at first. Open Terminal and run:

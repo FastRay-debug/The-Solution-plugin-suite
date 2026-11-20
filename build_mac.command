@@ -5,7 +5,7 @@ echo "===================================================="
 echo "  The Solution Suite - One-Click macOS Builder"
 echo "===================================================="
 
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUNDLE_SKINS=OFF
 cmake --build build --config Release --parallel
 
 echo ""

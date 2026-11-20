@@ -5,7 +5,7 @@ project(TheSolutionSuite VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(BUNDLE_SKINS "Bundle Cars & Places skin faceplates" ON)
+option(BUNDLE_SKINS "Embed skin faceplates in every plugin (OFF = plugins load them from the shared Skins folder)" OFF)
 
 # Persistent dependency cache outside build/ so cleaning build/ never re-downloads JUCE/CLAP/RTNeural
 set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps_cache" CACHE PATH "Persistent dependency cache")
