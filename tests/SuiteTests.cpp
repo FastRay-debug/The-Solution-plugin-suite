@@ -11,6 +11,7 @@
 #include "../Source/ModuleEngines.h"
 #include "../Source/SolutionProcessor.h"
 #include <atomic>
+#include <complex>
 #include <cstdio>
 #include <cstdlib>
 #include <new>
@@ -691,6 +692,99 @@ static void testMixAssistant()
     std::printf ("  done\n");
 }
 
+static void testStemFocus()
+{
+    std::printf ("== Stem Focus (drums / tonal / vocal split)\n");
+    using SolutionDSP::StemSplitter;
+    const double fs = 48000.0; const int bs = 300;   // odd block size on purpose
+    const int D = StemSplitter::latency;
+
+    auto run = [&] (StemSplitter::Mode mode, const juce::AudioBuffer<float>& in, juce::AudioBuffer<float>& focus, juce::AudioBuffer<float>& rest, int* allocs = nullptr)
+    {
+        StemSplitter sp; sp.prepare (fs, bs);
+        focus.makeCopyOf (in); rest.setSize (2, in.getNumSamples()); rest.clear();
+        for (int start = 0; start < in.getNumSamples(); start += bs)
+        {
+            const int n = std::min (bs, in.getNumSamples() - start);
+            if (allocs) { allocCount = 0; trackAllocs = true; }
+            sp.process (focus.getWritePointer (0) + start, focus.getWritePointer (1) + start, rest.getWritePointer (0) + start, rest.getWritePointer (1) + start, n, mode);
+            if (allocs) { trackAllocs = false; *allocs += allocCount.load(); }
+        }
+    };
+    auto energyDb = [] (const juce::AudioBuffer<float>& b, int from) {
+        double e = 0; for (int ch = 0; ch < 2; ++ch) for (int i = from; i < b.getNumSamples(); ++i) e += (double) b.getSample (ch, i) * b.getSample (ch, i);
+        return 10.0 * std::log10 (e + 1e-20);
+    };
+
+    // 1. Lossless: focus + rest == input delayed by exactly `latency`, in every mode.
+    juce::Random rnd (21);
+    juce::AudioBuffer<float> noise (2, (int) fs);
+    for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < noise.getNumSamples(); ++i) noise.setSample (ch, i, rnd.nextFloat() - 0.5f);
+    for (auto mode : { StemSplitter::drums, StemSplitter::tonal, StemSplitter::vocal })
+    {
+        juce::AudioBuffer<float> f, r; int allocs = 0;
+        run (mode, noise, f, r, &allocs);
+        float err = 0.0f;
+        for (int ch = 0; ch < 2; ++ch) for (int i = D; i < noise.getNumSamples(); ++i)
+            err = std::max (err, std::abs (f.getSample (ch, i) + r.getSample (ch, i) - noise.getSample (ch, i - D)));
+        EXPECT (err < 1e-5f, "mode %d: focus + rest differs from the input by %g", (int) mode, err);
+        EXPECT (allocs == 0, "mode %d: %d allocations on the audio thread", (int) mode, allocs);
+    }
+
+    // 2. Drums vs tonal on a steady tone and on isolated clicks.
+    juce::AudioBuffer<float> tone (2, (int) fs * 2), clicks (2, (int) fs * 2);
+    fillSine (tone, fs, 440.0, 0.3f);
+    clicks.clear();
+    for (int i = 6000; i < clicks.getNumSamples(); i += 12000) for (int k = 0; k < 24; ++k) { const float v = 0.8f * std::exp (-k / 6.0f) * (k % 2 ? -1.0f : 1.0f); clicks.setSample (0, i + k, v); clicks.setSample (1, i + k, v); }
+    juce::AudioBuffer<float> f, r;
+    const int skip = D + 4096;
+    run (StemSplitter::drums, tone, f, r);   const double toneInDrums = energyDb (f, skip) - energyDb (tone, skip);
+    run (StemSplitter::drums, clicks, f, r); const double clicksInDrums = energyDb (f, skip) - energyDb (clicks, skip);
+    run (StemSplitter::tonal, tone, f, r);   const double toneInTonal = energyDb (f, skip) - energyDb (tone, skip);
+    run (StemSplitter::tonal, clicks, f, r); const double clicksInTonal = energyDb (f, skip) - energyDb (clicks, skip);
+    std::printf ("  drums stem: clicks %.1f dB, tone %.1f dB | tonal stem: tone %.1f dB, clicks %.1f dB\n", clicksInDrums, toneInDrums, toneInTonal, clicksInTonal);
+    EXPECT (clicksInDrums > -4.0 && toneInDrums < -15.0, "drums focus should take the clicks and leave the tone");
+    EXPECT (toneInTonal > -1.0 && clicksInTonal < -6.0, "tonal focus should take the tone and leave the clicks");
+
+    // 3. Vocal/centre: centred 500 Hz kept, hard-left 1200 Hz left out.
+    juce::AudioBuffer<float> mixIn (2, (int) fs * 2);
+    for (int i = 0; i < mixIn.getNumSamples(); ++i)
+    {
+        const float c = 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 500.0 * i / fs);
+        const float side = 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 1200.0 * i / fs);
+        mixIn.setSample (0, i, c + side); mixIn.setSample (1, i, c);
+    }
+    run (StemSplitter::vocal, mixIn, f, r);
+    auto toneLevel = [&] (const juce::AudioBuffer<float>& b, int ch, double hz) {   // single-bin DFT
+        std::complex<double> acc; const int start = skip, n = b.getNumSamples() - skip;
+        for (int i = start; i < b.getNumSamples(); ++i) acc += (double) b.getSample (ch, i) * std::polar (1.0, -juce::MathConstants<double>::twoPi * hz * i / fs);
+        return 20.0 * std::log10 (std::abs (acc) / n * 2.0 + 1e-12);
+    };
+    const double centreKept = toneLevel (f, 1, 500.0) - toneLevel (mixIn, 1, 500.0);
+    const double sideLeaked = toneLevel (f, 0, 1200.0) - toneLevel (mixIn, 0, 1200.0);
+    std::printf ("  vocal stem: centre tone %.1f dB, hard-panned tone %.1f dB\n", centreKept, sideLeaked);
+    EXPECT (centreKept > -3.0 && sideLeaked < -12.0, "vocal/centre focus should keep the centred tone and drop the panned one");
+
+    // 4. Plugin: reports the extra latency only while on, and stays aligned to it.
+    SolutionAudioProcessor proc; proc.prepareToPlay (fs, 512);
+    const int base = proc.getLatencySamples();
+    setParam (proc, "stem_focus", 1.0f); setParam (proc, "global_mix", 0.0f); setParam (proc, "stage_ceiling_guard", 0.0f);
+    juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512);
+    int found = -1;
+    for (int k = 0; k < 12 && found < 0; ++k)
+    {
+        b.clear(); if (k == 0) { b.setSample (0, 0, 0.5f); b.setSample (1, 0, 0.5f); }
+        proc.processBlock (b, midi);
+        if (k == 0) proc.updateLatencyNow();          // the async update would do this on the message thread
+        for (int i = 0; i < 512; ++i) if (std::abs (b.getSample (0, i)) > 0.25f) { found = k * 512 + i; break; }
+    }
+    EXPECT (proc.getLatencySamples() == base + D, "latency with Stem Focus on: %d, expected %d", proc.getLatencySamples(), base + D);
+    EXPECT (found == proc.getLatencySamples(), "audio arrived after %d samples but %d was reported", found, proc.getLatencySamples());
+    setParam (proc, "stem_focus", 0.0f); proc.processBlock (b, midi); proc.updateLatencyNow();
+    EXPECT (proc.getLatencySamples() == base, "latency should drop back to %d when Stem Focus is off (got %d)", base, proc.getLatencySamples());
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -703,6 +797,7 @@ int main()
     testRoomCorrection();
     testBinaural();
     testMixAssistant();
+    testStemFocus();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

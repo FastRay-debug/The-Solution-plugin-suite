@@ -369,6 +369,12 @@
       <div class="wing-actions">
         <button id="sculptBtn" onclick="toggleSculpt()" data-tip="Predictive Transient Sculpting">⚡ TRANSIENT SCULPT: OFF</button>
         <button id="binauralBtn" onclick="toggleBinaural()" data-tip="Headphones: hear the mix on virtual speakers around your head. Azimuth rotates, Elevation raises, Width spreads.">🎧 BINAURAL: OFF</button>
+        <div style="display:flex;gap:3px;align-items:center;" data-tip="Stem Focus: this module processes only the chosen part of the mix; the rest passes through untouched (adds ~43 ms latency while on)">
+          <select data-sync="stem_focus" onchange="bind('stem_focus', this.value, '', 1)" style="flex:1;font-size:10px;">
+            <option value="0">STEM FOCUS: WHOLE MIX</option><option value="1">FOCUS: DRUMS / HITS</option><option value="2">FOCUS: TONAL / SUSTAIN</option><option value="3">FOCUS: VOCAL / CENTRE</option>
+          </select>
+          <label style="font-size:9px;display:flex;gap:2px;align-items:center;" data-tip="Hear only what Stem Focus is targeting"><input type="checkbox" data-sync="stem_listen" onchange="bind('stem_listen', this.checked ? 1 : 0, '', 1)">SOLO</label>
+        </div>
         <button id="safeZoneBtn" onclick="toggleSafeZone()" data-tip="Visual Sub-Bass Safe-Zone Overlay (20-250 Hz)">⌖ SUB SAFE-ZONE: OFF</button>
       </div>
     </div>

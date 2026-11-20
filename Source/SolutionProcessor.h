@@ -13,11 +13,13 @@
 #include "RoomCorrection.h"
 #include "Spatial.h"
 #include "MixAssistant.h"
+#include "StemSplitter.h"
 #include <atomic>
 #include <array>
 
 class SolutionAudioProcessor final : public juce::AudioProcessor,
-                                     private juce::AudioProcessorValueTreeState::Listener
+                                     private juce::AudioProcessorValueTreeState::Listener,
+                                     private juce::AsyncUpdater
 {
 public:
     SolutionAudioProcessor();
@@ -76,6 +78,10 @@ public:
     SolutionDSP::CurrentSettings currentSettingsForAssistant() const;
     SolutionDSP::MixProfile assistantMixProfile() const { return assistant.live != nullptr ? assistant.live->finish ("Your mix") : SolutionDSP::MixProfile {}; }
 
+    // Stem Focus adds latency only while it's on; the host is told on the message thread.
+    void updateLatencyNow();
+    int getBaseLatency() const { return moduleEngine.getLatencySamples() + ceilingLimiter.getLatency(); }
+
     // Which mic did the measuring (message thread). Changing it refits the correction instantly.
     const SolutionDSP::MicProfile& getMicProfile() const { return micProfile; }
     void setMicProfile (const juce::String& builtInId);
@@ -96,7 +102,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 4;   // v2: Rack Link + Glue, v3: room correction, v4: binaural
+    static constexpr int stateVersion = 5;   // v2: Rack Link + Glue, v3: room correction, v4: binaural, v5: stem focus
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -137,6 +143,12 @@ private:
     SolutionDSP::RoomMeasurement measurement;
     SolutionDSP::RoomCorrector roomCorrector;
     SolutionDSP::BinauralRenderer binaural;
+    SolutionDSP::StemSplitter stemSplitter;
+    juce::AudioBuffer<float> stemRest;
+    SolutionDSP::IntegerDelay restDelay;
+    int lastStemMode = 0;
+    std::atomic<bool> stemActive { false };
+    void handleAsyncUpdate() override { updateLatencyNow(); }
     juce::AudioBuffer<float> measureOut;
     SolutionDSP::RoomAnalysis roomAnalysis;                      // message thread
     std::unique_ptr<SolutionDSP::RoomAnalysis> finishedAnalysis; // handed over from the worker

@@ -73,6 +73,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v5: stem focus
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "stem_focus", 5 },      "Stem Focus",
+                          juce::StringArray { "Off (whole mix)", "Drums / hits", "Tonal / sustained", "Vocal / centre" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "stem_listen", 5 },     "Stem Focus Listen", false));
     // --- v4: binaural headphone rendering
     params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "binaural_mode", 4 },     "Binaural Headphone Mode", false));
     // --- v3: measured room correction
@@ -105,7 +109,12 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     duckKey.prepare (sampleRate);
     ducker.prepare (sampleRate);
     loudness.prepare (sampleRate);
-    setLatencySamples (moduleEngine.getLatencySamples() + ceilingLimiter.getLatency());
+    stemSplitter.prepare (sampleRate, samplesPerBlock);
+    stemRest.setSize (2, samplesPerBlock, false, true, true);
+    restDelay.prepare (2, moduleEngine.getLatencySamples());
+    lastStemMode = static_cast<int> (apvts.getRawParameterValue ("stem_focus")->load());
+    stemActive = lastStemMode != 0;
+    updateLatencyNow();
 }
 
 void SolutionAudioProcessor::releaseResources()
@@ -177,6 +186,29 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         slot.heartbeat.fetch_add (1, std::memory_order_relaxed);
     }
 
+    // Stem Focus: split the input; the module processes only the focus stem, the rest passes through.
+    const int stemMode = static_cast<int> (apvts.getRawParameterValue ("stem_focus")->load());
+    if (stemMode != lastStemMode)
+    {
+        if ((stemMode != 0) != (lastStemMode != 0)) { stemSplitter.reset(); restDelay.reset(); stemActive = stemMode != 0; triggerAsyncUpdate(); }
+        lastStemMode = stemMode;
+    }
+    const bool stemOn = stemMode != 0 && stemRest.getNumSamples() >= numSamples;
+    const bool stemListen = stemOn && apvts.getRawParameterValue ("stem_listen")->load() > 0.5f;
+    if (stemOn)
+    {
+        stemSplitter.process (buffer.getWritePointer (0), buffer.getWritePointer (1),
+                              stemRest.getWritePointer (0), stemRest.getWritePointer (1), numSamples,
+                              static_cast<SolutionDSP::StemSplitter::Mode> (stemMode));
+        for (int ch = 0; ch < 2; ++ch)          // dry = focus + rest = the input, delayed like the wet path
+        {
+            dryCopy.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+            dryCopy.addFrom (ch, 0, stemRest, ch, 0, numSamples);
+        }
+        juce::AudioBuffer<float> restView (stemRest.getArrayOfWritePointers(), 2, numSamples);
+        restDelay.process (restView, numSamples);
+    }
+
     dryDelay.process (dryCopy, numSamples);
 
     SolutionDSP::ProcessParams p;
@@ -205,7 +237,13 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const float binauralAz = p.azimuthDeg, binauralWidth = p.width;
     if (binauralOn) { p.azimuthDeg = 0.0f; p.haasMs = 0.0f; }
 
-    moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
+    if (stemListen)
+        p.wetMix = 1.0f;         // listen mode: hear exactly what's being targeted, unprocessed
+    else
+        moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
+    if (stemOn && ! stemListen)
+        for (int ch = 0; ch < 2; ++ch)
+            buffer.addFrom (ch, 0, stemRest, ch, 0, numSamples);   // processed focus + untouched rest
 
     const bool ceilingOn   = apvts.getRawParameterValue ("stage_ceiling_guard")->load() > 0.5f;
     const float ceilingLin = juce::Decibels::decibelsToGain ((float) SOLUTION_CEILING_DBFS);
@@ -303,6 +341,11 @@ juce::AudioProcessorEditor* SolutionAudioProcessor::createEditor()
    #else
     return new SolutionAudioProcessorEditor (*this);
    #endif
+}
+
+void SolutionAudioProcessor::updateLatencyNow()
+{
+    setLatencySamples (getBaseLatency() + (stemActive.load() ? SolutionDSP::StemSplitter::latency : 0));
 }
 
 void SolutionAudioProcessor::updateTrackProperties (const TrackProperties& properties)
