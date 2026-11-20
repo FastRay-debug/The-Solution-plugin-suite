@@ -59,6 +59,7 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
+    const SolutionDSP::ModuleId moduleId { SolutionDSP::moduleIdFromName (SOLUTION_MODULE_ID) };
     SolutionDSP::SuiteModuleEngine moduleEngine;
     juce::SharedResourcePointer<SolutionDSP::RackLinkBus> rackLinkBus;
     juce::AudioBuffer<float> dryCopy;

@@ -8,9 +8,34 @@
 #include <atomic>
 #include <memory>
 #include <fstream>
+#include <cstring>
+#include <utility>
 
 namespace SolutionDSP
 {
+    enum class ModuleId { Bunker, Stage, Land, Loft, Orbit, Bridge, Void, Anchor, Aether, Mosaic, Innerspace, Matrix, Scope, Unknown };
+
+    inline ModuleId moduleIdFromName (const char* name)
+    {
+        static constexpr std::pair<const char*, ModuleId> table[] = {
+            { "TheBunker", ModuleId::Bunker }, { "TheStage", ModuleId::Stage },   { "TheLand", ModuleId::Land },
+            { "TheLoft", ModuleId::Loft },     { "TheOrbit", ModuleId::Orbit },   { "TheBridge", ModuleId::Bridge },
+            { "TheVoid", ModuleId::Void },     { "TheAnchor", ModuleId::Anchor }, { "TheAether", ModuleId::Aether },
+            { "TheMosaic", ModuleId::Mosaic }, { "Innerspace", ModuleId::Innerspace },
+            { "TheMatrix", ModuleId::Matrix }, { "TheScope", ModuleId::Scope } };
+        for (const auto& [n, id] : table)
+            if (std::strcmp (n, name) == 0)
+                return id;
+        return ModuleId::Unknown;
+    }
+
+    // Biquad coefficients are rewritten in place on the audio thread. Giving every filter
+    // a full-size biquad up front means those rewrites never allocate memory.
+    template <typename Duplicator>
+    inline void preallocateBiquad (Duplicator& filter, double sampleRate)
+    {
+        *filter.state = juce::dsp::IIR::ArrayCoefficients<float>::makeAllPass (sampleRate, 1000.0f);
+    }
     // Shared across all plugin instances in the same DAW process (Rack Link + Matrix CV Bus)
     struct RackLinkBus
     {
@@ -61,6 +86,8 @@ namespace SolutionDSP
             midPeak.prepare (spec);
             highShelf.prepare (spec);
             roomNotch.prepare (spec);
+            for (auto* f : { &lowShelf, &midPeak, &highShelf, &roomNotch })
+                preallocateBiquad (*f, sampleRate);
             setProfile (currentProfile);
         }
 
@@ -111,34 +138,34 @@ namespace SolutionDSP
 
             if (profileIndex == 1) // Mastering Studio
             {
-                lowShelf.state  = juce::dsp::IIR::Coefficients<float>::makeLowShelf (sampleRate, 85.0f, 0.7f, 1.08f);
-                midPeak.state   = juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate, 320.0f, 1.4f, 0.88f);
-                highShelf.state = juce::dsp::IIR::Coefficients<float>::makeHighShelf (sampleRate, 8500.0f, 0.7f, 1.12f);
+                *lowShelf.state = juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (sampleRate, 85.0f, 0.7f, 1.08f);
+                *midPeak.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, 320.0f, 1.4f, 0.88f);
+                *highShelf.state = juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (sampleRate, 8500.0f, 0.7f, 1.12f);
                 tapMsL = 7.2f; tapMsR = 9.4f;
             }
             else if (profileIndex == 2) // '69 Lincoln Cabin
             {
-                lowShelf.state  = juce::dsp::IIR::Coefficients<float>::makeLowShelf (sampleRate, 110.0f, 0.8f, 1.25f);
-                midPeak.state   = juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate, 650.0f, 1.1f, 0.82f);
-                highShelf.state = juce::dsp::IIR::Coefficients<float>::makeHighShelf (sampleRate, 5500.0f, 0.7f, 0.85f);
+                *lowShelf.state = juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (sampleRate, 110.0f, 0.8f, 1.25f);
+                *midPeak.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, 650.0f, 1.1f, 0.82f);
+                *highShelf.state = juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (sampleRate, 5500.0f, 0.7f, 0.85f);
                 tapMsL = 3.1f; tapMsR = 4.6f;
             }
             else if (profileIndex == 3) // Club System
             {
-                lowShelf.state  = juce::dsp::IIR::Coefficients<float>::makeLowShelf (sampleRate, 65.0f, 0.9f, 1.38f);
-                midPeak.state   = juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate, 450.0f, 1.2f, 0.85f);
-                highShelf.state = juce::dsp::IIR::Coefficients<float>::makeHighShelf (sampleRate, 10000.0f, 0.7f, 1.15f);
+                *lowShelf.state = juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (sampleRate, 65.0f, 0.9f, 1.38f);
+                *midPeak.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, 450.0f, 1.2f, 0.85f);
+                *highShelf.state = juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (sampleRate, 10000.0f, 0.7f, 1.15f);
                 tapMsL = 14.5f; tapMsR = 19.2f;
             }
             else
             {
-                lowShelf.state  = juce::dsp::IIR::Coefficients<float>::makeLowShelf (sampleRate, 80.0f, 0.7f, 1.0f);
-                midPeak.state   = juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate, 1000.0f, 1.0f, 1.0f);
-                highShelf.state = juce::dsp::IIR::Coefficients<float>::makeHighShelf (sampleRate, 8000.0f, 0.7f, 1.0f);
+                *lowShelf.state = juce::dsp::IIR::ArrayCoefficients<float>::makeLowShelf (sampleRate, 80.0f, 0.7f, 1.0f);
+                *midPeak.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, 1000.0f, 1.0f, 1.0f);
+                *highShelf.state = juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (sampleRate, 8000.0f, 0.7f, 1.0f);
                 tapMsL = 0.0f; tapMsR = 0.0f;
             }
 
-            roomNotch.state = juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate, capturedModeHz, 4.0f, 0.72f);
+            *roomNotch.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, capturedModeHz, 4.0f, 0.72f);
         }
 
         void process (juce::AudioBuffer<float>& buffer, float mix, int profileIndex)
@@ -249,6 +276,8 @@ namespace SolutionDSP
             airShelf.prepare (spec);
             depthLowPass.prepare (spec);
             deRumbleHPF.prepare (spec);
+            for (auto* f : { &airShelf, &depthLowPass, &deRumbleHPF })
+                preallocateBiquad (*f, sampleRate);
             roomMatcher.prepare (spec);
             calPhase = 0.0;
             lfoPhase = 0.0;
@@ -269,7 +298,7 @@ namespace SolutionDSP
         RoomMatcherEngine& getRoomMatcher() { return roomMatcher; }
         const RoomMatcherEngine& getRoomMatcher() const { return roomMatcher; }
 
-        void process (const juce::String& moduleId, juce::AudioBuffer<float>& buffer, const ProcessParams& p, RackLinkBus& bus)
+        void process (ModuleId moduleId, juce::AudioBuffer<float>& buffer, const ProcessParams& p, RackLinkBus& bus)
         {
             const int numSamples = buffer.getNumSamples();
             if (buffer.getNumChannels() < 2 || numSamples == 0)
@@ -303,7 +332,7 @@ namespace SolutionDSP
                 if (lfoPhase >= 1.0) lfoPhase -= 1.0;
             }
             const float lfoVal = static_cast<float> (std::sin (lfoPhase * juce::MathConstants<double>::twoPi));
-            if (moduleId == "TheMatrix")
+            if (moduleId == ModuleId::Matrix)
             {
                 bus.cvLfoValue.store (lfoVal, std::memory_order_relaxed);
                 bus.envFollower.store (blockEnv, std::memory_order_relaxed);
@@ -320,14 +349,14 @@ namespace SolutionDSP
             highCross.setCutoffFrequency (std::clamp (p.anchorHz, 20.0f, 250.0f));
 
             const float airDb = std::clamp (p.elevationDeg / 90.0f * 4.5f, -6.0f, 6.0f);
-            airShelf.state = juce::dsp::IIR::Coefficients<float>::makeHighShelf (
+            *airShelf.state = juce::dsp::IIR::ArrayCoefficients<float>::makeHighShelf (
                 sampleRate, 6500.0f, 0.7f, juce::Decibels::decibelsToGain (airDb));
 
             const float depthCutoff = 20000.0f - effectiveDepth * 14000.0f;
-            depthLowPass.state = juce::dsp::IIR::Coefficients<float>::makeLowPass (
+            *depthLowPass.state = juce::dsp::IIR::ArrayCoefficients<float>::makeLowPass (
                 sampleRate, std::clamp (depthCutoff, 1800.0f, 20000.0f));
 
-            deRumbleHPF.state = juce::dsp::IIR::Coefficients<float>::makeHighPass (
+            *deRumbleHPF.state = juce::dsp::IIR::ArrayCoefficients<float>::makeHighPass (
                 sampleRate, 18.0f + effectiveDepth * 24.0f);
 
             auto applyClipper = [&] (float x, float drive) -> float
@@ -339,7 +368,7 @@ namespace SolutionDSP
                 return std::tanh (x * drive) / std::max (1.0f, std::tanh (drive)); // Soft Knee
             };
 
-            if (moduleId == "TheBunker")
+            if (moduleId == ModuleId::Bunker)
             {
                 if (lowBandBuffer.getNumSamples() < numSamples)
                 {
@@ -368,12 +397,12 @@ namespace SolutionDSP
                     buffer.setSample (1, i, satSub + highBandBuffer.getSample (1, i));
                 }
             }
-            else if (moduleId == "TheLoft" || moduleId == "TheAether")
+            else if (moduleId == ModuleId::Loft || moduleId == ModuleId::Aether)
             {
                 juce::dsp::AudioBlock<float> blk (buffer);
                 juce::dsp::ProcessContextReplacing<float> ctx (blk);
                 airShelf.process (ctx);
-                const float airDrive = 1.0f + effectiveDepth * (moduleId == "TheAether" ? 2.1f : 1.6f);
+                const float airDrive = 1.0f + effectiveDepth * (moduleId == ModuleId::Aether ? 2.1f : 1.6f);
                 for (int ch = 0; ch < 2; ++ch)
                 {
                     auto* data = buffer.getWritePointer (ch);
@@ -381,15 +410,9 @@ namespace SolutionDSP
                         data[i] = 0.7f * data[i] + 0.3f * std::tanh (data[i] * airDrive);
                 }
             }
-            else if (moduleId == "TheAnchor" || moduleId == "TheBridge" || moduleId == "TheCrown")
+            else if (moduleId == ModuleId::Anchor || moduleId == ModuleId::Bridge)
             {
-                const float drive = 1.0f + (effectiveDepth + p.regenThrottle * 0.4f) * (moduleId == "TheAnchor" ? 2.5f : (moduleId == "TheCrown" ? 1.8f : 1.4f));
-                if (moduleId == "TheCrown")
-                {
-                    juce::dsp::AudioBlock<float> blk (buffer);
-                    juce::dsp::ProcessContextReplacing<float> ctx (blk);
-                    airShelf.process (ctx);
-                }
+                const float drive = 1.0f + (effectiveDepth + p.regenThrottle * 0.4f) * (moduleId == ModuleId::Anchor ? 2.5f : 1.4f);
                 for (int ch = 0; ch < 2; ++ch)
                 {
                     auto* data = buffer.getWritePointer (ch);
@@ -397,12 +420,12 @@ namespace SolutionDSP
                         data[i] = applyClipper (data[i], drive);
                 }
             }
-            else if (moduleId == "TheMosaic" || moduleId == "Chimera")
+            else if (moduleId == ModuleId::Mosaic)
             {
                 juce::dsp::AudioBlock<float> blk (buffer);
                 juce::dsp::ProcessContextReplacing<float> ctx (blk);
                 airShelf.process (ctx);
-                const float morphDrive = 1.0f + effectiveDepth * (moduleId == "Chimera" ? 2.4f : 2.0f);
+                const float morphDrive = 1.0f + effectiveDepth * 2.0f;
                 for (int ch = 0; ch < 2; ++ch)
                 {
                     auto* data = buffer.getWritePointer (ch);
@@ -410,14 +433,14 @@ namespace SolutionDSP
                         data[i] = 0.6f * data[i] + 0.4f * applyClipper (data[i], morphDrive);
                 }
             }
-            else if (moduleId == "TheStage" || moduleId == "TheLand" || moduleId == "TheOrbit" || moduleId == "TheVoid")
+            else if (moduleId == ModuleId::Stage || moduleId == ModuleId::Land || moduleId == ModuleId::Orbit || moduleId == ModuleId::Void)
             {
                 juce::dsp::AudioBlock<float> blk (buffer);
                 juce::dsp::ProcessContextReplacing<float> ctx (blk);
                 airShelf.process (ctx);
                 depthLowPass.process (ctx);
             }
-            else if (moduleId == "Innerspace")
+            else if (moduleId == ModuleId::Innerspace)
             {
                 juce::dsp::AudioBlock<float> blk (buffer);
                 juce::dsp::ProcessContextReplacing<float> ctx (blk);

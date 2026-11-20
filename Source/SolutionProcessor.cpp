@@ -142,7 +142,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     p.regenThrottle   = apvts.getRawParameterValue ("regen_throttle")->load();
     p.dialogueDuck    = apvts.getRawParameterValue ("dialogue_duck")->load() > 0.5f;
 
-    moduleEngine.process (juce::String (SOLUTION_MODULE_ID), buffer, p, *rackLinkBus);
+    moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
 
     const bool ceilingOn   = apvts.getRawParameterValue ("stage_ceiling_guard")->load() > 0.5f;
     const float ceilingLin = juce::Decibels::decibelsToGain (-0.5f);
