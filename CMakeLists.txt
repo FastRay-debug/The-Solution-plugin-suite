@@ -135,8 +135,8 @@ function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
             Source/SolutionEditor.h
     )
 
-    if(MSVC)
-        target_compile_options(${TARGET_NAME} PRIVATE /MP)
+    if(MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
+        target_compile_options(${TARGET_NAME} PRIVATE /MP)   # Ninja builds parallelise on their own
     endif()
 
     target_compile_definitions(${TARGET_NAME}
