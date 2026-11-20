@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>The Solution — Modular Suite</title>
+  <style>
+    :root {
+      --bg: #07090C;
+      --accent: #F59E0B;
+      --accent2: #38BDF8;
+      --bezel: #2E3542;
+      --gold: #D4AF37;
+      --text: #F8FAFC;
+      --mute: #CBD5E1;
+      --skin-img: url('/skins/lincoln69.jpg');
+    }
+    * { box-sizing: border-box; user-select: none; }
+    body {
+      margin: 0; background: #05070A; color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+      padding: 6px; gap: 5px;
+    }
+    /* Sleek Brushed-Metal Header (No Scrollbars) */
+    .ribbon {
+      height: 40px; flex-shrink: 0;
+      background: linear-gradient(180deg, #1E232D 0%, #0E1117 100%);
+      border: 1px solid rgba(212,175,55,0.55); border-radius: 5px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 12px rgba(0,0,0,0.8);
+      display: flex; align-items: center; justify-content: space-between; padding: 0 10px; gap: 6px;
+      overflow: hidden;
+    }
+    .ribbon-title {
+      font-weight: 800; letter-spacing: 0.13em; color: var(--gold); font-size: 11px;
+      text-transform: uppercase; white-space: nowrap; cursor: pointer;
+      text-shadow: 0 0 10px rgba(245,158,11,0.5);
+    }
+    .skin-bar { display: flex; align-items: center; gap: 3px; overflow: hidden; }
+    .meter-pill {
+      display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 10.5px;
+      white-space: nowrap; background: #06080B; border: 1px solid #2D3544; border-radius: 4px;
+      padding: 3px 8px; cursor: pointer; flex-shrink: 0;
+    }
+    .meter-pill:hover { border-color: var(--accent2); }
+    select, button, input[type="text"] {
+      background: linear-gradient(180deg, #1D222C 0%, #0D1015 100%);
+      color: var(--text); border: 1px solid rgba(212,175,55,0.32); border-radius: 3px;
+      padding: 3px 6px; font-size: 10px; cursor: pointer; white-space: nowrap;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 4px rgba(0,0,0,0.6);
+    }
+    select#skinSelect { max-width: 175px; }
+    button:hover { border-color: var(--gold); }
+    button.active {
+      border-color: var(--accent); color: var(--accent);
+      background: linear-gradient(180deg, #2D2211 0%, #150F07 100%);
+      box-shadow: 0 0 10px rgba(245,158,11,0.45);
+    }
+
+    /* Full-Bleed Photorealistic 3D Hardware Faceplate */
+    .main {
+      flex: 1; display: grid; grid-template-columns: 210px 1fr 210px; gap: 10px;
+      background-image:
+        radial-gradient(circle at 50% 50%, rgba(0,0,0,0.05) 35%, rgba(4,6,9,0.58) 100%),
+        var(--skin-img);
+      background-size: cover; background-position: center; padding: 10px 12px;
+      border: 1.5px solid rgba(212,175,55,0.45); border-radius: 8px;
+      box-shadow: inset 0 0 28px rgba(0,0,0,0.85), 0 10px 26px rgba(0,0,0,0.85);
+      position: relative; min-height: 0; overflow: hidden;
+    }
+
+    /* Transparent Hardware-Mounted Knob Columns (Zero Opaque Boxes, Zero Scrollbars) */
+    .wing {
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: 4px 2px; overflow: hidden; min-height: 0;
+    }
+    .knob-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 2px; align-items: center;
+    }
+    .knob-cell {
+      display: flex; flex-direction: column; align-items: center; gap: 1px; position: relative;
+      padding: 2px 0;
+    }
+    .knob-lbl {
+      font-size: 8.5px; letter-spacing: 0.09em; color: #E2E8F0; font-weight: 800;
+      text-transform: uppercase; text-shadow: 0 1px 4px #000, 0 0 6px #000;
+    }
+    .knob-val {
+      font-size: 9.5px; font-family: monospace; color: var(--accent); font-weight: 700;
+      text-shadow: 0 1px 4px #000, 0 0 6px #000;
+    }
+    .knob-wrap {
+      position: relative; width: 58px; height: 58px; cursor: ns-resize;
+      display: flex; align-items: center; justify-content: center;
+      filter: drop-shadow(0 6px 10px rgba(0,0,0,0.9));
+    }
+    .knob-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .knob-cap {
+      width: 40px; height: 40px; border-radius: 50%;
+      background:
+        radial-gradient(circle at 32% 28%, #FFF7D6 0%, #E0B84C 32%, #8A661C 74%, #261B06 100%);
+      border: 2px solid #1B1508;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.95), inset 0 1.5px 2px rgba(255,255,255,0.75), 0 0 0 2.5px #11151C;
+      position: relative; pointer-events: none;
+    }
+    .knob-cap::after {
+      content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+      width: 2.5px; height: 11px; border-radius: 2px; background: #090B0E;
+      box-shadow: 0 0 4px var(--accent);
+    }
+    .knob-cell.big .knob-wrap { width: 72px; height: 72px; }
+    .knob-cell.big .knob-cap { width: 52px; height: 52px; }
+
+    .wing-actions {
+      display: flex; flex-direction: column; gap: 4px;
+      background: rgba(8,10,14,0.72); border: 1px solid rgba(212,175,55,0.35);
+      border-radius: 5px; padding: 6px; backdrop-filter: blur(4px);
+    }
+
+    /* Smoked-Glass Center Holographic Console */
+    .center-col { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+    .viewport {
+      flex: 1;
+      background: radial-gradient(ellipse at 50% 55%, rgba(10,16,26,0.58) 0%, rgba(5,7,11,0.82) 100%);
+      backdrop-filter: blur(2px);
+      border: 1.5px solid rgba(56,189,248,0.5); border-radius: 8px;
+      box-shadow: inset 0 0 32px rgba(0,0,0,0.9), 0 8px 24px rgba(0,0,0,0.85);
+      position: relative; display: flex; align-items: center; justify-content: center;
+      cursor: grab; min-height: 0; overflow: hidden;
+    }
+    .viewport:active { cursor: grabbing; }
+    canvas { width: 100%; height: 100%; display: block; }
+    .vp-badge {
+      position: absolute; bottom: 7px; left: 9px; font-family: monospace; font-size: 9px;
+      color: var(--accent2); background: rgba(5,8,12,0.85); padding: 2px 7px;
+      border: 1px solid rgba(56,189,248,0.45); border-radius: 3px; pointer-events: none;
+    }
+    .tach {
+      position: absolute; top: 8px; width: 68px; height: 68px; border-radius: 50%;
+      background: radial-gradient(circle at 50% 45%, #1A222E 0%, #06080C 85%);
+      border: 2px solid var(--gold); box-shadow: 0 4px 12px rgba(0,0,0,0.9), inset 0 0 10px rgba(56,189,248,0.28);
+      pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .tach.left { left: 8px; }
+    .tach.right { right: 8px; }
+    .tach-needle {
+      position: absolute; bottom: 50%; left: 50%; width: 2px; height: 23px;
+      background: var(--accent); transform-origin: bottom center; transform: translateX(-50%) rotate(-55deg);
+      box-shadow: 0 0 6px var(--accent); transition: transform 60ms linear;
+    }
+    .tach-lbl { position: absolute; bottom: 9px; font-family: monospace; font-size: 7.5px; color: var(--accent2); }
+
+    /* Segmented LED Ladder Meter Strip */
+    .meter-strip {
+      height: 54px; flex-shrink: 0;
+      background: rgba(7,9,13,0.88); backdrop-filter: blur(4px);
+      border: 1px solid rgba(212,175,55,0.65); border-radius: 6px; padding: 5px 9px;
+      display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; position: relative;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.9), 0 4px 14px rgba(0,0,0,0.8);
+    }
+    .meter-strip:hover { border-color: var(--accent2); }
+    .meter-strip-hdr {
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: monospace; font-size: 9.5px; color: var(--mute);
+    }
+    .bar-track {
+      height: 10px; background: #090C11; border: 1px solid #262E3B; border-radius: 2px;
+      position: relative; overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%; width: 0%;
+      background:
+        repeating-linear-gradient(90deg, transparent 0px, transparent 6px, #07090D 6px, #07090D 8px),
+        linear-gradient(90deg, #10B981 0%, #F59E0B 68%, #EF4444 92%);
+      transition: width 40ms linear;
+    }
+    .bar-ceil { position: absolute; top: 0; bottom: 0; width: 2px; background: #EF4444; box-shadow: 0 0 6px #EF4444; z-index: 2; }
+
+    /* Footer */
+    .footer {
+      height: 36px; flex-shrink: 0;
+      background: linear-gradient(180deg, #1A1F28 0%, #0D1015 100%);
+      border: 1px solid #303744; border-radius: 5px;
+      display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; gap: 6px;
+    }
+    .badge {
+      padding: 2px 8px; border: 1px solid var(--gold); color: var(--gold); border-radius: 3px;
+      font-family: monospace; font-size: 9.5px; white-space: nowrap; background: rgba(212,175,55,0.08);
+    }
+    .screw {
+      width: 14px; height: 14px; border-radius: 50%; border: 1px solid #4A5568;
+      background: radial-gradient(circle, #64748B 25%, #1E293B 100%); cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; font-size: 8px; color: #0F172A;
+    }
+    .screw.active { border-color: var(--accent2); color: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+
+    .meter-menu {
+      display: none; position: fixed; background: #12161E; border: 1px solid var(--gold); border-radius: 6px;
+      padding: 6px; z-index: 60; width: 220px; flex-direction: column; gap: 4px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.9);
+    }
+    .meter-menu.open { display: flex; }
+    .meter-menu button { text-align: left; }
+    .meter-pop {
+      display: none; position: fixed; top: 90px; left: 180px; width: 470px; height: 310px;
+      min-width: 280px; min-height: 200px; resize: both; overflow: hidden;
+      background: #0D1015; border: 1.5px solid var(--accent2); border-radius: 8px; z-index: 55;
+      flex-direction: column; box-shadow: 0 16px 44px rgba(0,0,0,0.92);
+    }
+    .meter-pop.open { display: flex; }
+    .meter-pop-hdr {
+      background: #161B22; padding: 6px 10px; display: flex; justify-content: space-between;
+      align-items: center; border-bottom: 1px solid var(--bezel); cursor: move; font-size: 11px;
+    }
+    .meter-pop-body { flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+
+    .rear-panel {
+      display: none; position: absolute; inset: 0; background: #0E1116; border-radius: 8px;
+      padding: 16px; flex-direction: column; justify-content: space-between; z-index: 15;
+    }
+    .rear-panel.open { display: flex; }
+    .rear-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bezel); padding-bottom: 8px; }
+    .patch-stage { flex: 1; position: relative; display: flex; align-items: center; justify-content: space-around; }
+    .rack-node { width: 150px; background: #1A1F26; border: 1px solid var(--gold); border-radius: 6px; padding: 10px; text-align: center; font-size: 11px; z-index: 2; }
+    .jack-row { display: flex; justify-content: space-between; margin-top: 8px; }
+    .jack { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--accent); background: #090B0E; cursor: crosshair; display: inline-block; }
+    .jack.cv { border-color: var(--accent2); }
+    svg.cables { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.78); align-items: center; justify-content: center; z-index: 50; }
+    .modal.open { display: flex; }
+    .modal-box button, .modal-box select { position: relative; }
+    .modal-box { background: #141820; border: 1.5px solid var(--gold); border-radius: 8px; padding: 16px; width: 390px; max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    .preset-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border: 1px solid var(--bezel); border-radius: 4px; background: #0E1014; font-size: 11px; }
+    .ctrl { display: flex; flex-direction: column; gap: 3px; position: relative; }
+    .ctrl label { font-size: 10px; letter-spacing: 0.08em; color: var(--mute); display: flex; justify-content: space-between; }
+
+    body.no-tips [data-tip]::after { display: none !important; }
+    .knob-cap.chrome { background: radial-gradient(circle at 32% 28%, #FFFFFF 0%, #CBD5E1 35%, #64748B 76%, #1E293B 100%) !important; }
+    .knob-cap.gunmetal { background: radial-gradient(circle at 32% 28%, #94A3B8 0%, #475569 38%, #1E293B 78%, #090D16 100%) !important; }
+    .knob-cap.billet { background: radial-gradient(circle at 32% 28%, #FCA5A5 0%, #DC2626 35%, #7F1D1D 76%, #2A0808 100%) !important; }
+    body.cursor-right, body.cursor-right * { cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cpath%20d%3D%22M12%202c1.1%200%202%20.9%202%202v9h1.5V9c0-1.1.9-2%202-2s2%20.9%202%202v4.5h1.5V10.5c0-1%20.8-1.8%201.8-1.8s1.8.8%201.8%201.8v5h1.2c.9%200%201.7.8%201.7%201.7v4.3c0%204.4-3.6%208-8%208h-3.5c-2.6%200-5-1.3-6.5-3.4L6.2%2021c-.7-1-.4-2.3.5-3%20.9-.6%202.1-.4%202.8.4l1.5%201.8V4c0-1.1.9-2%202-2z%22%20fill%3D%22%23F59E0B%22%20stroke%3D%22%23090B0E%22%20stroke-width%3D%221.6%22/%3E%3C/svg%3E") 12 3, pointer !important; }
+    body.cursor-left, body.cursor-left * { cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cg%20transform%3D%22translate%2832%2C0%29%20scale%28-1%2C1%29%22%3E%3Cpath%20d%3D%22M12%202c1.1%200%202%20.9%202%202v9h1.5V9c0-1.1.9-2%202-2s2%20.9%202%202v4.5h1.5V10.5c0-1%20.8-1.8%201.8-1.8s1.8.8%201.8%201.8v5h1.2c.9%200%201.7.8%201.7%201.7v4.3c0%204.4-3.6%208-8%208h-3.5c-2.6%200-5-1.3-6.5-3.4L6.2%2021c-.7-1-.4-2.3.5-3%20.9-.6%202.1-.4%202.8.4l1.5%201.8V4c0-1.1.9-2%202-2z%22%20fill%3D%22%23F59E0B%22%20stroke%3D%22%23090B0E%22%20stroke-width%3D%221.6%22/%3E%3C/g%3E%3C/svg%3E") 20 3, pointer !important; }
+    body.cursor-pinch, body.cursor-pinch * { cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2210%22%20r%3D%224%22%20fill%3D%22none%22%20stroke%3D%22%2338BDF8%22%20stroke-width%3D%222%22/%3E%3Cpath%20d%3D%22M11%2014c-1.5%201.5-2%203.8-2%206.2%200%204.3%203.1%207.8%207%207.8s7-3.5%207-7.8c0-2.4-.5-4.7-2-6.2l-2.2%202.2c.7.9%201.2%202.2%201.2%203.8%200%202.6-1.8%204.8-4%204.8s-4-2.2-4-4.8c0-1.6.5-2.9%201.2-3.8L11%2014z%22%20fill%3D%22%23D4AF37%22%20stroke%3D%22%23090B0E%22%20stroke-width%3D%221.5%22/%3E%3C/svg%3E") 16 10, pointer !important; }
+    body.classic-os * { transition: none !important; box-shadow: none !important; }
+    body.classic-os .main { background-image: none !important; background: #000 !important; }
+    body.classic-os .wing, body.classic-os .viewport { background: #000 !important; }
+    body.precision-mode .wing { opacity: 0.35; }
+    body.precision-mode .viewport { background: #030609 !important; border-color: var(--accent2); }
+    [data-tip]::after {
+      content: attr(data-tip); position: absolute; bottom: 105%; left: 0;
+      background: #000; color: var(--text); border: 1px solid var(--gold); border-radius: 3px;
+      padding: 4px 8px; font-size: 10px; white-space: nowrap;
+      opacity: 0; pointer-events: none; transition: opacity 0.15s ease; transition-delay: 0ms; z-index: 30;
+    }
+    [data-tip]:hover::after { opacity: 1; transition-delay: 600ms; }
+  </style>
+</head>
+<body>
+  <div class="ribbon">
+    <div class="ribbon-title" id="moduleTitle"><span id="secretTrigger" onclick="openSecretMenu(event)" title="Secret Menu" style="cursor:pointer;">T</span><span id="moduleTitleRest" onclick="toggleCalTone()" title="Click title for Tape Calibration Tone (-18 dBFS)">HE SOLUTION · SUITE MODULE</span></div>
+    <div class="skin-bar">
+      <select id="skinSelect" onchange="applySkin(this.value)" title="Select from 50 /cars & /places skins">
+        <optgroup label="/cars (25 Classic & Muscle)">
+          <option value="lincoln69" selected>'69 Lincoln Continental</option>
+          <option value="camaro71">'71 Camaro (Orange)</option>
+          <option value="mach1">'70 Mustang Mach 1</option>
+          <option value="eviltwin">'68 "Evil Twin"</option>
+          <option value="eldorado59">'59 Cadillac Eldorado</option>
+          <option value="cuda70">'70 HEMI 'Cuda</option>
+          <option value="gto67">'67 Pontiac GTO</option>
+          <option value="chevelle70">'70 Chevelle SS 454</option>
+          <option value="charger69">'69 Dodge Charger R/T</option>
+          <option value="corvette63">'63 Corvette Split-Window</option>
+          <option value="gt40">'66 Ford GT40 Gulf</option>
+          <option value="countach">'85 Lamborghini Countach</option>
+          <option value="gnx87">'87 Buick GNX</option>
+          <option value="viper96">'96 Dodge Viper GTS</option>
+          <option value="belair57">'57 Chevy Bel Air</option>
+          <option value="porsche911">'73 Porsche 911 RS</option>
+          <option value="delorean">'81 DeLorean DMC-12</option>
+          <option value="nsx91">'91 Acura NSX</option>
+          <option value="skyline99">'99 Skyline GT-R R34</option>
+          <option value="impala64">'64 Chevy Impala SS</option>
+          <option value="cobra65">'65 Shelby Cobra 427</option>
+          <option value="transam77">'77 Pontiac Trans Am</option>
+          <option value="f40">'89 Ferrari F40</option>
+          <option value="mclarenf1">'94 McLaren F1</option>
+          <option value="supra94">'94 Toyota Supra MK4</option>
+        </optgroup>
+        <optgroup label="/places (25 Iconic Spaces)">
+          <option value="rome">Rome Pantheon</option>
+          <option value="giza">Giza Pyramids</option>
+          <option value="aztec">Aztec Ruins</option>
+          <option value="serengeti">Serengeti Falls</option>
+          <option value="museum">Museum Gallery</option>
+          <option value="piano">Concert Piano</option>
+          <option value="abbey">Abbey Studio Room</option>
+          <option value="tokyo">Tokyo Neon Alley</option>
+          <option value="paris">Paris Opera House</option>
+          <option value="iceland">Icelandic Basalt Cave</option>
+          <option value="kyoto">Kyoto Bamboo Temple</option>
+          <option value="petra">Petra Sandstone Canyon</option>
+          <option value="redrocks">Red Rocks Amphitheater</option>
+          <option value="taj">Taj Mahal Marble Dome</option>
+          <option value="machu">Machu Picchu Cloud Ridge</option>
+          <option value="norway">Nordic Fjord Cliff</option>
+          <option value="venice">Venice Grand Canal</option>
+          <option value="sedona">Sedona Vortex Mesa</option>
+          <option value="antarctica">Antarctic Ice Cavern</option>
+          <option value="sahara">Sahara Starry Dunes</option>
+          <option value="apollo">Apollo Mission Control</option>
+          <option value="cathedral">Gothic Cathedral Nave</option>
+          <option value="subway">NYC Underground Tunnel</option>
+          <option value="monaco">Monaco Harbor Yacht</option>
+          <option value="banff">Banff Emerald Lake</option>
+        </optgroup>
+      </select>
+      <button id="emuBtn" onclick="openEmulator()" data-tip="Built-in Audio Emulator">▶ AUDIO</button>
+      <button onclick="openVault()" data-tip="The Vault: Presets & A/B">🗄 VAULT</button>
+      <button onclick="openMatrix()" data-tip="The Matrix: CV & MIDI Learn">⚡ MATRIX</button>
+      <button onclick="doUndo()" data-tip="Undo">↩</button>
+      <button onclick="doRedo()" data-tip="Redo">↪</button>
+      <button id="precBtn" onclick="togglePrecision()" data-tip="Precision Grid (Shift+Space)">⌖</button>
+      <button id="rearBtn" onclick="toggleRear()" data-tip="180° Rear Patchbay">↻</button>
+      <button id="classicBtn" onclick="toggleClassicOS()" data-tip="Classic OS Mode">OS</button>
+      <button id="tipBtn" class="active" onclick="toggleTooltips()" data-tip="Toggle 0.6s Hover Tooltips ON/OFF">TIP</button>
+      <button id="curBtn" onclick="cycleCursor()" data-tip="Cycle Pointer: Mouse / Right Hand / Left Hand / Pinch (Shortcut: H)">✋</button>
+      <button onclick="document.getElementById('manualModal').classList.add('open')" data-tip="Built-in Instruction Manual">?</button>
+      <button onclick="document.getElementById('phoneModal').classList.add('open')" data-tip="Phone Sync">📱</button>
+    </div>
+    <div class="meter-pill" id="ribbonMeter" onclick="openMeterMenu(event)" ondblclick="toggleMeterPop()" onwheel="wheelZoomMeter(event)" title="Click: Meter Menu · Wheel: Zoom · Double-Click: Expand">
+      <span>PH <b id="m-phase" style="color:var(--accent2)">+1.00</b></span>
+      <span>PK <b id="m-peak" style="color:var(--accent)">-60.0</b></span>
+      <span>LUFS <b id="m-lufs" style="color:#10B981">-60.0</b></span>
+      <span>LK <b id="m-links" style="color:var(--accent2)">1</b></span>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="wing">
+      <div class="knob-grid">
+        <div class="knob-cell big" style="grid-column:span 2;" data-tip="Horizontal 3D Azimuth (-180° to +180°)">
+          <div class="knob-lbl">AZIMUTH</div>
+          <div class="knob-wrap" data-param="stage_azimuth" data-min="-180" data-max="180" data-val="0" data-unit="°" data-mult="1"></div>
+          <div class="knob-val" id="v-stage_azimuth">0.0°</div>
+        </div>
+        <div class="knob-cell" data-tip="Vertical Z-Axis Elevation (-90° to +90°)">
+          <div class="knob-lbl">ELEVATION</div>
+          <div class="knob-wrap" data-param="stage_elevation" data-min="-90" data-max="90" data-val="0" data-unit="°" data-mult="1"></div>
+          <div class="knob-val" id="v-stage_elevation">0.0°</div>
+        </div>
+        <div class="knob-cell" data-tip="Haas Interaural Time Difference (0–35 ms)">
+          <div class="knob-lbl">HAAS ITD</div>
+          <div class="knob-wrap" data-param="stage_haas_itd" data-min="0" data-max="35" data-val="0" data-unit=" ms" data-mult="1"></div>
+          <div class="knob-val" id="v-stage_haas_itd">0.0 ms</div>
+        </div>
+        <div class="knob-cell" data-tip="Split-Core Mid Gain (-12 to +12 dB)">
+          <div class="knob-lbl">M/S MID</div>
+          <div class="knob-wrap" data-param="stage_ms_mid" data-min="-12" data-max="12" data-val="0" data-unit=" dB" data-mult="1"></div>
+          <div class="knob-val" id="v-stage_ms_mid">0.0 dB</div>
+        </div>
+        <div class="knob-cell" data-tip="Split-Core Side Gain (-12 to +12 dB)">
+          <div class="knob-lbl">M/S SIDE</div>
+          <div class="knob-wrap" data-param="stage_ms_side" data-min="-12" data-max="12" data-val="0" data-unit=" dB" data-mult="1"></div>
+          <div class="knob-val" id="v-stage_ms_side">0.0 dB</div>
+        </div>
+      </div>
+      <div class="wing-actions">
+        <button id="sculptBtn" onclick="toggleSculpt()" data-tip="Predictive Transient Sculpting">⚡ TRANSIENT SCULPT: OFF</button>
+        <button id="safeZoneBtn" onclick="toggleSafeZone()" data-tip="Visual Sub-Bass Safe-Zone Overlay (20-250 Hz)">⌖ SUB SAFE-ZONE: OFF</button>
+      </div>
+    </div>
+
+    <div class="center-col">
+      <div class="viewport" id="vp" onclick="cycleVizMode(event)">
+        <div class="tach left"><div class="tach-needle" id="needleL"></div><div class="tach-lbl">IN / SUB</div></div>
+        <div class="tach right"><div class="tach-needle" id="needleR"></div><div class="tach-lbl">OUT / AIR</div></div>
+        <canvas id="stageCanvas" width="560" height="360"></canvas>
+        <div class="vp-badge" id="vizBadge">3D HOLOGRAM · CLICK TO CYCLE · SHIFT+SPACE: PRECISION</div>
+      </div>
+
+      <div class="meter-strip" id="meterStrip" onclick="openMeterMenu(event)" ondblclick="toggleMeterPop()" onwheel="wheelZoomMeter(event)" title="Click: Scale Menu · Wheel: Zoom · Double-Click: Expand">
+        <div class="meter-strip-hdr">
+          <span id="meterScaleLabel" style="color:var(--accent2);font-weight:700;">THERMAL LED L/R · FULL (-60 to 0 dB)</span>
+          <span id="meterHoldLabel">HOLD: -60.0 dB · DBL-CLICK TO EXPAND</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="barL"></div><div class="bar-ceil" id="ceilL"></div></div>
+        <div class="bar-track"><div class="bar-fill" id="barR"></div><div class="bar-ceil" id="ceilR"></div></div>
+      </div>
+    </div>
+
+    <div class="wing">
+      <div class="knob-grid">
+        <div class="knob-cell big" style="grid-column:span 2;" data-tip="Z-Axis distance, sub drive, or clipper knee">
+          <div class="knob-lbl">DEPTH / DRIVE</div>
+          <div class="knob-wrap" data-param="stage_depth" data-min="0" data-max="1" data-val="0.25" data-unit="%" data-mult="100"></div>
+          <div class="knob-val" id="v-stage_depth">25%</div>
+        </div>
+        <div class="knob-cell" data-tip="Stereo stage expansion (0% Mono – 200% Wide)">
+          <div class="knob-lbl">STAGE WIDTH</div>
+          <div class="knob-wrap" data-param="stage_width" data-min="0" data-max="2" data-val="1" data-unit="%" data-mult="100"></div>
+          <div class="knob-val" id="v-stage_width">100%</div>
+        </div>
+        <div class="knob-cell" data-tip="Mono-sum sub bass anchor crossover">
+          <div class="knob-lbl">ANCHOR HZ</div>
+          <div class="knob-wrap" data-param="stage_anchor_hz" data-min="20" data-max="250" data-val="90" data-unit=" Hz" data-mult="1"></div>
+          <div class="knob-val" id="v-stage_anchor_hz">90 Hz</div>
+        </div>
+        <div class="knob-cell" style="grid-column:span 2;" data-tip="Neural-Acoustic Room Matcher blend">
+          <div class="knob-lbl">ROOM MATCHER</div>
+          <div class="knob-wrap" data-param="room_match_mix" data-min="0" data-max="1" data-val="0" data-unit="%" data-mult="100"></div>
+          <div class="knob-val" id="v-room_match_mix">0%</div>
+        </div>
+      </div>
+      <div class="wing-actions">
+        <select onchange="bind('room_profile', this.value, '', 1)" style="width:100%;">
+          <option value="0">Room: Bypass</option>
+          <option value="1" selected>Room: Mastering Studio</option>
+          <option value="2">Room: '69 Lincoln Cabin</option>
+          <option value="3">Room: Club System</option>
+        </select>
+        <div style="display:flex;gap:3px;">
+          <select id="sweepDur" title="Room Sweep Length (2s to 10s)" style="width:52px;">
+            <option value="2" selected>2s</option>
+            <option value="4">4s</option>
+            <option value="6">6s</option>
+            <option value="8">8s</option>
+            <option value="10">10s</option>
+          </select>
+          <button id="captureBtn" onclick="triggerCapture()" style="flex:1;">● SWEEP</button>
+          <button id="micBtn" onclick="toggleLiveMic()" title="Live Measurement Mic">🎙</button>
+        </div>
+        <span id="captureStatus" style="font-size:9px;color:var(--mute);text-align:center;">Mode Notch: 115 Hz</span>
+      </div>
+    </div>
+
+    <!-- 180-Degree Reason-Style Rear Patchbay -->
+    <div class="rear-panel" id="rearPanel">
+      <div class="rear-bar">
+        <span style="font-family:monospace;color:var(--gold);font-weight:700;">180° REASON-STYLE REAR PATCHBAY</span>
+        <div style="display:flex;gap:6px;">
+          <button onclick="setPatchOrder(0)" id="po0" class="active">MODULE → ROOM</button>
+          <button onclick="setPatchOrder(1)" id="po1">ROOM → MODULE</button>
+          <button onclick="autoFixPatch()">✦ AUTO FIX</button>
+          <button onclick="toggleRear()">↻ FRONT RACK</button>
+        </div>
+      </div>
+      <div class="patch-stage" id="patchStage">
+        <svg class="cables" id="cableSvg"></svg>
+        <div class="rack-node"><strong>AUDIO IN</strong><div class="jack-row"><span>L/R</span><span class="jack" data-type="out" onmousedown="startCable(event,'in')"></span></div></div>
+        <div class="rack-node"><strong>MODULE DSP</strong><div class="jack-row"><span class="jack" data-type="in" onmouseup="endCable('mod')"></span><span class="jack" data-type="out" onmousedown="startCable(event,'mod')"></span></div></div>
+        <div class="rack-node"><strong>ROOM MATCHER</strong><div class="jack-row"><span class="jack cv" data-type="in" onmouseup="endCable('room')"></span><span class="jack cv" data-type="out" onmousedown="startCable(event,'room')"></span></div></div>
+        <div class="rack-node"><strong>-0.5 dBFS OUT</strong><div class="jack-row"><span class="jack" data-type="in" onmouseup="endCable('out')"></span><span>GUARD</span></div></div>
+      </div>
+      <div style="font-size:11px;color:var(--mute);display:flex;justify-content:space-between;">
+        <span>Drag from any right-side OUT jack to a left-side IN jack</span>
+        <span id="patchMsg" style="color:var(--accent2);">Signal Path: Input → Module DSP → Room Matcher → -0.5 dBFS Guard</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span>OBJECT MIXER:</span>
+      <select onchange="document.documentElement.style.setProperty('--accent', this.value)">
+        <option value="#F59E0B">Accent: Amber</option>
+        <option value="#FF5E1A">Accent: Hugger Orange</option>
+        <option value="#EF4444">Accent: Evil Twin Crimson</option>
+        <option value="#38BDF8">Accent: Electric Cyan</option>
+        <option value="#10B981">Accent: Jade</option>
+      </select>
+      <select onchange="document.documentElement.style.setProperty('--bezel', this.value)">
+        <option value="#2E3542">Bezel: Gunmetal</option>
+        <option value="#D4AF37">Bezel: Gold Trim</option>
+        <option value="#9CA3AF">Bezel: Chrome</option>
+        <option value="#7F1D1D">Bezel: Crimson</option>
+      </select>
+      <select onchange="setKnobStyle(this.value)" title="Object Mixer: Swap Knob Cap Finish">
+        <option value="gold">Knob: Brushed Gold</option>
+        <option value="chrome">Knob: Chrome</option>
+        <option value="gunmetal">Knob: Gunmetal</option>
+        <option value="billet">Knob: Billet Red</option>
+      </select>
+      <span id="calBadge" style="display:none;color:#EF4444;font-family:monospace;">● CAL TONE -18 dBFS</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="badge" id="guardBadge" ondblclick="toggleCeilingGuard()" style="cursor:pointer;" title="Double-click to toggle -0.5 dBFS Safety Guard">-0.5 dBFS GUARD ACTIVE</div>
+      <span class="screw" id="uwScrew" onclick="toggleUltraWide()" title="Chassis Screw: Ultra Wide Haas-Kempf">✦</span>
+    </div>
+  </div>
+
+  <div class="meter-menu" id="meterMenu">
+    <strong style="font-size:10px;color:var(--gold);letter-spacing:0.08em;">METER ZOOM &amp; VIEW</strong>
+    <button onclick="setMeterScale(4)">Mastering Zoom (4 dB: -4 to 0)</button>
+    <button onclick="setMeterScale(5)">Mastering Zoom (5 dB: -5 to 0)</button>
+    <button onclick="setMeterScale(12)">Punch Zoom (12 dB: -12 to 0)</button>
+    <button onclick="setMeterScale(24)">Half Scale (24 dB: -24 to 0)</button>
+    <button onclick="setMeterScale(60)">Full Meter (60 dB: -60 to 0)</button>
+    <button onclick="resetPeakHold()">Reset Peak Hold</button>
+    <button onclick="toggleMeterPop()">Expand / Pop-Out Meter</button>
+  </div>
+
+  <div class="meter-pop" id="meterPop">
+    <div class="meter-pop-hdr" id="meterPopHdr">
+      <strong style="color:var(--accent2);font-family:monospace;">THE SCOPE · EXPANDED MASTER METER</strong>
+      <div style="display:flex;gap:4px;">
+        <button onclick="setMeterScale(4)">4dB</button>
+        <button onclick="setMeterScale(5)">5dB</button>
+        <button onclick="setMeterScale(24)">Half</button>
+        <button onclick="setMeterScale(60)">Full</button>
+        <button onclick="toggleMeterPop()">✕</button>
+      </div>
+    </div>
+    <div class="meter-pop-body">
+      <div style="display:flex;justify-content:space-between;font-family:monospace;font-size:11px;">
+        <span>SCALE: <b id="popScaleTxt" style="color:var(--accent)">-60 to 0 dB</b></span>
+        <span>PEAK HOLD: <b id="popHoldTxt" style="color:#EF4444">-60.0 dB</b></span>
+        <span>LUFS: <b id="popLufsTxt" style="color:#10B981">-60.0</b></span>
+      </div>
+      <div class="bar-track" style="height:22px;"><div class="bar-fill" id="popBarL"></div><div class="bar-ceil" id="popCeilL"></div></div>
+      <div class="bar-track" style="height:22px;"><div class="bar-fill" id="popBarR"></div><div class="bar-ceil" id="popCeilR"></div></div>
+      <canvas id="popScopeCanvas" width="420" height="130" style="flex:1;background:#07090C;border:1px solid var(--bezel);"></canvas>
+      <div style="font-size:10px;color:var(--mute);display:flex;justify-content:space-between;">
+        <span>Drag header to move · Drag bottom-right corner to resize</span>
+        <span>Scroll wheel to zoom</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="vaultModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">THE VAULT · PRESETS &amp; SNAPSHOTS</strong>
+      <div style="display:flex;gap:4px;">
+        <input type="text" id="presetName" placeholder="New preset name..." />
+        <button onclick="saveUserPreset()">SAVE</button>
+        <button id="abBtn" onclick="toggleAB()">A/B: A</button>
+        <button id="pinBtn" onclick="toggleLockPin()">📌 PIN</button>
+      </div>
+      <div style="display:flex;gap:4px;">
+        <button onclick="filterVault('ALL')">All</button>
+        <button onclick="filterVault('#SubBass')">#SubBass</button>
+        <button onclick="filterVault('#Cinematic')">#Cinematic</button>
+        <button onclick="filterVault('#Master')">#Master</button>
+      </div>
+      <div class="ctrl"><label>AUDITION LEVEL <span id="v-audition">0.0 dB</span></label><input type="range" min="-24" max="0" step="0.5" value="0" oninput="document.getElementById('v-audition').textContent=parseFloat(this.value).toFixed(1)+' dB'"></div>
+      <div style="display:flex;gap:4px;">
+        <button onclick="applyPresetParams({stage_depth:0.3,stage_width:1.1})">Cue 1: Intro</button>
+        <button onclick="applyPresetParams({stage_depth:0.55,stage_width:1.45})">Cue 2: Chorus</button>
+        <button onclick="applyPresetParams({stage_depth:0.2,stage_width:0.95})">Cue 3: Dialogue</button>
+      </div>
+      <div id="vaultList" style="display:flex;flex-direction:column;gap:5px;max-height:190px;overflow-y:auto;"></div>
+      <button onclick="document.getElementById('vaultModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="matrixModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+      <strong style="color:var(--accent2);letter-spacing:0.1em;">THE MATRIX · CV, MIDI &amp; CLIPPER</strong>
+      <div class="ctrl">
+        <label>CV LFO MOD DEPTH <span id="v-cv_mod_depth">0%</span></label>
+        <input type="range" min="0" max="1" step="0.01" value="0" oninput="bind('cv_mod_depth', this.value, '%', 100)">
+      </div>
+      <div class="ctrl">
+        <label>REGEN THROTTLE (ORBIT FEEDBACK) <span id="v-regen_throttle">0%</span></label>
+        <input type="range" min="0" max="1" step="0.01" value="0" oninput="bind('regen_throttle', this.value, '%', 100)">
+      </div>
+      <button id="duckBtn" onclick="toggleDuck()">🎙 AI DIALOGUE DUCKING: OFF</button>
+      <div class="ctrl">
+        <label>MULTIBAND CLIPPER SHAPE</label>
+        <select onchange="bind('clipper_shape', this.value, '', 1)">
+          <option value="0" selected>Soft Knee (Transparent)</option>
+          <option value="1">Warm Tube (Asymmetric)</option>
+          <option value="2">Hard Brickwall (-0.5 dBFS)</option>
+        </select>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <button id="midiLearnBtn" onclick="armMidiLearn('stage_depth')">🎹 MIDI LEARN (DEPTH)</button>
+        <span id="midiStatus" style="font-family:monospace;font-size:11px;color:var(--mute);">CC: None</span>
+      </div>
+      <div style="font-family:monospace;font-size:11px;color:var(--accent2);" id="cvReadout">CV LFO: 0.00 · ENV: 0.00</div>
+      <button onclick="document.getElementById('matrixModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="emuModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">AUDIO EMULATOR · LIVE TEST SOURCE</strong>
+      <div style="font-size:11px;color:var(--mute);">Audition the UI, 3D Hologram, and zoomable meters without a DAW using the built-in 808/Pad groove or your own audio file:</div>
+      <div style="display:flex;gap:6px;">
+        <button id="emuPlayBtn" onclick="toggleEmulatorPlay()" style="flex:1;">▶ PLAY 808 GROOVE</button>
+        <button onclick="document.getElementById('emuFile').click()">📂 LOAD WAV/MP3</button>
+        <input type="file" id="emuFile" accept="audio/*" style="display:none" onchange="loadEmulatorFile(this.files[0])">
+      </div>
+      <div class="ctrl">
+        <label>EMULATOR LEVEL <span id="v-emu_gain">-6.0 dB</span></label>
+        <input type="range" min="0" max="1" step="0.01" value="0.5" oninput="setEmuGain(this.value)">
+      </div>
+      <div id="emuStatus" style="font-family:monospace;font-size:10.5px;color:var(--accent2);">Idle · Ready</div>
+      <button onclick="document.getElementById('emuModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="secretModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:580px;overflow:visible;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">SECRET MENU · GOLDEN EGGS, DISPLAY &amp; SYSTEM ENGINE</strong>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;">GOLDEN EGGS &amp; CALIBRATION</span>
+          <button id="secCalBtn" onclick="toggleCalTone()" data-tip="Generates -18 dBFS 1 kHz test tone for analog saturation alignment (OFF by default)">Tape Cal Tone (-18 dBFS): OFF</button>
+          <button id="secUwBtn" onclick="toggleUltraWide()" data-tip="Haas-Kempf 14ms decorrelated stereo widening matrix with mono safety">Ultra Wide (Haas-Kempf): OFF</button>
+          <button onclick="triggerCapture()" data-tip="Runs 2s-10s room mode sweep analyzer and notches resonant peaks">Room Mode Sweep Calibration</button>
+          <button onclick="toggleCeilingGuard()" data-tip="Engages or bypasses the universal -0.5 dBFS output safety ceiling">Toggle -0.5 dBFS Safety Guard</button>
+
+          <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;margin-top:4px;">DISPLAY, DUAL-SCREEN &amp; VR</span>
+          <button onclick="if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();else document.exitFullscreen?.();" data-tip="Sends active plugin viewport to fullscreen or secondary monitor (Ctrl+~)">Dual-Display Fullscreen (Ctrl+~)</button>
+          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'VR Spatial Output: ON':'VR Spatial Output: OFF';" data-tip="Routes 3D soundstage coordinates to VR headset head-tracking output">VR Spatial Output: OFF</button>
+          <button onclick="togglePrecision()" data-tip="Collapses 3D orb into high-contrast vector grid for surgical alignment (Shift+Space)">Surgical Precision Grid (Shift+Space)</button>
+          <button onclick="toggleClassicOS()" data-tip="Disables gradients and animations for ultra-low GPU/CPU load">Classic OS High-Contrast Mode</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;">DSP &amp; RESOURCE ENGINE</span>
+          <button id="secDqsBtn" onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'DQS Oversampling: LOCKED 4x':'DQS Oversampling: AUTO';" data-tip="Switches Dynamic Quality Scaling between automatic CPU scaling and locked 4x">DQS Oversampling: AUTO</button>
+          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Lookahead Buffer: ON':'Lookahead Buffer: OFF';" data-tip="Predictive lookahead buffer for transient &amp; CPU spike protection (OFF by default)">Lookahead Buffer: OFF</button>
+          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'LAN DSP Offload: ACTIVE':'LAN DSP Offload: LOCAL';" data-tip="Offloads heavy oversampling across local network DSP nodes (AGridder-style)">LAN DSP Offload: LOCAL</button>
+          <div class="ctrl" data-tip="CPU load percentage threshold that triggers Dynamic Quality Scaling"><label>DQS CPU THRESHOLD <span id="v-dqs_cpu">80%</span></label><input type="range" min="50" max="95" step="1" value="80" oninput="document.getElementById('v-dqs_cpu').textContent=this.value+'%'"></div>
+
+          <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;margin-top:4px;">WORKFLOW &amp; MASTERING</span>
+          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Beginner Mode: ON':'Beginner Mode: OFF';" data-tip="Simplifies UI to core macro controls for fast, distraction-free mixing">Beginner Mode: OFF</button>
+          <button id="secFocusBtn" onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Modifier-Linked Focus: ON':'Modifier-Linked Focus: OFF';" class="active" data-tip="Automatically isolates active spatial controls during fine modifier drags">Modifier-Linked Focus: ON</button>
+          <button id="secLearnBtn" onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Adaptive Learning Mode: ON':'Adaptive Learning Mode: OFF';" class="active" data-tip="Tracks parameter workflow tendencies to suggest smart macro layouts">Adaptive Learning Mode: ON</button>
+          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Pre-Render LUFS/Phase Pass: PASS':'Pre-Render LUFS/Phase Pass';" data-tip="Scans mix for LUFS loudness compliance and phase cancellation before export">Pre-Render LUFS/Phase Pass</button>
+          <select onchange="bind('global_mix', 1, '', 1)" data-tip="Select target speaker array or Dolby Atmos fold-down layout">
+            <option>Format Fold: Stereo (2.0)</option>
+            <option>Format Fold: Binaural Headphones</option>
+            <option>Format Fold: Quad (4.0)</option>
+            <option>Format Fold: Surround (5.1)</option>
+            <option>Format Fold: Atmos (5.1.2)</option>
+            <option>Format Fold: Atmos (5.1.4)</option>
+            <option>Format Fold: Atmos (7.1.2)</option>
+            <option>Format Fold: Atmos (7.1.4)</option>
+            <option>Format Fold: Atmos (9.1.6)</option>
+          </select>
+        </div>
+      </div>
+      <button onclick="document.getElementById('secretModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="manualModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:460px;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">THE SOLUTION · QUICK MANUAL &amp; SHORTCUTS</strong>
+      <div style="font-size:11px;color:var(--mute);line-height:1.5;">
+        <b>• First Letter (T):</b> Open 18-control Secret Menu<br>
+        <b>• Double-Click -0.5 dBFS Badge:</b> Toggle safety ceiling guard<br>
+        <b>• Click / Wheel / Double-Click Meter:</b> Scale menu, zoom (4–60 dB), or pop-out resizable meter<br>
+        <b>• H (or Shift+H):</b> Cycle Pointer (Mouse / Right Hand / Left Hand / Pinch)<br>
+        <b>• Shift + Space:</b> Surgical Precision Grid &nbsp;|&nbsp; <b>Ctrl + ~:</b> Dual-Screen Fullscreen<br>
+        <b>• ↻ Button:</b> 180° Rear Patchbay &nbsp;|&nbsp; <b>▶ AUDIO / 🎙:</b> Built-in Emulator &amp; Live Mic
+      </div>
+      <textarea placeholder="Session engineer notes / feedback..." style="width:100%;height:70px;background:#0B0E13;color:var(--text);border:1px solid var(--bezel);padding:6px;font-size:11px;"></textarea>
+      <button onclick="document.getElementById('manualModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="phoneModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="text-align:center;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">COMPANION PHONE SYNC</strong>
+      <div style="font-size:12px;color:var(--mute);">Scan or enter session code in The Solution Mobile Skin Studio to hot-swap skins &amp; Object Mixer live:</div>
+      <div style="font-family:monospace;font-size:20px;color:var(--accent2);border:1px dashed var(--accent2);padding:10px;">SOL-69-8842</div>
+      <button onclick="document.getElementById('phoneModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <script>
+    const SKINS = {
+      lincoln69:   { img:true,  bg:'#07090C', accent:'#F59E0B', accent2:'#38BDF8', bezel:'#2E3542' },
+      camaro71:    { img:true,  bg:'#120D0A', accent:'#FF5E1A', accent2:'#FBBF24', bezel:'#9CA3AF' },
+      mach1:       { img:true,  bg:'#0B1018', accent:'#38BDF8', accent2:'#F59E0B', bezel:'#64748B' },
+      eviltwin:    { img:true,  bg:'#08080A', accent:'#EF4444', accent2:'#F87171', bezel:'#7F1D1D' },
+      eldorado59:  { img:true,  bg:'#0A1416', accent:'#2DD4BF', accent2:'#FDE047', bezel:'#CBD5E1' },
+      cuda70:      { img:true,  bg:'#130B1A', accent:'#A855F7', accent2:'#38BDF8', bezel:'#475569' },
+      gto67:       { img:true,  bg:'#140B0D', accent:'#DC2626', accent2:'#D4AF37', bezel:'#9CA3AF' },
+      chevelle70:  { img:false, bg:'#110D0A', accent:'#F97316', accent2:'#FDE047', bezel:'#52525B' },
+      charger69:   { img:false, bg:'#0F0909', accent:'#EF4444', accent2:'#F59E0B', bezel:'#3F3F46' },
+      corvette63:  { img:false, bg:'#091118', accent:'#60A5FA', accent2:'#E2E8F0', bezel:'#94A3B8' },
+      gt40:        { img:false, bg:'#09141C', accent:'#38BDF8', accent2:'#FB923C', bezel:'#0284C7' },
+      countach:    { img:false, bg:'#141208', accent:'#FACC15', accent2:'#F43F5E', bezel:'#334155' },
+      gnx87:       { img:false, bg:'#050507', accent:'#E5E7EB', accent2:'#EF4444', bezel:'#1F2937' },
+      viper96:     { img:false, bg:'#081020', accent:'#3B82F6', accent2:'#F8FAFC', bezel:'#1E3A8A' },
+      belair57:    { img:false, bg:'#0B1718', accent:'#2DD4BF', accent2:'#FB7185', bezel:'#CBD5E1' },
+      porsche911:  { img:false, bg:'#141414', accent:'#F43F5E', accent2:'#F8FAFC', bezel:'#475569' },
+      delorean:    { img:false, bg:'#111317', accent:'#94A3B8', accent2:'#38BDF8', bezel:'#64748B' },
+      nsx91:       { img:false, bg:'#16090B', accent:'#DC2626', accent2:'#FBBF24', bezel:'#27272A' },
+      skyline99:   { img:false, bg:'#080E1E', accent:'#2563EB', accent2:'#38BDF8', bezel:'#1E293B' },
+      impala64:    { img:false, bg:'#120C18', accent:'#C084FC', accent2:'#FDE047', bezel:'#D4AF37' },
+      cobra65:     { img:false, bg:'#091220', accent:'#38BDF8', accent2:'#F8FAFC', bezel:'#475569' },
+      transam77:   { img:false, bg:'#0B0A08', accent:'#D4AF37', accent2:'#F59E0B', bezel:'#78350F' },
+      f40:         { img:false, bg:'#180707', accent:'#EF4444', accent2:'#FACC15', bezel:'#450A0A' },
+      mclarenf1:   { img:false, bg:'#170E07', accent:'#FB923C', accent2:'#E2E8F0', bezel:'#334155' },
+      supra94:     { img:false, bg:'#160B07', accent:'#F97316', accent2:'#22D3EE', bezel:'#3F3F46' },
+      rome:        { img:true,  bg:'#14110D', accent:'#D4AF37', accent2:'#93C5FD', bezel:'#78716C' },
+      giza:        { img:true,  bg:'#17120A', accent:'#F59E0B', accent2:'#FDE68A', bezel:'#92400E' },
+      aztec:       { img:true,  bg:'#0A1410', accent:'#10B981', accent2:'#F59E0B', bezel:'#065F46' },
+      serengeti:   { img:true,  bg:'#150F09', accent:'#FB923C', accent2:'#38BDF8', bezel:'#7C2D12' },
+      museum:      { img:true,  bg:'#121215', accent:'#E5E7EB', accent2:'#D4AF37', bezel:'#52525B' },
+      piano:       { img:true,  bg:'#09090B', accent:'#F8FAFC', accent2:'#D4AF37', bezel:'#27272A' },
+      abbey:       { img:false, bg:'#130F0C', accent:'#D97706', accent2:'#93C5FD', bezel:'#78350F' },
+      tokyo:       { img:false, bg:'#0A0716', accent:'#EC4899', accent2:'#22D3EE', bezel:'#4C1D95' },
+      paris:       { img:false, bg:'#160A0D', accent:'#D4AF37', accent2:'#FDA4AF', bezel:'#881337' },
+      iceland:     { img:false, bg:'#091116', accent:'#38BDF8', accent2:'#A7F3D0', bezel:'#1E293B' },
+      kyoto:       { img:false, bg:'#0B130D', accent:'#34D399', accent2:'#FDE047', bezel:'#14532D' },
+      petra:       { img:false, bg:'#180E0B', accent:'#FB7185', accent2:'#FBBF24', bezel:'#7C2D12' },
+      redrocks:    { img:false, bg:'#1A0C08', accent:'#EA580C', accent2:'#38BDF8', bezel:'#7C2D12' },
+      taj:         { img:false, bg:'#111318', accent:'#F1F5F9', accent2:'#D4AF37', bezel:'#64748B' },
+      machu:       { img:false, bg:'#0A1511', accent:'#22C55E', accent2:'#7DD3FC', bezel:'#166534' },
+      norway:      { img:false, bg:'#081118', accent:'#0EA5E9', accent2:'#E2E8F0', bezel:'#1E3A8A' },
+      venice:      { img:false, bg:'#0C1317', accent:'#2DD4BF', accent2:'#F59E0B', bezel:'#0F766E' },
+      sedona:      { img:false, bg:'#180D0A', accent:'#F97316', accent2:'#C084FC', bezel:'#9A3412' },
+      antarctica:  { img:false, bg:'#09141A', accent:'#67E8F9', accent2:'#F8FAFC', bezel:'#155E75' },
+      sahara:      { img:false, bg:'#161008', accent:'#FBBF24', accent2:'#818CF8', bezel:'#78350F' },
+      apollo:      { img:false, bg:'#0B0F12', accent:'#22C55E', accent2:'#F59E0B', bezel:'#334155' },
+      cathedral:   { img:false, bg:'#0F0D15', accent:'#A78BFA', accent2:'#FDE047', bezel:'#4C1D95' },
+      subway:      { img:false, bg:'#101214', accent:'#FACC15', accent2:'#9CA3AF', bezel:'#3F3F46' },
+      monaco:      { img:false, bg:'#09121B', accent:'#38BDF8', accent2:'#D4AF37', bezel:'#1E3A8A' },
+      banff:       { img:false, bg:'#081412', accent:'#10B981', accent2:'#7DD3FC', bezel:'#065F46' }
+    };
+
+    const knobRegistry = {};
+    function initKnobs() {
+      document.querySelectorAll('.knob-wrap').forEach(el => {
+        const param = el.dataset.param, min = parseFloat(el.dataset.min), max = parseFloat(el.dataset.max);
+        let val = parseFloat(el.dataset.val);
+        const unit = el.dataset.unit || '', mult = parseFloat(el.dataset.mult || '1');
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('viewBox', '0 0 64 64'); svg.classList.add('knob-svg');
+        const bgArc = document.createElementNS(svgNS, 'circle');
+        bgArc.setAttribute('cx', '32'); bgArc.setAttribute('cy', '32'); bgArc.setAttribute('r', '27');
+        bgArc.setAttribute('fill', 'none'); bgArc.setAttribute('stroke', 'rgba(15,20,28,0.85)'); bgArc.setAttribute('stroke-width', '3.5');
+        bgArc.setAttribute('stroke-dasharray', '127 170'); bgArc.setAttribute('transform', 'rotate(135 32 32)');
+        const fgArc = document.createElementNS(svgNS, 'circle');
+        fgArc.setAttribute('cx', '32'); fgArc.setAttribute('cy', '32'); fgArc.setAttribute('r', '27');
+        fgArc.setAttribute('fill', 'none'); fgArc.setAttribute('stroke', 'var(--accent)'); fgArc.setAttribute('stroke-width', '3.5');
+        fgArc.setAttribute('stroke-linecap', 'round'); fgArc.setAttribute('transform', 'rotate(135 32 32)');
+        svg.appendChild(bgArc); svg.appendChild(fgArc);
+        const cap = document.createElement('div'); cap.className = 'knob-cap';
+        el.appendChild(svg); el.appendChild(cap);
+
+        function renderKnob(v) {
+          val = Math.max(min, Math.min(max, v));
+          const norm = (val - min) / (max - min || 1);
+          cap.style.transform = `rotate(${-135 + norm * 270}deg)`;
+          fgArc.setAttribute('stroke-dasharray', `${(norm * 127).toFixed(1)} 170`);
+        }
+        renderKnob(val);
+        knobRegistry[param] = { set: (v) => renderKnob(v) };
+
+        let dragging = false, startY = 0, startVal = val;
+        el.addEventListener('mousedown', (e) => { dragging = true; startY = e.clientY; startVal = val; e.preventDefault(); });
+        window.addEventListener('mousemove', (e) => {
+          if (!dragging) return;
+          const next = Math.max(min, Math.min(max, startVal + ((startY - e.clientY) / 140) * (max - min)));
+          renderKnob(next); bind(param, next, unit, mult);
+        });
+        window.addEventListener('mouseup', () => dragging = false);
+        el.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          const next = Math.max(min, Math.min(max, val + (max - min) * (e.deltaY < 0 ? 0.03 : -0.03)));
+          renderKnob(next); bind(param, next, unit, mult);
+        });
+      });
+    }
+    initKnobs();
+
+    const params = new URLSearchParams(window.location.search);
+    function setModuleTitle(name) { const full = name + ' · THE SOLUTION'; document.getElementById('secretTrigger').textContent = full.charAt(0); document.getElementById('moduleTitleRest').textContent = full.slice(1); }
+    if (params.get('module')) setModuleTitle(params.get('module'));
+    let skinsEnabled = params.get('skins') !== '0';
+
+    function updateSkinVisibility() {
+      const sel = document.getElementById('skinSelect');
+      if (!sel) return;
+      if (!skinsEnabled) { sel.style.display = 'none'; document.documentElement.style.setProperty('--skin-img', 'none'); }
+      else sel.style.display = '';
+    }
+    updateSkinVisibility();
+
+    function applySkin(key) {
+      if (!skinsEnabled) return;
+      const s = SKINS[key] || SKINS.lincoln69;
+      const r = document.documentElement.style;
+      r.setProperty('--bg', s.bg); r.setProperty('--accent', s.accent);
+      r.setProperty('--accent2', s.accent2); r.setProperty('--bezel', s.bezel);
+      r.setProperty('--skin-img', s.img ? "url('/skins/" + key + ".jpg')" : "radial-gradient(circle at 30% 20%, " + s.accent + "22, " + s.bg + " 75%)");
+    }
+
+    function toggleClassicOS() {
+      const on = document.body.classList.toggle('classic-os');
+      document.getElementById('classicBtn').classList.toggle('active', on);
+    }
+
+    let precisionMode = false;
+    function togglePrecision() {
+      precisionMode = !precisionMode;
+      document.body.classList.toggle('precision-mode', precisionMode);
+      document.getElementById('precBtn').classList.toggle('active', precisionMode);
+      document.getElementById('vizBadge').textContent = precisionMode ? 'SURGICAL PRECISION GRID · SHIFT+SPACE TO EXIT' : (VIZ_MODES[vizMode] + ' · CLICK TO CYCLE · SHIFT+SPACE: PRECISION');
+    }
+
+    const CURSOR_MODES = [
+      { cls: '',             label: '✋', title: 'Pointer: Regular Mouse (Press H to switch)' },
+      { cls: 'cursor-right', label: '👉R', title: 'Pointer: Right Studio Hand (Press H to cycle)' },
+      { cls: 'cursor-left',  label: '👈L', title: 'Pointer: Left Studio Hand (Press H to cycle)' },
+      { cls: 'cursor-pinch', label: '🤏',  title: 'Pointer: Precision Dial Hand (Press H to cycle)' }
+    ];
+    let cursorIdx = 0;
+    function cycleCursor(resetToMouse = false) {
+      cursorIdx = resetToMouse ? 0 : (cursorIdx + 1) % CURSOR_MODES.length;
+      document.body.classList.remove('cursor-right', 'cursor-left', 'cursor-pinch');
+      const m = CURSOR_MODES[cursorIdx];
+      if (m.cls) document.body.classList.add(m.cls);
+      const b = document.getElementById('curBtn');
+      if (b) { b.textContent = m.label; b.classList.toggle('active', cursorIdx !== 0); b.setAttribute('data-tip', m.title); }
+    }
+    window.addEventListener('keydown', (e) => {
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      const typing = (tag === 'INPUT' || tag === 'TEXTAREA');
+      if (e.code === 'Escape') {
+        document.getElementById('meterMenu').classList.remove('open');
+        document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+        return;
+      }
+      if (typing) return;
+      if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
+      if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); doRedo(); return; }
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'v') { e.preventDefault(); document.getElementById('secretModal').classList.add('open'); return; }
+      if (e.ctrlKey && e.code === 'Backquote') { e.preventDefault(); if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); return; }
+      if (e.shiftKey && e.code === 'Space') { e.preventDefault(); togglePrecision(); return; }
+      if (e.code === 'Space') { e.preventDefault(); toggleEmulatorPlay(); return; }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'h') { e.preventDefault(); cycleCursor(e.shiftKey); }
+      else if (k === 'r') { e.preventDefault(); toggleRear(); }
+      else if (k === 'v') { e.preventDefault(); openVault(); }
+      else if (k === 'm') { e.preventDefault(); openMatrix(); }
+      else if (k === 'a') { e.preventDefault(); openEmulator(); }
+      else if (k === 'p') { e.preventDefault(); toggleMeterPop(); }
+      else if (k === 'o') { e.preventDefault(); toggleClassicOS(); }
+      else if (k === 't') { e.preventDefault(); toggleTooltips(); }
+      else if (k === 's') { e.preventDefault(); toggleSafeZone(); }
+    });
+
+    function toggleRear() {
+      const rp = document.getElementById('rearPanel');
+      const on = rp.classList.toggle('open');
+      document.getElementById('rearBtn').classList.toggle('active', on);
+      if (on) drawCables();
+    }
+
+    let patchOrder = 0;
+    function setPatchOrder(ord) {
+      patchOrder = ord;
+      document.getElementById('po0').classList.toggle('active', ord === 0);
+      document.getElementById('po1').classList.toggle('active', ord === 1);
+      document.getElementById('patchMsg').textContent = ord === 0
+        ? 'Signal Path: Input → Module DSP → Room Matcher → -0.5 dBFS Guard'
+        : 'Signal Path: Input → Room Matcher → Module DSP → -0.5 dBFS Guard';
+      bind('patch_order', ord, '', 1);
+      drawCables();
+    }
+    function autoFixPatch() { setPatchOrder(0); }
+    let dragFrom = null;
+    function startCable(e, id) { dragFrom = id; }
+    function endCable(id) {
+      if (!dragFrom || dragFrom === id) { dragFrom = null; return; }
+      if (dragFrom === 'in' && id === 'room') setPatchOrder(1);
+      else if (dragFrom === 'mod' && id === 'room') setPatchOrder(0);
+      dragFrom = null;
+    }
+
+    function drawCables() {
+      const svg = document.getElementById('cableSvg');
+      const w = svg.clientWidth || 800, h = svg.clientHeight || 300, y = h * 0.52;
+      svg.innerHTML = patchOrder === 0
+        ? `<path d="M ${w*0.17} ${y} C ${w*0.25} ${y+60}, ${w*0.30} ${y+60}, ${w*0.35} ${y}" stroke="var(--accent)" stroke-width="4" fill="none"/>
+           <path d="M ${w*0.46} ${y} C ${w*0.52} ${y+60}, ${w*0.56} ${y+60}, ${w*0.60} ${y}" stroke="var(--accent2)" stroke-width="4" fill="none"/>
+           <path d="M ${w*0.72} ${y} C ${w*0.77} ${y+60}, ${w*0.80} ${y+60}, ${w*0.84} ${y}" stroke="var(--accent)" stroke-width="4" fill="none"/>`
+        : `<path d="M ${w*0.17} ${y} C ${w*0.35} ${y-80}, ${w*0.45} ${y-80}, ${w*0.60} ${y}" stroke="var(--accent2)" stroke-width="4" fill="none"/>
+           <path d="M ${w*0.72} ${y} C ${w*0.55} ${y+80}, ${w*0.45} ${y+80}, ${w*0.35} ${y}" stroke="var(--accent)" stroke-width="4" fill="none"/>
+           <path d="M ${w*0.46} ${y} C ${w*0.60} ${y+70}, ${w*0.75} ${y+70}, ${w*0.84} ${y}" stroke="var(--accent)" stroke-width="4" fill="none"/>`;
+    }
+
+    function triggerCapture() {
+      const secs = parseFloat(document.getElementById('sweepDur').value || '2');
+      document.getElementById('captureBtn').classList.add('active');
+      document.getElementById('captureStatus').textContent = `Capturing ${secs}s room sweep...`;
+      if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('captureRoomSweep', { seconds: secs });
+      setTimeout(() => document.getElementById('captureBtn').classList.remove('active'), secs * 1000 + 100);
+    }
+
+    function toggleTooltips() {
+      const off = document.body.classList.toggle('no-tips');
+      document.getElementById('tipBtn').classList.toggle('active', !off);
+    }
+    function setKnobStyle(style) {
+      document.querySelectorAll('.knob-cap').forEach(k => {
+        k.classList.remove('chrome', 'gunmetal', 'billet');
+        if (style !== 'gold') k.classList.add(style);
+      });
+    }
+    let safeZoneOn = false;
+    function toggleSafeZone() {
+      safeZoneOn = !safeZoneOn;
+      document.getElementById('safeZoneBtn').classList.toggle('active', safeZoneOn);
+      document.getElementById('safeZoneBtn').textContent = safeZoneOn ? '⌖ SUB SAFE-ZONE: ON' : '⌖ SUB SAFE-ZONE: OFF';
+    }
+    let duckOn = false;
+    function toggleDuck() {
+      duckOn = !duckOn;
+      document.getElementById('duckBtn').classList.toggle('active', duckOn);
+      document.getElementById('duckBtn').textContent = duckOn ? '🎙 AI DIALOGUE DUCKING: ON' : '🎙 AI DIALOGUE DUCKING: OFF';
+      bind('dialogue_duck', duckOn ? 1 : 0, '', 1);
+    }
+    function doUndo() { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('undoAction', {}); }
+    function doRedo() { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('redoAction', {}); }
+    let sculptOn = false;
+    function toggleSculpt() {
+      sculptOn = !sculptOn;
+      const b = document.getElementById('sculptBtn');
+      b.classList.toggle('active', sculptOn);
+      b.textContent = sculptOn ? '⚡ TRANSIENT SCULPT: ON' : '⚡ TRANSIENT SCULPT: OFF';
+      bind('transient_sculpt', sculptOn ? 1 : 0, '', 1);
+    }
+    function openSecretMenu(e) {
+      if (e) e.stopPropagation();
+      document.getElementById('secretModal').classList.add('open');
+    }
+    let guardOn = true;
+    function toggleCeilingGuard() {
+      guardOn = !guardOn;
+      const b = document.getElementById('guardBadge');
+      b.textContent = guardOn ? '-0.5 dBFS GUARD ACTIVE' : '-0.5 dBFS GUARD BYPASSED';
+      b.style.borderColor = guardOn ? 'var(--gold)' : '#EF4444';
+      b.style.color = guardOn ? 'var(--gold)' : '#EF4444';
+      bind('stage_ceiling_guard', guardOn ? 1 : 0, '', 1);
+    }
+    let calOn = false;
+    function toggleCalTone() {
+      calOn = !calOn;
+      document.getElementById('calBadge').style.display = calOn ? 'inline' : 'none';
+      const sb = document.getElementById('secCalBtn'); if (sb) { sb.classList.toggle('active', calOn); sb.textContent = calOn ? 'Tape Calibration Tone (-18 dBFS): ON' : 'Tape Calibration Tone (-18 dBFS): OFF'; }
+      bind('tape_cal_tone', calOn ? 1 : 0, '', 1);
+    }
+    let uwOn = false;
+    function toggleUltraWide() {
+      uwOn = !uwOn;
+      document.getElementById('uwScrew').classList.toggle('active', uwOn);
+      const su = document.getElementById('secUwBtn'); if (su) { su.classList.toggle('active', uwOn); su.textContent = uwOn ? 'Ultra Wide (Haas-Kempf Matrix): ON' : 'Ultra Wide (Haas-Kempf Matrix): OFF'; }
+      bind('ultra_wide', uwOn ? 0.65 : 0.0, '', 1);
+    }
+    function openMatrix() { document.getElementById('matrixModal').classList.add('open'); }
+    function armMidiLearn(id) {
+      document.getElementById('midiStatus').textContent = 'Listening for CC...';
+      if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('midiLearn', { id });
+    }
+
+    const ZOOM_STEPS = [4, 5, 12, 24, 60];
+    let meterRangeDb = 60, peakHoldDb = -60.0;
+    function setMeterScale(db) {
+      meterRangeDb = db;
+      const lbl = db <= 5 ? `MASTERING ZOOM (-${db} to 0 dB)` : (db === 24 ? 'HALF SCALE (-24 to 0 dB)' : `THERMAL LED L/R (-${db} to 0 dB)`);
+      document.getElementById('meterScaleLabel').textContent = lbl;
+      document.getElementById('popScaleTxt').textContent = `-${db} to 0 dB`;
+      document.getElementById('meterMenu').classList.remove('open');
+      updateCeilingMarkers();
+    }
+    function updateCeilingMarkers() {
+      const ceilPct = Math.max(0, Math.min(100, ((-0.5 + meterRangeDb) / meterRangeDb) * 100));
+      ['ceilL', 'ceilR', 'popCeilL', 'popCeilR'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.left = ceilPct + '%';
+      });
+    }
+    updateCeilingMarkers();
+    function resetPeakHold() {
+      peakHoldDb = -60.0;
+      document.getElementById('meterHoldLabel').textContent = 'HOLD: -60.0 dB · DBL-CLICK TO EXPAND';
+      document.getElementById('popHoldTxt').textContent = '-60.0 dB';
+      document.getElementById('meterMenu').classList.remove('open');
+    }
+    function wheelZoomMeter(e) {
+      e.preventDefault();
+      let idx = ZOOM_STEPS.indexOf(meterRangeDb);
+      if (idx === -1) idx = 4;
+      idx = e.deltaY < 0 ? Math.max(0, idx - 1) : Math.min(ZOOM_STEPS.length - 1, idx + 1);
+      setMeterScale(ZOOM_STEPS[idx]);
+    }
+    function openMeterMenu(e) {
+      e.stopPropagation();
+      const m = document.getElementById('meterMenu');
+      m.style.left = Math.min(window.innerWidth - 230, e.clientX) + 'px';
+      m.style.top  = Math.min(window.innerHeight - 230, e.clientY) + 'px';
+      m.classList.toggle('open');
+    }
+    window.addEventListener('click', () => document.getElementById('meterMenu').classList.remove('open'));
+    function toggleMeterPop() {
+      document.getElementById('meterMenu').classList.remove('open');
+      document.getElementById('meterPop').classList.toggle('open');
+    }
+    (function makeDraggable() {
+      const pop = document.getElementById('meterPop'), hdr = document.getElementById('meterPopHdr');
+      let dx = 0, dy = 0, dragging = false;
+      hdr.addEventListener('mousedown', (e) => { if (e.target.tagName === 'BUTTON') return; dragging = true; dx = e.clientX - pop.offsetLeft; dy = e.clientY - pop.offsetTop; });
+      window.addEventListener('mousemove', (e) => { if (!dragging) return; pop.style.left = (e.clientX - dx) + 'px'; pop.style.top = (e.clientY - dy) + 'px'; });
+      window.addEventListener('mouseup', () => dragging = false);
+    })();
+
+    const FACTORY_PRESETS = [
+      { name: 'Lincoln Sub Warmth', tag: '#SubBass', params: { stage_depth: 0.48, stage_anchor_hz: 85, stage_width: 0.9 } },
+      { name: 'Pantheon Wide Hall', tag: '#Cinematic', params: { stage_depth: 0.35, stage_width: 1.45, room_match_mix: 0.42 } },
+      { name: '-0.5 dBFS Master Glue', tag: '#Master', params: { stage_depth: 0.28, stage_width: 1.05, stage_ms_mid: 1.2 } }
+    ];
+    let vaultFilter = 'ALL', abSlot = 'A', lockPin = false, snapA = {}, snapB = {};
+    window._vaultMem = [];
+    function getVaultSaved() { try { return JSON.parse(localStorage.getItem('solution_vault') || '[]'); } catch (e) { return window._vaultMem; } }
+    function setVaultSaved(arr) { window._vaultMem = arr; try { localStorage.setItem('solution_vault', JSON.stringify(arr)); } catch (e) {} }
+    function openVault() { renderVault(); document.getElementById('vaultModal').classList.add('open'); }
+    function filterVault(tag) { vaultFilter = tag; renderVault(); }
+    function toggleLockPin() { lockPin = !lockPin; document.getElementById('pinBtn').classList.toggle('active', lockPin); }
+    function toggleAB() {
+      if (abSlot === 'A') { snapA = { ...state }; abSlot = 'B'; if (Object.keys(snapB).length) applyPresetParams(snapB); }
+      else { snapB = { ...state }; abSlot = 'A'; if (Object.keys(snapA).length) applyPresetParams(snapA); }
+      document.getElementById('abBtn').textContent = 'A/B: ' + abSlot;
+    }
+    function applyPresetParams(p) {
+      Object.entries(p).forEach(([k, v]) => {
+        if (lockPin && k === 'stage_width') return;
+        if (knobRegistry[k]) knobRegistry[k].set(v);
+        bind(k, v, '', 1);
+      });
+    }
+    function saveUserPreset() {
+      const name = document.getElementById('presetName').value.trim();
+      if (!name) return;
+      const saved = getVaultSaved();
+      saved.unshift({ name, tag: '#Master', params: { stage_depth: state.stage_depth, stage_width: state.stage_width, stage_azimuth: state.stage_azimuth } });
+      setVaultSaved(saved.slice(0, 20));
+      document.getElementById('presetName').value = '';
+      renderVault();
+    }
+    function renderVault() {
+      const all = [...getVaultSaved(), ...FACTORY_PRESETS].filter(p => vaultFilter === 'ALL' || p.tag === vaultFilter);
+      document.getElementById('vaultList').innerHTML = all.map((p, idx) =>
+        `<div class="preset-item"><span><b>${p.name}</b> <small style="color:var(--accent2)">${p.tag}</small></span><button onclick="loadVaultIdx(${idx})">LOAD</button></div>`
+      ).join('');
+      window._vaultVisible = all;
+    }
+    function loadVaultIdx(i) { if (window._vaultVisible && window._vaultVisible[i]) applyPresetParams(window._vaultVisible[i].params); }
+
+    const state = { stage_azimuth: 0, stage_elevation: 0, stage_depth: 0.25, stage_width: 1.0, rms: 0.14 };
+    let vizMode = 0;
+    const VIZ_MODES = ['3D HOLOGRAM', 'LISSAJOUS SPINDLE', 'SKYLIGHT HEX GRID'];
+    function cycleVizMode() {
+      if (precisionMode) return;
+      vizMode = (vizMode + 1) % VIZ_MODES.length;
+      document.getElementById('vizBadge').textContent = VIZ_MODES[vizMode] + ' · CLICK TO CYCLE · SHIFT+SPACE: PRECISION';
+    }
+
+    function bind(id, val, unit, mult = 1) {
+      const num = parseFloat(val);
+      state[id] = num;
+      const el = document.getElementById('v-' + id);
+      if (el) el.textContent = (num * mult).toFixed(mult === 100 ? 0 : 1) + unit;
+      if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('setParam', { id: id, value: num });
+    }
+
+    function rmsToDb(r) { return r > 0.0001 ? Math.max(-60, 20 * Math.log10(r)) : -60; }
+    function dbToPct(db) { return Math.max(0, Math.min(100, ((db + meterRangeDb) / meterRangeDb) * 100)); }
+    function updateTachNeedles(pL, pR) {
+      document.getElementById('needleL').style.transform = `translateX(-50%) rotate(${(-55 + pL * 1.1).toFixed(1)}deg)`;
+      document.getElementById('needleR').style.transform = `translateX(-50%) rotate(${(-55 + pR * 1.1).toFixed(1)}deg)`;
+    }
+
+    if (window.__JUCE__ && window.__JUCE__.backend) {
+      window.__JUCE__.backend.addEventListener('telemetry', (t) => {
+        if (t.module) setModuleTitle(t.module);
+        if (t.skinsEnabled !== undefined && t.skinsEnabled !== skinsEnabled) { skinsEnabled = !!t.skinsEnabled; updateSkinVisibility(); }
+        document.getElementById('m-phase').textContent = (t.phase >= 0 ? '+' : '') + t.phase.toFixed(2);
+        document.getElementById('m-peak').textContent = t.peak.toFixed(1);
+        if (t.lufs !== undefined) {
+          document.getElementById('m-lufs').textContent = t.lufs.toFixed(1);
+          document.getElementById('popLufsTxt').textContent = t.lufs.toFixed(1);
+        }
+        if (t.rackLinks !== undefined) document.getElementById('m-links').textContent = t.rackLinks;
+        if (t.capturedHz) document.getElementById('captureStatus').textContent = 'Mode Notch: ' + t.capturedHz.toFixed(0) + ' Hz';
+        if (t.cvLfo !== undefined) document.getElementById('cvReadout').textContent = `CV LFO: ${t.cvLfo.toFixed(2)} · ENV: ${(t.envFollower || 0).toFixed(2)}`;
+        if (t.learnedCc !== undefined && t.learnedCc >= 0) document.getElementById('midiStatus').textContent = 'CC: #' + t.learnedCc;
+        if (t.peak > peakHoldDb) {
+          peakHoldDb = t.peak;
+          document.getElementById('meterHoldLabel').textContent = `HOLD: ${peakHoldDb.toFixed(1)} dB · DBL-CLICK TO EXPAND`;
+          document.getElementById('popHoldTxt').textContent = peakHoldDb.toFixed(1) + ' dB';
+        }
+        const pL = dbToPct(rmsToDb(t.rmsL)), pR = dbToPct(rmsToDb(t.rmsR));
+        document.getElementById('barL').style.width = pL + '%';
+        document.getElementById('barR').style.width = pR + '%';
+        document.getElementById('popBarL').style.width = pL + '%';
+        document.getElementById('popBarR').style.width = pR + '%';
+        updateTachNeedles(pL, pR);
+        state.rms = Math.max(0.08, (t.rmsL + t.rmsR) * 0.5);
+      });
+    }
+
+    let emuCtx = null, emuMaster = null, emuAnL = null, emuAnR = null, emuTimer = null, emuPlaying = false, emuSrcNode = null, emuBuffer = null, emuGainVal = 0.5;
+    function openEmulator() { document.getElementById('emuModal').classList.add('open'); }
+    function ensureEmuAudio() {
+      if (!emuCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        emuCtx = new AC();
+        emuMaster = emuCtx.createGain(); emuMaster.gain.value = emuGainVal;
+        const comp = emuCtx.createDynamicsCompressor(); comp.threshold.value = -0.5; comp.ratio.value = 20;
+        const split = emuCtx.createChannelSplitter(2);
+        emuAnL = emuCtx.createAnalyser(); emuAnL.fftSize = 256;
+        emuAnR = emuCtx.createAnalyser(); emuAnR.fftSize = 256;
+        emuMaster.connect(comp); comp.connect(emuCtx.destination); comp.connect(split);
+        split.connect(emuAnL, 0); split.connect(emuAnR, 1);
+      }
+      if (emuCtx.state === 'suspended') emuCtx.resume();
+    }
+    function setEmuGain(v) {
+      emuGainVal = parseFloat(v);
+      document.getElementById('v-emu_gain').textContent = (emuGainVal > 0.001 ? (20 * Math.log10(emuGainVal)).toFixed(1) : '-60.0') + ' dB';
+      if (emuMaster) emuMaster.gain.value = emuGainVal;
+    }
+    function loadEmulatorFile(file) {
+      if (!file) return;
+      ensureEmuAudio();
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        emuBuffer = await emuCtx.decodeAudioData(ev.target.result);
+        document.getElementById('emuStatus').textContent = 'Loaded: ' + file.name;
+        if (emuPlaying) { stopEmulatorNodes(); startEmulatorNodes(); } else toggleEmulatorPlay();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+    function triggerGrooveStep(step) {
+      if (!emuCtx || !emuPlaying) return;
+      const t = emuCtx.currentTime;
+      if (step % 4 === 0 || step % 8 === 6) {
+        const osc = emuCtx.createOscillator(), g = emuCtx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(115, t); osc.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+        g.gain.setValueAtTime(0.85, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+        osc.connect(g); g.connect(emuMaster); osc.start(t); osc.stop(t + 0.4);
+      }
+      if (step % 2 === 1) {
+        const buf = emuCtx.createBuffer(1, 2048, emuCtx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / 350);
+        const src = emuCtx.createBufferSource(), hp = emuCtx.createBiquadFilter(), pan = emuCtx.createStereoPanner(), g = emuCtx.createGain();
+        src.buffer = buf; hp.type = 'highpass'; hp.frequency.value = 6500;
+        pan.pan.value = (step % 4 === 1) ? -0.35 : 0.35; g.gain.value = 0.25;
+        src.connect(hp); hp.connect(pan); pan.connect(g); g.connect(emuMaster); src.start(t);
+      }
+      if (step % 8 === 0) {
+        [220, 277.18, 329.63].forEach((f, idx) => {
+          const osc = emuCtx.createOscillator(), lp = emuCtx.createBiquadFilter(), pan = emuCtx.createStereoPanner(), g = emuCtx.createGain();
+          osc.type = 'triangle'; osc.frequency.value = f;
+          lp.type = 'lowpass'; lp.frequency.value = 2800 - (state.stage_depth || 0.25) * 1800;
+          pan.pan.value = (idx - 1) * 0.45 * (state.stage_width || 1);
+          g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(0.14, t + 0.08); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+          osc.connect(lp); lp.connect(pan); pan.connect(g); g.connect(emuMaster); osc.start(t); osc.stop(t + 0.95);
+        });
+      }
+    }
+    let emuStep = 0;
+    function startEmulatorNodes() {
+      if (emuBuffer) { emuSrcNode = emuCtx.createBufferSource(); emuSrcNode.buffer = emuBuffer; emuSrcNode.loop = true; emuSrcNode.connect(emuMaster); emuSrcNode.start(); }
+      else { emuStep = 0; triggerGrooveStep(0); emuTimer = setInterval(() => { emuStep = (emuStep + 1) % 16; triggerGrooveStep(emuStep); }, 125); }
+    }
+    function stopEmulatorNodes() {
+      if (emuTimer) { clearInterval(emuTimer); emuTimer = null; }
+      if (emuSrcNode) { try { emuSrcNode.stop(); } catch (e) {} emuSrcNode = null; }
+    }
+    function toggleEmulatorPlay() {
+      ensureEmuAudio(); emuPlaying = !emuPlaying;
+      document.getElementById('emuBtn').classList.toggle('active', emuPlaying);
+      document.getElementById('emuPlayBtn').classList.toggle('active', emuPlaying);
+      document.getElementById('emuPlayBtn').textContent = emuPlaying ? '■ STOP EMULATOR' : '▶ PLAY 808 GROOVE';
+      if (emuPlaying) { document.getElementById('emuStatus').textContent = emuBuffer ? 'Playing Loaded File (Looping)' : 'Playing 120 BPM 808 + Stereo Pad'; startEmulatorNodes(); }
+      else { document.getElementById('emuStatus').textContent = 'Stopped'; stopEmulatorNodes(); }
+    }
+    let micStream = null, micSrc = null, micOn = false;
+    async function toggleLiveMic() {
+      const btn = document.getElementById('micBtn');
+      if (!micOn) {
+        try {
+          ensureEmuAudio();
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+          micSrc = emuCtx.createMediaStreamSource(micStream);
+          const split = emuCtx.createChannelSplitter(2);
+          micSrc.connect(split); split.connect(emuAnL, 0); split.connect(emuAnR, 0);
+          micOn = true; emuPlaying = true; btn.classList.add('active');
+          document.getElementById('captureStatus').textContent = '🎙 Live Mic Active -> Meters';
+        } catch (err) { document.getElementById('captureStatus').textContent = 'Mic permission unavailable'; }
+      } else {
+        if (micSrc) { try { micSrc.disconnect(); } catch (e) {} micSrc = null; }
+        if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+        micOn = false; if (!emuTimer && !emuSrcNode) emuPlaying = false;
+        btn.classList.remove('active'); document.getElementById('captureStatus').textContent = 'Mode Notch: 115 Hz';
+      }
+    }
+    const _bufL = new Float32Array(256), _bufR = new Float32Array(256);
+    function pollEmulatorMeters() {
+      if (emuPlaying && emuAnL && emuAnR) {
+        emuAnL.getFloatTimeDomainData(_bufL); emuAnR.getFloatTimeDomainData(_bufR);
+        let sL = 0, sR = 0, sLR = 0, pk = 0;
+        for (let i = 0; i < _bufL.length; i++) { const l = _bufL[i], r = _bufR[i]; sL += l*l; sR += r*r; sLR += l*r; pk = Math.max(pk, Math.abs(l), Math.abs(r)); }
+        const rmsL = Math.sqrt(sL / _bufL.length), rmsR = Math.sqrt(sR / _bufR.length);
+        const corr = sLR / (Math.sqrt(sL * sR) + 1e-9), pkDb = pk > 0.0001 ? Math.max(-60, 20 * Math.log10(pk)) : -60, lufs = rmsToDb(0.5 * (rmsL + rmsR)) - 0.69;
+        document.getElementById('m-phase').textContent = (corr >= 0 ? '+' : '') + corr.toFixed(2);
+        document.getElementById('m-peak').textContent = pkDb.toFixed(1);
+        document.getElementById('m-lufs').textContent = lufs.toFixed(1);
+        document.getElementById('popLufsTxt').textContent = lufs.toFixed(1);
+        if (pkDb > peakHoldDb) { peakHoldDb = pkDb; document.getElementById('meterHoldLabel').textContent = `HOLD: ${peakHoldDb.toFixed(1)} dB · DBL-CLICK TO EXPAND`; document.getElementById('popHoldTxt').textContent = peakHoldDb.toFixed(1) + ' dB'; }
+        const pL = dbToPct(rmsToDb(rmsL)), pR = dbToPct(rmsToDb(rmsR));
+        document.getElementById('barL').style.width = pL + '%'; document.getElementById('barR').style.width = pR + '%';
+        document.getElementById('popBarL').style.width = pL + '%'; document.getElementById('popBarR').style.width = pR + '%';
+        updateTachNeedles(pL, pR);
+        state.rms = Math.max(0.08, (rmsL + rmsR) * 0.5);
+      }
+      requestAnimationFrame(pollEmulatorMeters);
+    }
+    pollEmulatorMeters();
+
+    const cvs = document.getElementById('stageCanvas'), ctx = cvs.getContext('2d');
+    const pcvs = document.getElementById('popScopeCanvas'), pctx = pcvs.getContext('2d');
+    let rot = 0;
+    function draw() {
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+      const cx = cvs.width / 2, cy = cvs.height * 0.54;
+      const r = 115 * (0.65 + state.stage_width * 0.25) * (1.0 + state.rms * 0.18);
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#F59E0B';
+      const accent2 = getComputedStyle(document.documentElement).getPropertyValue('--accent2').trim() || '#38BDF8';
+      rot += 0.012;
+
+      if (precisionMode) {
+        ctx.strokeStyle = accent2; ctx.globalAlpha = 0.22; ctx.lineWidth = 1;
+        for (let x = 0; x < cvs.width; x += 28) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cvs.height); ctx.stroke(); }
+        for (let y = 0; y < cvs.height; y += 28) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cvs.width, y); ctx.stroke(); }
+        ctx.globalAlpha = 1; ctx.beginPath(); ctx.strokeStyle = accent; ctx.lineWidth = 2;
+        for (let x = 0; x < cvs.width; x += 4) { const y = cy + Math.sin(x * 0.03 + rot * 4) * (20 + state.rms * 95); x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+        ctx.stroke();
+      } else {
+        ctx.save();
+        ctx.strokeStyle = accent2; ctx.globalAlpha = 0.18; ctx.lineWidth = 1;
+        for (let i = -5; i <= 5; i++) { ctx.beginPath(); ctx.moveTo(cx + i * 24, cy + 45); ctx.lineTo(cx + i * 75, cvs.height); ctx.stroke(); }
+        for (let j = 0; j < 5; j++) { const y = cy + 48 + j * j * 11; ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(cvs.width - 40, y); ctx.stroke(); }
+        ctx.restore();
+
+        for (let layer = 0; layer < 3; layer++) {
+          ctx.beginPath();
+          ctx.strokeStyle = layer === 1 ? accent : accent2;
+          ctx.globalAlpha = layer === 1 ? 0.92 : 0.48;
+          ctx.lineWidth = layer === 1 ? 2.4 : 1.3;
+          for (let x = 60; x <= cvs.width - 60; x += 4) {
+            const env = Math.sin(((x - 60) / (cvs.width - 120)) * Math.PI);
+            const y = cy - 12 + Math.sin(x * 0.035 + rot * (2 + layer) + layer) * (28 + state.rms * 95) * env;
+            x === 60 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = accent; ctx.lineWidth = 1.2;
+        for (let i = 1; i <= 3; i++) {
+          ctx.globalAlpha = 0.28; ctx.beginPath();
+          ctx.ellipse(cx, cy, r * (i/3), r * (i/3) * (vizMode === 2 ? 0.30 : 0.46), rot * (i % 2 ? 0.25 : -0.25), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        if (safeZoneOn) {
+          ctx.save(); ctx.fillStyle = 'rgba(16, 185, 129, 0.12)'; ctx.strokeStyle = '#10B981'; ctx.lineWidth = 1;
+          ctx.fillRect(60, cy + 25, 140, 85); ctx.strokeRect(60, cy + 25, 140, 85);
+          ctx.fillStyle = '#10B981'; ctx.font = '10px monospace'; ctx.fillText('SUB SAFE ZONE 20-250 Hz', 66, cy + 40);
+          ctx.restore();
+        }
+        const az = (state.stage_azimuth || 0) * Math.PI / 180, el = (state.stage_elevation || 0) * Math.PI / 180;
+        const ox = cx + Math.sin(az) * r * 0.72, oy = cy - Math.sin(el) * r * 0.42;
+        ctx.globalAlpha = 0.35; ctx.fillStyle = accent2; ctx.beginPath(); ctx.arc(ox, oy, 18, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1; ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(ox, oy, 6, 0, Math.PI * 2); ctx.fill();
+      }
+
+      if (document.getElementById('meterPop').classList.contains('open')) {
+        pctx.clearRect(0, 0, pcvs.width, pcvs.height);
+        pctx.strokeStyle = accent2; pctx.lineWidth = 1.5; pctx.beginPath();
+        for (let x = 0; x < pcvs.width; x += 6) {
+          const y = pcvs.height / 2 + Math.sin(x * 0.05 + rot * 6) * (10 + state.rms * 42);
+          x === 0 ? pctx.moveTo(x, y) : pctx.lineTo(x, y);
+        }
+        pctx.stroke();
+      }
+      requestAnimationFrame(draw);
+    }
+    draw();
+  </script>
+</body>
+</html>

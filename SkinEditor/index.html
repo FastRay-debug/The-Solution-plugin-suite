@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Solution — Skin Editor &amp; Companion Sync Studio</title>
+  <style>
+    :root {
+      --bg: #080A0E;
+      --panel: #12161F;
+      --accent: #F59E0B;
+      --accent2: #38BDF8;
+      --gold: #D4AF37;
+      --bezel: #303846;
+      --text: #F8FAFC;
+      --mute: #94A3B8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; padding: 14px; gap: 12px;
+    }
+    header {
+      background: linear-gradient(180deg, #1E2430 0%, #10141B 100%);
+      border: 1px solid var(--gold); border-radius: 8px; padding: 12px 16px;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .brand { font-weight: 800; letter-spacing: 0.12em; color: var(--gold); font-size: 14px; }
+    .sync-pill {
+      font-family: monospace; font-size: 12px; color: var(--accent2);
+      border: 1px dashed var(--accent2); padding: 4px 10px; border-radius: 4px;
+    }
+    .layout {
+      flex: 1; display: grid; grid-template-columns: 320px 1fr; gap: 14px;
+    }
+    @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } }
+    .controls {
+      background: var(--panel); border: 1px solid var(--bezel); border-radius: 8px;
+      padding: 14px; display: flex; flex-direction: column; gap: 12px;
+    }
+    label { font-size: 11px; color: var(--mute); letter-spacing: 0.08em; font-weight: 700; display: block; margin-bottom: 4px; }
+    select, button, input[type="text"] {
+      width: 100%; background: #0B0E14; color: var(--text); border: 1px solid var(--bezel);
+      border-radius: 5px; padding: 8px 10px; font-size: 12px; cursor: pointer;
+    }
+    button.primary {
+      background: linear-gradient(180deg, #D97706 0%, #92400E 100%);
+      border-color: var(--gold); font-weight: 700; color: #FFF;
+    }
+    .preview-stage {
+      background: #05070A; border: 1.5px solid var(--gold); border-radius: 10px;
+      padding: 16px; display: flex; flex-direction: column; gap: 12px; justify-content: space-between;
+    }
+    .faceplate {
+      flex: 1; min-height: 320px; border-radius: 8px; border: 2px solid var(--bezel);
+      background-size: cover; background-position: center; position: relative;
+      display: flex; align-items: center; justify-content: space-around; padding: 20px;
+      box-shadow: inset 0 0 40px rgba(0,0,0,0.85);
+    }
+    .mock-knob {
+      width: 78px; height: 78px; border-radius: 50%;
+      background: radial-gradient(circle at 32% 28%, #FFF7D6 0%, #E0B84C 32%, #8A661C 74%, #261B06 100%);
+      border: 3px solid #1B1508; box-shadow: 0 8px 20px rgba(0,0,0,0.9), 0 0 0 4px var(--accent);
+      position: relative;
+    }
+    .mock-knob.chrome { background: radial-gradient(circle at 32% 28%, #FFF 0%, #CBD5E1 35%, #64748B 76%, #1E293B 100%); }
+    .mock-knob.gunmetal { background: radial-gradient(circle at 32% 28%, #94A3B8 0%, #475569 38%, #1E293B 78%, #090D16 100%); }
+    .mock-knob.billet { background: radial-gradient(circle at 32% 28%, #FCA5A5 0%, #DC2626 35%, #7F1D1D 76%, #2A0808 100%); }
+    .mock-orb {
+      width: 140px; height: 140px; border-radius: 50%;
+      border: 2px solid var(--accent2);
+      background: radial-gradient(circle, rgba(56,189,248,0.28) 0%, rgba(5,7,10,0.88) 75%);
+      display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 11px; color: var(--accent2);
+    }
+    pre {
+      margin: 0; background: #0B0E14; border: 1px solid var(--bezel); border-radius: 6px;
+      padding: 10px; font-size: 11px; color: var(--accent2); overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">THE SOLUTION · SKIN EDITOR &amp; OBJECT MIXER STUDIO</div>
+    <div class="sync-pill">MASTER RACK SYNC CODE: <b>SOL-69-8842</b></div>
+  </header>
+
+  <div class="layout">
+    <div class="controls">
+      <div>
+        <label>1. FACEPLATE SKIN (/cars &amp; /places)</label>
+        <select id="skinPick" onchange="updatePreview()">
+          <option value="lincoln69">'69 Suicide Lincoln Continental</option>
+          <option value="camaro71">'71 Split-Bumper Camaro (Orange)</option>
+          <option value="mach1">'70 Mustang Mach 1</option>
+          <option value="eviltwin">'68 Continental "Evil Twin"</option>
+          <option value="eldorado59">'59 Cadillac Eldorado</option>
+          <option value="cuda70">'70 HEMI 'Cuda</option>
+          <option value="gto67">'67 Pontiac GTO</option>
+          <option value="rome">Rome Pantheon</option>
+          <option value="giza">Giza Pyramids</option>
+          <option value="aztec">Aztec Ruins</option>
+          <option value="serengeti">Serengeti Falls</option>
+          <option value="museum">Classical Museum Gallery</option>
+          <option value="piano">Concert Piano Gallery</option>
+        </select>
+      </div>
+      <div>
+        <label>2. LED &amp; ACCENT COLOR</label>
+        <select id="accentPick" onchange="updatePreview()">
+          <option value="#F59E0B">Amber Gold (#F59E0B)</option>
+          <option value="#FF5E1A">Hugger Orange (#FF5E1A)</option>
+          <option value="#EF4444">Evil Twin Crimson (#EF4444)</option>
+          <option value="#38BDF8">Electric Cyan (#38BDF8)</option>
+          <option value="#10B981">Jade Emerald (#10B981)</option>
+        </select>
+      </div>
+      <div>
+        <label>3. BEZEL TRIM</label>
+        <select id="bezelPick" onchange="updatePreview()">
+          <option value="#303846">Gunmetal</option>
+          <option value="#D4AF37">Gold Trim</option>
+          <option value="#9CA3AF">Brushed Chrome</option>
+          <option value="#7F1D1D">Crimson Anodized</option>
+        </select>
+      </div>
+      <div>
+        <label>4. KNOB CAP FINISH</label>
+        <select id="knobPick" onchange="updatePreview()">
+          <option value="gold">Brushed Gold</option>
+          <option value="chrome">Chrome</option>
+          <option value="gunmetal">Gunmetal</option>
+          <option value="billet">Billet Red</option>
+        </select>
+      </div>
+      <button class="primary" onclick="exportSkinPreset()">SYNC &amp; EXPORT SKIN JSON</button>
+    </div>
+
+    <div class="preview-stage">
+      <div class="faceplate" id="faceplate">
+        <div class="mock-knob" id="k1"></div>
+        <div class="mock-orb" id="orb">THE SOLUTION</div>
+        <div class="mock-knob" id="k2"></div>
+      </div>
+      <pre id="jsonOut">{ "syncCode": "SOL-69-8842", "skin": "lincoln69", "accent": "#F59E0B", "bezel": "#303846", "knob": "gold" }</pre>
+    </div>
+  </div>
+
+  <script>
+    
+    function updatePreview() {
+      const skin = document.getElementById('skinPick').value;
+      const accent = document.getElementById('accentPick').value;
+      const bezel = document.getElementById('bezelPick').value;
+      const knob = document.getElementById('knobPick').value;
+
+      document.documentElement.style.setProperty('--accent', accent);
+      document.documentElement.style.setProperty('--bezel', bezel);
+      const fp = document.getElementById('faceplate');
+      fp.style.backgroundImage = `linear-gradient(rgba(8,10,14,0.22), rgba(8,10,14,0.42)), url('../UI/skins/${skin}.jpg')`;
+      ['k1', 'k2'].forEach(id => {
+        const el = document.getElementById(id);
+        el.className = 'mock-knob' + (knob !== 'gold' ? ' ' + knob : '');
+      });
+      document.getElementById('jsonOut').textContent = JSON.stringify({ syncCode: 'SOL-69-8842', skin, accent, bezel, knob }, null, 2);
+    }
+    function exportSkinPreset() {
+      const blob = new Blob([document.getElementById('jsonOut').textContent], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'solution_skin_preset.json';
+      a.click();
+    }
+    updatePreview();
+  </script>
+</body>
+</html>
