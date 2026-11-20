@@ -101,7 +101,7 @@ echo     [D]  %CHK_D%  Auto-Install Missing Tools ^& WebView2 SDK
 echo     [T]  %CHK_T%  Bundle 50 Cars ^& Places Skins ^(OFF = Lightweight^)
 echo     [C]  %CHK_C%  Clean build\ Folder First ^(Keeps deps_cache^)
 echo     [A]  %CHK_A%  Install VST3/CLAP/AAX to System + Smoke Launch
-    [E]  %CHK_E%  Build Standalone The_Solution_Suite_Setup.exe ^(Inno Setup^)
+echo     [E]  %CHK_E%  Build Standalone The_Solution_Suite_Setup.exe ^(Inno Setup^)
 echo.
 echo   BUILD TARGETS ^(Selected: ^>^> %PICK_LABEL% ^<^<^):
 echo   ------------------------------------------------------------
@@ -115,12 +115,12 @@ echo   Change Targets: [0] All 13  [M] Missing Only  [1-13 / 1,2,13]
 echo                   [I] Gather/Install Only ^(No Compile^)
 echo   Other:          [X] Clean "The Solution\"   [Q] Quit
 echo   ============================================================
-echo   Step 1: Type D, T, C, A or target ^(0/M/1-13/I^) to change setup.
+echo   Step 1: Type D, T, C, A, E or target ^(0/M/1-13/I^) to change setup.
 echo   Step 2: Press [R] or [ENTER] to RUN everything with no prompts!
 echo ============================================================
 echo.
 set "CMD="
-set /p CMD="Toggle (D/T/C/A), Target (0/M/1-13/I), or [ENTER]/R to RUN: "
+set /p CMD="Toggle (D/T/C/A/E), Target (0/M/1-13/I), or [ENTER]/R to RUN: "
 
 if "%CMD%"=="" goto :run_all
 if /i "%CMD%"=="R" goto :run_all
@@ -171,8 +171,11 @@ if /i "%CLEAN_BEFORE%"=="ON" (set "CLEAN_BEFORE=OFF") else (set "CLEAN_BEFORE=ON
 goto :config_menu
 
 :tog_install
-if /i "%AUTO_INSTALL%"=="ON" (set "AUTO_INSTALL=OFF") else (set "AUTO_INSTALL=ON"
-set "BUILD_EXE=ON")
+if /i "%AUTO_INSTALL%"=="ON" (set "AUTO_INSTALL=OFF") else (set "AUTO_INSTALL=ON")
+goto :config_menu
+
+:tog_exe
+if /i "%BUILD_EXE%"=="ON" (set "BUILD_EXE=OFF") else (set "BUILD_EXE=ON")
 goto :config_menu
 
 :clean_collected
@@ -308,6 +311,10 @@ if /i "%AUTO_INSTALL%"=="ON" if %COUNT% GTR 0 (
 
 echo.
 if /i not "%BUILD_EXE%"=="ON" goto :skip_inno
+if not exist "TheSolutionInstaller.iss" (
+    echo [Step 5/5] Skipping installer .exe: TheSolutionInstaller.iss not found.
+    goto :skip_inno
+)
 echo [Step 5/5] Building Standalone The_Solution_Suite_Setup.exe via Inno Setup...
 set "ISCC="
 for /f "delims=" %%I in ('where ISCC.exe 2^>nul') do set "ISCC=%%I"
@@ -336,20 +343,28 @@ goto :config_menu
 
 :copy_one
 set "PNAME=%~1"
-for /d /r "build" %%D in ("%PNAME%.vst3") do (
-    xcopy "%%D" "%LOCAL_DIR%\VST3\%%~nxD\" /E /I /Y /Q >nul
-    set /a COUNT+=1
+for /d /r "build" %%D in (*.vst3) do (
+    if /i "%%~nxD"=="%PNAME%.vst3" if exist "%%D\Contents" (
+        xcopy "%%D" "%LOCAL_DIR%\VST3\%%~nxD\" /E /I /Y /Q >nul
+        set /a COUNT+=1
+    )
 )
-for /r "build" %%F in ("%PNAME%.clap") do (
-    copy /Y "%%F" "%LOCAL_DIR%\CLAP\%%~nxF" >nul
-    set /a COUNT+=1
+for /r "build" %%F in (*.clap) do (
+    if /i "%%~nxF"=="%PNAME%.clap" (
+        copy /Y "%%F" "%LOCAL_DIR%\CLAP\%%~nxF" >nul
+        set /a COUNT+=1
+    )
 )
-for /r "build" %%F in ("%PNAME%.exe") do (
-    copy /Y "%%F" "%LOCAL_DIR%\Standalone\%%~nxF" >nul
-    set /a COUNT+=1
+for /r "build" %%F in (*.exe) do (
+    if /i "%%~nxF"=="%PNAME%.exe" (
+        copy /Y "%%F" "%LOCAL_DIR%\Standalone\%%~nxF" >nul
+        set /a COUNT+=1
+    )
 )
-for /d /r "build" %%D in ("%PNAME%.aaxplugin") do (
-    xcopy "%%D" "%LOCAL_DIR%\AAX\%%~nxD\" /E /I /Y /Q >nul
-    set /a COUNT+=1
+for /d /r "build" %%D in (*.aaxplugin) do (
+    if /i "%%~nxD"=="%PNAME%.aaxplugin" (
+        xcopy "%%D" "%LOCAL_DIR%\AAX\%%~nxD\" /E /I /Y /Q >nul
+        set /a COUNT+=1
+    )
 )
 goto :eof
