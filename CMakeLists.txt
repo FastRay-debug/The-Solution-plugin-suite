@@ -10,6 +10,9 @@ option(BUNDLE_SKINS "Embed skin faceplates in every plugin (OFF = plugins load t
 # Persistent dependency cache outside build/ so cleaning build/ never re-downloads JUCE/CLAP/RTNeural
 set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps_cache" CACHE PATH "Persistent dependency cache")
 
+# Link the MSVC runtime statically so plugins load on PCs without the VC++ Redistributable
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 include(FetchContent)
 
 # 1. Fetch JUCE 8, CLAP Extensions, and RTNeural once for the entire suite

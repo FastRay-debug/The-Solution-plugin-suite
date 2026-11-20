@@ -19,11 +19,18 @@ permissions:
 
 jobs:
   windows:
-    name: Windows (VST3, CLAP, Standalone)
+    name: Windows installer
     runs-on: windows-latest
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
+
+      - name: Read version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path CMakeLists.txt -Pattern 'project\(\S+ VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
 
       - name: Download WebView2 SDK
         shell: pwsh
@@ -38,10 +45,10 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Collect plugins
+      - name: Gather plugins
         shell: pwsh
         run: |
-          $out = "The Solution (Windows)"
+          $out = "The Solution"
           New-Item -ItemType Directory -Force -Path "$out/VST3","$out/CLAP","$out/Standalone","$out/Skins" | Out-Null
           Copy-Item "UI/skins/*.jpg" "$out/Skins"
           Get-ChildItem build -Directory -Filter *_artefacts | ForEach-Object {
@@ -50,20 +57,31 @@ jobs:
             Get-ChildItem "$rel/CLAP" -File -Filter *.clap -ErrorAction SilentlyContinue | Copy-Item -Destination "$out/CLAP" -Force
             Get-ChildItem "$rel/Standalone" -File -Filter *.exe -ErrorAction SilentlyContinue | Copy-Item -Destination "$out/Standalone" -Force
           }
-          Copy-Item ".github/INSTALL_WINDOWS.txt" "$out/HOW TO INSTALL.txt"
           $n = (Get-ChildItem "$out/VST3" -Directory).Count
           Write-Host "Collected $n VST3 plugins"
           if ($n -ne 13) { throw "Expected 13 VST3 plugins, found $n" }
-          Compress-Archive -Path "$out/*" -DestinationPath "TheSolution-Windows.zip"
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup not found" }
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" TheSolutionInstaller.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          Get-Item OutputInstaller/The_Solution_Suite_Setup.exe
 
       - uses: actions/upload-artifact@v7
         with:
-          name: TheSolution-Windows
-          path: TheSolution-Windows.zip
+          name: TheSolution-Windows-Installer
+          path: OutputInstaller/The_Solution_Suite_Setup.exe
           retention-days: 30
 
   macos:
-    name: macOS (AU, VST3, CLAP, Standalone - Universal)
+    name: macOS installer
+    # Windows-first for now: the Mac build only runs when started by hand
+    # (Actions tab -> Build plugins -> Run workflow) or for a v* release tag.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-latest
     timeout-minutes: 150
     steps:
@@ -80,10 +98,10 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel 4
 
-      - name: Collect plugins
+      - name: Gather plugins
         run: |
           set -euo pipefail
-          out="The Solution (macOS)"
+          out="The Solution"
           mkdir -p "$out/AU" "$out/VST3" "$out/CLAP" "$out/Standalone" "$out/Skins"
           cp UI/skins/*.jpg "$out/Skins/"
           for rel in build/*_artefacts/Release; do
@@ -95,16 +113,20 @@ jobs:
           # Ad-hoc sign so Apple Silicon will load them (not notarized)
           find "$out" -maxdepth 2 \( -name "*.component" -o -name "*.vst3" -o -name "*.clap" -o -name "*.app" \) \
             -exec codesign --force --deep --sign - {} \;
-          cp .github/INSTALL_MACOS.txt "$out/HOW TO INSTALL.txt"
           n=$(ls -d "$out"/AU/*.component | wc -l | tr -d ' ')
           echo "Collected $n AU plugins"
           [ "$n" -eq 13 ] || { echo "Expected 13 AU plugins, found $n"; exit 1; }
-          ditto -c -k --sequesterRsrc --keepParent "$out" TheSolution-macOS.zip
+
+      - name: Build installer
+        run: |
+          v=$(sed -nE 's/^project\([^ ]+ VERSION ([0-9.]+).*/\1/p' CMakeLists.txt)
+          packaging/build_mac_pkg.sh "The Solution" "$v" "The Solution Suite.pkg"
+          ls -la "The Solution Suite.pkg"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: TheSolution-macOS
-          path: TheSolution-macOS.zip
+          name: TheSolution-macOS-Installer
+          path: The Solution Suite.pkg
           retention-days: 30
 
   release:
@@ -119,6 +141,6 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           files: |
-            TheSolution-Windows.zip
-            TheSolution-macOS.zip
+            The_Solution_Suite_Setup.exe
+            The Solution Suite.pkg
           generate_release_notes: true

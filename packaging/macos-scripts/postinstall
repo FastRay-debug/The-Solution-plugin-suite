@@ -1,0 +1,11 @@
+#!/bin/bash
+# Runs after "The Solution Suite.pkg" installs.
+# Make sure macOS doesn't block the freshly installed (unnotarized) plugins,
+# then restart the Audio Unit registry so Logic/GarageBand see them right away.
+xattr -dr com.apple.quarantine "/Library/Audio/Plug-Ins/Components/"The*.component 2>/dev/null || true
+xattr -dr com.apple.quarantine "/Library/Audio/Plug-Ins/Components/Innerspace.component" 2>/dev/null || true
+xattr -dr com.apple.quarantine "/Library/Audio/Plug-Ins/VST3/The Solution" 2>/dev/null || true
+xattr -dr com.apple.quarantine "/Library/Audio/Plug-Ins/CLAP/The Solution" 2>/dev/null || true
+xattr -dr com.apple.quarantine "/Applications/The Solution" 2>/dev/null || true
+killall -9 AudioComponentRegistrar 2>/dev/null || true
+exit 0
