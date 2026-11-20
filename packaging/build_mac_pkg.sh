@@ -18,7 +18,7 @@ mkdir -p "$ROOT/Library/Audio/Plug-Ins/Components" \
          "$ROOT/Library/Audio/Plug-Ins/VST3/The Solution" \
          "$ROOT/Library/Audio/Plug-Ins/CLAP/The Solution" \
          "$ROOT/Applications/The Solution" \
-         "$ROOT/Library/Application Support/FastRayMedia/The Solution/Skins"
+         "$ROOT/Library/Application Support/Fast Ray Media/The Solution/Skins"
 
 copy_all() { # src-glob-dir pattern dest
   shopt -s nullglob
@@ -29,7 +29,7 @@ copy_all "$SRC/AU"         "*.component" "$ROOT/Library/Audio/Plug-Ins/Component
 copy_all "$SRC/VST3"       "*.vst3"      "$ROOT/Library/Audio/Plug-Ins/VST3/The Solution"
 copy_all "$SRC/CLAP"       "*.clap"      "$ROOT/Library/Audio/Plug-Ins/CLAP/The Solution"
 copy_all "$SRC/Standalone" "*.app"       "$ROOT/Applications/The Solution"
-copy_all "$SRC/Skins"      "*.jpg"       "$ROOT/Library/Application Support/FastRayMedia/The Solution/Skins"
+copy_all "$SRC/Skins"      "*.jpg"       "$ROOT/Library/Application Support/Fast Ray Media/The Solution/Skins"
 
 # Stop the installer from "relocating" bundles to some other copy it finds on disk.
 pkgbuild --analyze --root "$ROOT" "$WORK/components.plist"

@@ -11,9 +11,9 @@ PresetManager::PresetManager (juce::AudioProcessorValueTreeState& state, juce::F
 juce::File PresetManager::getDefaultFolder()
 {
    #if JUCE_MAC
-    const juce::String sub ("Application Support/FastRayMedia/The Solution/Presets");
+    const juce::String sub ("Application Support/Fast Ray Media/The Solution/Presets");
    #else
-    const juce::String sub ("FastRayMedia/The Solution/Presets");
+    const juce::String sub ("Fast Ray Media/The Solution/Presets");
    #endif
     return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile (sub);
 }

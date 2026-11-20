@@ -5,8 +5,8 @@
 // Presets for The Solution Suite.
 //  * Factory presets are built in and also appear in the DAW's own preset/program menu.
 //  * User presets are .solpreset files (XML) in one shared folder, so every module sees them:
-//      Windows: %APPDATA%\FastRayMedia\The Solution\Presets
-//      macOS:   ~/Library/Application Support/FastRayMedia/The Solution/Presets
+//      Windows: %APPDATA%\Fast Ray Media\The Solution\Presets
+//      macOS:   ~/Library/Application Support/Fast Ray Media/The Solution/Presets
 //  * A preset stores every parameter; anything missing (e.g. parameters added in a later
 //    version) falls back to its default, so old presets keep working.
 // All methods run on the message thread.

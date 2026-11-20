@@ -51,9 +51,9 @@ namespace
 juce::File SolutionAudioProcessorEditor::findSharedSkinsFolder()
 {
    #if JUCE_MAC
-    const juce::String subPath ("Application Support/FastRayMedia/The Solution/Skins");
+    const juce::String subPath ("Application Support/Fast Ray Media/The Solution/Skins");
    #else
-    const juce::String subPath ("FastRayMedia/The Solution/Skins");
+    const juce::String subPath ("Fast Ray Media/The Solution/Skins");
    #endif
 
     // Per-user install first, then the machine-wide one

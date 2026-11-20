@@ -18,8 +18,8 @@ AppId={{33435123-E4D3-4049-893B-DA50E43A3F7E}
 AppName=The Solution Suite
 AppVersion={#AppVersion}
 AppVerName=The Solution Suite {#AppVersion}
-AppPublisher=FastRayMedia
-DefaultDirName={commonpf64}\FastRayMedia\The Solution
+AppPublisher=Fast Ray Media
+DefaultDirName={commonpf64}\Fast Ray Media\The Solution
 DefaultGroupName=The Solution
 UninstallDisplayName=The Solution Suite
 OutputDir=OutputInstaller
@@ -159,7 +159,7 @@ Source: "{#Src}\AAX\The Scope.aaxplugin\*"; DestDir: "{commoncf64}\Avid\Audio\Pl
 #endif
 Source: "{#Src}\Standalone\The Scope.exe"; DestDir: "{app}\Standalone"; Components: formats\standalone and modules\scope; Flags: ignoreversion skipifsourcedoesntexist
 ; Shared skins
-Source: "{#Src}\Skins\*.jpg"; DestDir: "{commonappdata}\FastRayMedia\The Solution\Skins"; Components: skins; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Src}\Skins\*.jpg"; DestDir: "{commonappdata}\Fast Ray Media\The Solution\Skins"; Components: skins; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\The Bunker"; Filename: "{app}\Standalone\The Bunker.exe"; Components: formats\standalone and modules\bunker; Check: StandaloneExists('The Bunker')
@@ -185,5 +185,5 @@ end;
 
 [Messages]
 SelectComponentsLabel2=Tick what you want installed, then click Install.
-FinishedLabelNoIcons=The Solution Suite is installed.%n%nOpen your DAW and rescan plugins - you'll find the modules under FastRayMedia / The Solution.
-FinishedLabel=The Solution Suite is installed.%n%nOpen your DAW and rescan plugins - you'll find the modules under FastRayMedia / The Solution.
+FinishedLabelNoIcons=The Solution Suite is installed.%n%nOpen your DAW and rescan plugins - you'll find the modules under Fast Ray Media / The Solution.
+FinishedLabel=The Solution Suite is installed.%n%nOpen your DAW and rescan plugins - you'll find the modules under Fast Ray Media / The Solution.

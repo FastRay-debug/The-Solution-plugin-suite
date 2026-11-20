@@ -7,7 +7,7 @@ mkdir -p "$LOCAL_DIR/VST3" "$LOCAL_DIR/CLAP" "$LOCAL_DIR/AU" "$LOCAL_DIR/Standal
 mkdir -p "$HOME/Library/Audio/Plug-Ins/VST3/The Solution"
 mkdir -p "$HOME/Library/Audio/Plug-Ins/CLAP/The Solution"
 mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
-SKINS_DIR="$HOME/Library/Application Support/FastRayMedia/The Solution/Skins"
+SKINS_DIR="$HOME/Library/Application Support/Fast Ray Media/The Solution/Skins"
 mkdir -p "$LOCAL_DIR/Skins" "$SKINS_DIR"
 cp UI/skins/*.jpg "$LOCAL_DIR/Skins/"
 cp UI/skins/*.jpg "$SKINS_DIR/"

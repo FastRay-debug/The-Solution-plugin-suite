@@ -101,8 +101,11 @@ endforeach()
 
 # 2. Reusable macro to build any module in The Solution suite (VST3, AU, CLAP, Standalone, + optional AAX)
 function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
+    string(TOLOWER "${TARGET_NAME}" _lower_target)
     juce_add_plugin(${TARGET_NAME}
-        COMPANY_NAME                "FastRayMedia"
+        COMPANY_NAME                "Fast Ray Media"
+        COMPANY_COPYRIGHT           "Fast Ray Media"
+        BUNDLE_ID                   "com.fastraymedia.thesolution.${_lower_target}"   # fixed: hosts key presets/sessions on it
         IS_SYNTH                    FALSE
         NEEDS_MIDI_INPUT            TRUE
         NEEDS_MIDI_OUTPUT           FALSE
