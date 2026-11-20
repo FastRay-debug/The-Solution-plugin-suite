@@ -430,7 +430,11 @@
           <button id="captureBtn" onclick="triggerCapture()" style="flex:1;">● SWEEP</button>
           <button id="micBtn" onclick="toggleLiveMic()" title="Live Measurement Mic">🎙</button>
         </div>
-        <span id="captureStatus" style="font-size:9px;color:var(--mute);text-align:center;">Mode Notch: 115 Hz</span>
+        <div style="display:flex;gap:3px;align-items:center;">
+          <label style="font-size:9px;display:flex;gap:3px;align-items:center;flex:1;" data-tip="Apply your measured room correction"><input type="checkbox" data-sync="room_correct_on" onchange="bind('room_correct_on', this.checked ? 1 : 0, '', 1)"> CORRECT ROOM</label>
+          <button onclick="openRoomCorr()" style="font-size:9px;" data-tip="See your room's measured response and the correction">VIEW</button>
+        </div>
+        <span id="captureStatus" style="font-size:9px;color:var(--mute);text-align:center;">Room not measured yet</span>
       </div>
     </div>
 
@@ -558,6 +562,25 @@
       </div>
       <div id="vaultList" style="display:flex;flex-direction:column;gap:5px;max-height:190px;overflow-y:auto;"></div>
       <button onclick="document.getElementById('vaultModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="roomCorrModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="min-width:600px;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">ROOM CORRECTION · MEASURED RESPONSE</strong>
+      <svg id="roomPlot" viewBox="0 0 560 220" style="width:100%;background:#05070a;border:1px solid #1f2937;border-radius:4px;"></svg>
+      <div style="font-size:10px;font-family:monospace;display:flex;gap:14px;">
+        <span style="color:#EF4444">■ Your room</span><span style="color:var(--gold)">■ Correction</span><span style="color:#10B981">■ Corrected</span>
+        <span id="roomMsg" style="color:var(--accent2);margin-left:auto;"></span>
+      </div>
+      <div class="ctrl"><label>CORRECTION AMOUNT <span id="v-room_correct_amount">100%</span></label>
+        <input type="range" data-sync="room_correct_amount" min="0" max="1" step="0.01" value="1" oninput="bind('room_correct_amount', this.value, '%', 100)"></div>
+      <div style="font-size:10px;color:var(--mute);line-height:1.5;">
+        <b>How to measure:</b> put this module on a track whose <b>input is your measurement mic</b> and whose <b>output goes to your speakers</b>.
+        Place the mic where your head is, set a comfortable volume, then press <b>● SWEEP</b> and stay quiet. Correction mostly cuts room boom (25 Hz-5 kHz) and never boosts more than 3 dB.
+        Use it on your monitoring path only - turn it off before you bounce.
+      </div>
+      <button onclick="document.getElementById('roomCorrModal').classList.remove('open')">CLOSE</button>
     </div>
   </div>
 
@@ -926,10 +949,11 @@
 
     function triggerCapture() {
       const secs = parseFloat(document.getElementById('sweepDur').value || '2');
+      if (!confirm('Room measurement plays a ' + secs + ' s test sweep (20 Hz - 20 kHz, -12 dBFS) through your speakers while recording this track\'s input (your mic).\n\nTurn your monitors down to a comfortable level first. Start?')) return;
       document.getElementById('captureBtn').classList.add('active');
-      document.getElementById('captureStatus').textContent = `Capturing ${secs}s room sweep...`;
+      document.getElementById('captureStatus').textContent = `Measuring room...`;
       if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('captureRoomSweep', { seconds: secs });
-      setTimeout(() => document.getElementById('captureBtn').classList.remove('active'), secs * 1000 + 100);
+      setTimeout(() => document.getElementById('captureBtn').classList.remove('active'), secs * 1000 + 30000);
     }
 
     function toggleTooltips() {
@@ -1061,6 +1085,29 @@
     const hasPlugin = () => !!(window.__JUCE__ && window.__JUCE__.backend);
     const presetCmd = (cmd, extra) => window.__JUCE__.backend.emitEvent('presetCommand', Object.assign({ cmd }, extra || {}));
     let pluginPresets = null, currentPreset = '', vaultMessage = '';
+    function roomStatusText() {
+      const m = window._roomResult;
+      if (!m || (!m.valid && !m.message)) return 'Room not measured yet';
+      return m.valid ? 'Room: ' + m.message : m.message;
+    }
+    function openRoomCorr() { renderRoomPlot(); document.getElementById('roomCorrModal').classList.add('open'); }
+    function renderRoomPlot() {
+      const svg = document.getElementById('roomPlot'), m = window._roomResult;
+      const W = 560, H = 220, x = (f) => 30 + (Math.log10(f / 20) / 3) * (W - 40), y = (db) => H / 2 - db * (H - 30) / 36;
+      let g = '';
+      [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].forEach(f => {
+        g += `<line x1="${x(f)}" x2="${x(f)}" y1="8" y2="${H - 16}" stroke="#111827"/><text x="${x(f)}" y="${H - 4}" fill="#6b7280" font-size="9" text-anchor="middle">${f >= 1000 ? f / 1000 + 'k' : f}</text>`;
+      });
+      [-12, -6, 0, 6, 12].forEach(d => { g += `<line x1="30" x2="${W - 10}" y1="${y(d)}" y2="${y(d)}" stroke="${d === 0 ? '#374151' : '#111827'}"/><text x="4" y="${y(d) + 3}" fill="#6b7280" font-size="9">${d > 0 ? '+' + d : d}</text>`; });
+      if (m && m.valid && m.freqs) {
+        const path = (arr, col, w) => `<polyline fill="none" stroke="${col}" stroke-width="${w}" points="${m.freqs.map((f, i) => x(f).toFixed(1) + ',' + y(Math.max(-18, Math.min(18, arr[i]))).toFixed(1)).join(' ')}"/>`;
+        g += path(m.measured, '#EF4444', 1.5) + path(m.correction, '#D4AF37', 1.2) + path(m.result, '#10B981', 2);
+      } else {
+        g += `<text x="${W / 2}" y="${H / 2}" fill="#9ca3af" font-size="12" text-anchor="middle">No measurement yet - press ● SWEEP</text>`;
+      }
+      svg.innerHTML = g;
+      document.getElementById('roomMsg').textContent = m ? (m.message || '') : '';
+    }
     function openRack() { renderRack(); document.getElementById('rackModal').classList.add('open'); }
     function renderRack() {
       const m = window._rackState;
@@ -1164,6 +1211,7 @@
         });
         if (id === 'link_duck_depth') showValue(id, v, ' dB', 1);
         if (id === 'glue_amount') showValue(id, v, '%', 100);
+        if (id === 'room_correct_amount') showValue(id, v, '%', 100);
       }
       const on = (id) => values[id] !== undefined && values[id] > 0.5;
       if (values.dialogue_duck !== undefined && on('dialogue_duck') !== duckOn) toggleDuck();
@@ -1196,6 +1244,13 @@
         vaultMessage = m.message || '';
         renderVault();
       });
+      window.__JUCE__.backend.addEventListener('roomResult', (m) => {
+        window._roomResult = m;
+        document.getElementById('captureStatus').textContent = roomStatusText();
+        if (m.valid && m.bands && m.bands.length && document.getElementById('captureBtn').classList.contains('active')) openRoomCorr();
+        document.getElementById('captureBtn').classList.remove('active');
+        if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
+      });
       window.__JUCE__.backend.addEventListener('rack', (m) => {
         window._rackState = m;
         if (document.getElementById('rackModal').classList.contains('open')) renderRack();
@@ -1217,7 +1272,8 @@
           document.getElementById('popLufsTxt').textContent = t.lufs.toFixed(1);
         }
         if (t.rackLinks !== undefined) document.getElementById('m-links').textContent = t.rackLinks;
-        if (t.capturedHz) document.getElementById('captureStatus').textContent = 'Mode Notch: ' + t.capturedHz.toFixed(0) + ' Hz';
+        if (t.capturing) document.getElementById('captureStatus').textContent = 'Measuring room... ' + Math.round((t.captureProgress || 0) * 100) + '%';
+        else if (t.analysing) document.getElementById('captureStatus').textContent = 'Analysing measurement...';
         if (t.cvLfo !== undefined) document.getElementById('cvReadout').textContent = `CV LFO: ${t.cvLfo.toFixed(2)} · ENV: ${(t.envFollower || 0).toFixed(2)}`;
         if (t.learnedCc !== undefined && t.learnedCc >= 0) document.getElementById('midiStatus').textContent = 'CC: #' + t.learnedCc;
         if (t.peak > peakHoldDb) {
@@ -1329,7 +1385,7 @@
         if (micSrc) { try { micSrc.disconnect(); } catch (e) {} micSrc = null; }
         if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
         micOn = false; if (!emuTimer && !emuSrcNode) emuPlaying = false;
-        btn.classList.remove('active'); document.getElementById('captureStatus').textContent = 'Mode Notch: 115 Hz';
+        btn.classList.remove('active'); document.getElementById('captureStatus').textContent = roomStatusText();
       }
     }
     const _bufL = new Float32Array(256), _bufR = new Float32Array(256);

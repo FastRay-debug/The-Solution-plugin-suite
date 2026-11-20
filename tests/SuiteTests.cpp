@@ -455,6 +455,87 @@ static void testRackLink()
     std::printf ("  done\n");
 }
 
+static void testRoomCorrection()
+{
+    std::printf ("== Room measurement + correction (simulated room loopback)\n");
+    const double fs = 48000.0; const int bs = 512;
+    juce::MidiBuffer midi;
+
+    // A fake room: 60 Hz +8 dB, 120 Hz +6 dB boom, a 300 Hz dip, 3 ms latency and an echo.
+    using SolutionDSP::RoomCorrector;
+    const std::array<std::array<double, 5>, 3> room { RoomCorrector::peaking (fs, 60, 8, 4), RoomCorrector::peaking (fs, 120, 6, 3), RoomCorrector::peaking (fs, 300, -5, 2) };
+    std::array<std::array<double, 2>, 3> z {};
+    std::vector<float> delayLine ((size_t) (0.003 * fs) + 1, 0.0f), echo ((size_t) (0.011 * fs) + 1, 0.0f);
+    size_t dp = 0, ep = 0;
+    auto roomSample = [&] (float x)
+    {
+        double y = x;
+        for (size_t b = 0; b < room.size(); ++b)
+        {
+            const auto& c = room[b]; auto& st = z[b];
+            const double out = c[0] * y + st[0]; st[0] = c[1] * y - c[3] * out + st[1]; st[1] = c[2] * y - c[4] * out; y = out;
+        }
+        const float delayed = delayLine[dp]; delayLine[dp] = (float) y; dp = (dp + 1) % delayLine.size();
+        const float e = echo[ep]; echo[ep] = delayed; ep = (ep + 1) % echo.size();
+        return 0.5f * (delayed + 0.3f * e);
+    };
+
+    SolutionAudioProcessor proc;
+    proc.prepareToPlay (fs, bs);
+    proc.triggerRoomSweep (3.0f);
+    EXPECT (proc.isRoomCapturing(), "measurement didn't start");
+
+    juce::AudioBuffer<float> io (2, bs); io.clear();
+    std::vector<float> mic ((size_t) bs, 0.0f);
+    int guard = 0;
+    while (proc.isRoomCapturing() && ++guard < 2000)
+    {
+        for (int i = 0; i < bs; ++i) { io.setSample (0, i, mic[(size_t) i]); io.setSample (1, i, mic[(size_t) i]); }   // mic -> input
+        proc.processBlock (io, midi);                                                                                 // output -> speakers
+        for (int i = 0; i < bs; ++i) mic[(size_t) i] = roomSample (io.getSample (0, i));
+    }
+    for (int k = 0; k < 500 && ! proc.pollRoomAnalysis(); ++k) juce::Thread::sleep (20);
+    const auto& a = proc.getRoomAnalysis();
+    EXPECT (a.valid, "analysis failed: %s", a.message.toRawUTF8());
+
+    auto rangeMax = [&] (const auto& arr, float lo, float hi) {
+        float m = 0.0f;
+        for (int i = 0; i < SolutionDSP::RoomAnalysis::numPoints; ++i)
+            if (a.freqs[(size_t) i] >= lo && a.freqs[(size_t) i] <= hi) m = std::max (m, std::abs (arr[(size_t) i]));
+        return m;
+    };
+    const float before = rangeMax (a.measuredDb, 40.0f, 200.0f), after = rangeMax (a.resultDb, 40.0f, 200.0f);
+    bool found60 = false, found120 = false;
+    for (const auto& b : a.bands) { found60 |= (b.freq > 50 && b.freq < 72 && b.gainDb < -4); found120 |= (b.freq > 100 && b.freq < 145 && b.gainDb < -3); }
+    std::printf ("  measured 40-200 Hz worst %.1f dB -> corrected %.1f dB, %d filters\n", before, after, (int) a.bands.size());
+    EXPECT (before > 6.0f, "measurement didn't see the simulated room boom (%.1f dB)", before);
+    EXPECT (after < 3.0f, "correction left %.1f dB of error between 40-200 Hz", after);
+    EXPECT (found60 && found120, "didn't fit cuts at the 60 Hz and 120 Hz room modes");
+    for (const auto& b : a.bands) EXPECT (b.gainDb <= 3.01f && b.gainDb >= -12.01f, "band gain %.1f dB out of range", b.gainDb);
+
+    // Correction survives a session save/reload.
+    juce::MemoryBlock state; proc.getStateInformation (state);
+    SolutionAudioProcessor reloaded; reloaded.setStateInformation (state.getData(), (int) state.getSize());
+    EXPECT (reloaded.getRoomAnalysis().valid && reloaded.getRoomAnalysis().bands.size() == a.bands.size(), "room correction not restored from the session");
+
+    // Correction actually filters audio when switched on (and not when off).
+    reloaded.prepareToPlay (fs, bs);
+    setParam (reloaded, "global_mix", 0.0f); setParam (reloaded, "stage_ceiling_guard", 0.0f);
+    auto level60 = [&] { double db = 0; for (int k = 0; k < 60; ++k) { juce::AudioBuffer<float> b (2, bs); fillSine (b, fs, 60.0, 0.1f, 0.0, k * bs); reloaded.processBlock (b, midi); db = blockRmsDb (b); } return db; };
+    const double off = level60();
+    setParam (reloaded, "room_correct_on", 1.0f);
+    const double on = level60();
+    EXPECT (off - on > 4.0, "60 Hz should be cut when correction is on (cut %.1f dB)", off - on);
+
+    // A silent mic gives a clear message instead of a bogus correction.
+    SolutionAudioProcessor deaf; deaf.prepareToPlay (fs, bs); deaf.triggerRoomSweep (1.0f);
+    guard = 0;
+    while (deaf.isRoomCapturing() && ++guard < 2000) { io.clear(); deaf.processBlock (io, midi); }
+    for (int k = 0; k < 500 && ! deaf.pollRoomAnalysis(); ++k) juce::Thread::sleep (20);
+    EXPECT (! deaf.getRoomAnalysis().valid && deaf.getRoomAnalysis().message.contains ("silent"), "silent mic should report an error");
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -464,6 +545,7 @@ int main()
     testMetering();
     testLatencyAndCeiling();
     testRackLink();
+    testRoomCorrection();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

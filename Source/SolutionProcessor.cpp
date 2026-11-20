@@ -73,6 +73,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v3: measured room correction
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "room_correct_on", 3 },     "Room Correction", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "room_correct_amount", 3 }, "Room Correction Amount", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
     // --- v2: Rack Link + Glue
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "link_group", 2 },        "Rack Link Group", 0, 4, 0,
                           juce::AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int) { return v == 0 ? juce::String ("Off") : juce::String::charToString ((juce::juce_wchar) ('A' + v - 1)); })));
@@ -87,12 +90,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
 
 void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    preparedSampleRate = sampleRate;
     juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 };
     moduleEngine.prepare (spec);
     dryCopy.setSize (2, samplesPerBlock, false, true, true);
     dryDelay.prepare (2, moduleEngine.getLatencySamples());
     ceilingLimiter.prepare (sampleRate);
     glue.prepare (sampleRate);
+    roomCorrector.prepare (sampleRate);
+    measureOut.setSize (2, samplesPerBlock, false, true, true);
     duckKey.prepare (sampleRate);
     ducker.prepare (sampleRate);
     loudness.prepare (sampleRate);
@@ -148,6 +154,12 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     for (int ch = 0; ch < 2; ++ch)
         dryCopy.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+
+    // Room measurement: record the raw input (mic) and prepare the sweep for the output.
+    const bool measuring = isRoomCapturing() && measureOut.getNumSamples() >= numSamples;
+    if (measuring)
+        measurement.process (dryCopy.getReadPointer (0), dryCopy.getReadPointer (1),
+                             measureOut.getWritePointer (0), measureOut.getWritePointer (1), numSamples);
 
     // Rack Link: publish this instance's group / duck key (taken from its input).
     const int linkGroup   = static_cast<int> (apvts.getRawParameterValue ("link_group")->load());
@@ -218,6 +230,11 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         glueGainReductionDb.store (glue.getGainReductionDb(), std::memory_order_relaxed);
     }
 
+    // Measured room correction (for your monitoring chain).
+    roomCorrector.process (left, right, numSamples,
+                           apvts.getRawParameterValue ("room_correct_amount")->load(),
+                           apvts.getRawParameterValue ("room_correct_on")->load() > 0.5f && ! p.tapeCalTone);
+
     // True-peak ceiling guard (look-ahead limiter; always in the path so latency never changes).
     ceilingLimiter.process (buffer, numSamples, ceilingLin, ceilingOn);
     limiterGainReductionDb.store (ceilingLimiter.getGainReductionDb(), std::memory_order_relaxed);
@@ -233,6 +250,10 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         sumLR += static_cast<double> (outL) * outR;
         maxPeak = std::max (maxPeak, std::max (std::abs (outL), std::abs (outR)));
     }
+
+    if (measuring)    // during a measurement the speakers get only the sweep
+        for (int ch = 0; ch < 2; ++ch)
+            buffer.copyFrom (ch, 0, measureOut, ch, 0, numSamples);
 
     const float rmsL = static_cast<float> (std::sqrt (sumL2 / numSamples));
     const float rmsR = static_cast<float> (std::sqrt (sumR2 / numSamples));
@@ -277,6 +298,61 @@ void SolutionAudioProcessor::updateTrackProperties (const TrackProperties& prope
         rackLinkBus->slots[(size_t) rackSlot].trackName = *properties.name;   // message thread
 }
 
+void SolutionAudioProcessor::triggerRoomSweep (float seconds)
+{
+    if (isRoomCapturing() || analysisBusy.load() || preparedSampleRate <= 0.0)
+        return;
+    measurement.arm (preparedSampleRate, seconds);
+}
+
+bool SolutionAudioProcessor::pollRoomAnalysis()
+{
+    using State = SolutionDSP::RoomMeasurement::State;
+    if (measurement.getState() == State::finished && ! analysisBusy.exchange (true))
+    {
+        analysisPool.addJob ([this]
+        {
+            auto result = std::make_unique<SolutionDSP::RoomAnalysis> (measurement.analyse());
+            const juce::ScopedLock sl (analysisLock);
+            finishedAnalysis = std::move (result);
+        });
+    }
+
+    std::unique_ptr<SolutionDSP::RoomAnalysis> done;
+    {
+        const juce::ScopedLock sl (analysisLock);
+        done = std::move (finishedAnalysis);
+    }
+    if (done == nullptr)
+        return false;
+
+    measurement.markConsumed();
+    analysisBusy = false;
+    if (done->valid)
+        applyRoomAnalysis (*done, true);
+    else
+        roomAnalysis.message = done->message;
+    return true;
+}
+
+void SolutionAudioProcessor::applyRoomAnalysis (const SolutionDSP::RoomAnalysis& analysis, bool saveToState)
+{
+    roomAnalysis = analysis;
+    roomCorrector.setBands (analysis.bands);
+    if (! saveToState)
+        return;
+
+    // Save bands + curves with the session so correction survives reloads.
+    apvts.state.removeChild (apvts.state.getChildWithName ("ROOMCORRECTION"), nullptr);
+    juce::ValueTree rc ("ROOMCORRECTION");
+    for (const auto& b : analysis.bands)
+        rc.appendChild (juce::ValueTree ("BAND", { { "freq", b.freq }, { "gain", b.gainDb }, { "q", b.q } }), nullptr);
+    auto join = [] (const auto& arr) { juce::StringArray sa; for (float v : arr) sa.add (juce::String (v, 2)); return sa.joinIntoString (","); };
+    rc.setProperty ("measured", join (analysis.measuredDb), nullptr);
+    rc.setProperty ("message", analysis.message, nullptr);
+    apvts.state.appendChild (rc, nullptr);
+}
+
 void SolutionAudioProcessor::setCurrentProgram (int index)
 {
     if (presets.loadFactoryPreset (index))
@@ -317,6 +393,29 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
         DBG ("Session was saved by a newer version of The Solution - loading what we understand");
     migrateState (tree, savedVersion);
     apvts.replaceState (tree);
+
+    // Restore a saved room correction.
+    SolutionDSP::RoomAnalysis restored;
+    const auto rc = apvts.state.getChildWithName ("ROOMCORRECTION");
+    if (rc.isValid())
+    {
+        for (const auto& b : rc)
+            restored.bands.push_back ({ (float) b.getProperty ("freq"), (float) b.getProperty ("gain"), (float) b.getProperty ("q") });
+        juce::StringArray measured; measured.addTokens (rc.getProperty ("measured").toString(), ",", {});
+        for (int i = 0; i < SolutionDSP::RoomAnalysis::numPoints; ++i)
+        {
+            restored.freqs[(size_t) i] = SolutionDSP::RoomAnalysis::pointFreq (i);
+            restored.measuredDb[(size_t) i] = i < measured.size() ? measured[i].getFloatValue() : 0.0f;
+            double corr = 0.0;
+            for (const auto& b : restored.bands)
+                corr += SolutionDSP::RoomCorrector::magnitudeDb (SolutionDSP::RoomCorrector::peaking (48000.0, b.freq, b.gainDb, b.q), 48000.0, restored.freqs[(size_t) i]);
+            restored.correctionDb[(size_t) i] = (float) corr;
+            restored.resultDb[(size_t) i] = restored.measuredDb[(size_t) i] + (float) corr;
+        }
+        restored.valid = true;
+        restored.message = rc.getProperty ("message").toString();
+    }
+    applyRoomAnalysis (restored, false);
     markParamsChanged();
 }
 

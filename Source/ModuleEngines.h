@@ -152,8 +152,7 @@ namespace SolutionDSP
             lowShelf.prepare (spec);
             midPeak.prepare (spec);
             highShelf.prepare (spec);
-            roomNotch.prepare (spec);
-            for (auto* f : { &lowShelf, &midPeak, &highShelf, &roomNotch })
+                        for (auto* f : { &lowShelf, &midPeak, &highShelf })
                 preallocateBiquad (*f, sampleRate);
             setProfile (currentProfile);
         }
@@ -165,22 +164,9 @@ namespace SolutionDSP
             lowShelf.reset();
             midPeak.reset();
             highShelf.reset();
-            roomNotch.reset();
             if (neuralModel != nullptr)
                 neuralModel->reset();
         }
-
-        void triggerSweepCapture (float seconds = 2.0f)
-        {
-            const float clamped = std::clamp (seconds, 1.0f, 10.0f);
-            captureTotalSamples = std::max (1, static_cast<int> (sampleRate * clamped));
-            captureSamplesRemaining = captureTotalSamples;
-            capturedPeakEnergy = 0.0f;
-            capturedModeHz = 115.0f;
-        }
-
-        bool isCapturing() const { return captureSamplesRemaining > 0; }
-        float getCapturedModeHz() const { return capturedModeHz; }
 
         bool loadNeuralProfile (const juce::File& jsonFile)
         {
@@ -232,28 +218,11 @@ namespace SolutionDSP
                 tapMsL = 0.0f; tapMsR = 0.0f;
             }
 
-            *roomNotch.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, capturedModeHz, 4.0f, 0.72f);
         }
 
         void process (juce::AudioBuffer<float>& buffer, float mix, int profileIndex)
         {
             const int numSamples = buffer.getNumSamples();
-
-            if (captureSamplesRemaining > 0)
-            {
-                float blockEnergy = 0.0f;
-                for (int i = 0; i < numSamples; ++i)
-                    blockEnergy += std::abs (buffer.getSample (0, i));
-                if (blockEnergy > capturedPeakEnergy)
-                {
-                    capturedPeakEnergy = blockEnergy;
-                    const float progress = 1.0f - (static_cast<float> (captureSamplesRemaining) / static_cast<float> (std::max (1, captureTotalSamples)));
-                    capturedModeHz = std::clamp (45.0f + progress * 220.0f, 45.0f, 265.0f);
-                }
-                captureSamplesRemaining = std::max (0, captureSamplesRemaining - numSamples);
-                if (captureSamplesRemaining == 0)
-                    setProfile (currentProfile);
-            }
 
             if (mix <= 0.001f || profileIndex == 0)
                 return;
@@ -270,7 +239,6 @@ namespace SolutionDSP
             lowShelf.process (ctx);
             midPeak.process (ctx);
             highShelf.process (ctx);
-            roomNotch.process (ctx);
 
             const float dL = static_cast<float> ((tapMsL * 0.001) * sampleRate);
             const float dR = static_cast<float> ((tapMsR * 0.001) * sampleRate);
@@ -309,15 +277,11 @@ namespace SolutionDSP
     private:
         double sampleRate = 48000.0;
         int currentProfile = 0;
-        int captureSamplesRemaining = 0;
-        int captureTotalSamples = 96000;
-        float capturedPeakEnergy = 0.0f;
-        float capturedModeHz = 115.0f;
         float tapMsL = 0.0f, tapMsR = 0.0f;
         juce::AudioBuffer<float> wetBuffer;
         juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayL { 16384 };
         juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayR { 16384 };
-        juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> lowShelf, midPeak, highShelf, roomNotch;
+        juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> lowShelf, midPeak, highShelf;
         std::unique_ptr<RTNeural::Model<float>> neuralModel;
     };
 

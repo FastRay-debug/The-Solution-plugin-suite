@@ -18,6 +18,7 @@ private:
     void sendPresetList (const juce::String& message = {});
     void handlePresetCommand (const juce::var& data);
     void sendRackState();
+    void sendRoomResult();
     int frameCounter = 0;
     static juce::File findSharedSkinsFolder();
 

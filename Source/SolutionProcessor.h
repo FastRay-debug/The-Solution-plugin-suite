@@ -10,6 +10,7 @@
 #include "PresetManager.h"
 #include "Metering.h"
 #include "Dynamics.h"
+#include "RoomCorrection.h"
 #include <atomic>
 #include <array>
 
@@ -45,9 +46,14 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    void triggerRoomSweep (float seconds = 2.0f) { moduleEngine.getRoomMatcher().triggerSweepCapture (seconds); }
-    bool isRoomCapturing() const { return moduleEngine.getRoomMatcher().isCapturing(); }
-    float getCapturedModeHz() const { return moduleEngine.getRoomMatcher().getCapturedModeHz(); }
+    // Room measurement (message thread). Output plays a sweep while the input (mic) is recorded.
+    void triggerRoomSweep (float seconds = 2.0f);
+    bool isRoomCapturing() const { return measurement.getState() == SolutionDSP::RoomMeasurement::State::running; }
+    float getRoomCaptureProgress() const { return measurement.getProgress(); }
+    // Call regularly from the message thread; returns true when a new analysis was applied.
+    bool pollRoomAnalysis();
+    const SolutionDSP::RoomAnalysis& getRoomAnalysis() const { return roomAnalysis; }
+    bool isRoomAnalysing() const { return analysisBusy.load(); }
     int getRackLinkCount() const { return rackLinkBus->activeInstances.load (std::memory_order_relaxed); }
     int getRackSlot() const { return rackSlot; }
     SolutionDSP::RackLinkBus& getRackBus() { return *rackLinkBus; }
@@ -64,7 +70,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 2;   // v2: Rack Link + Glue parameters
+    static constexpr int stateVersion = 3;   // v2: Rack Link + Glue, v3: room correction
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -102,7 +108,17 @@ private:
     SolutionDSP::GlueCompressor glue;
     SolutionDSP::DuckKeyFollower duckKey;
     SolutionDSP::LinkDucker ducker;
+    SolutionDSP::RoomMeasurement measurement;
+    SolutionDSP::RoomCorrector roomCorrector;
+    juce::AudioBuffer<float> measureOut;
+    SolutionDSP::RoomAnalysis roomAnalysis;                      // message thread
+    std::unique_ptr<SolutionDSP::RoomAnalysis> finishedAnalysis; // handed over from the worker
+    juce::CriticalSection analysisLock;
+    std::atomic<bool> analysisBusy { false };
+    void applyRoomAnalysis (const SolutionDSP::RoomAnalysis&, bool saveToState);
+    juce::ThreadPool analysisPool { 1 };                         // declared last: joins first on destruction
     int rackSlot = -1;
+    double preparedSampleRate = 0.0;
 
     std::atomic<int> learnArmedIndex { -1 };
     std::array<std::atomic<int>, 128> ccToParamIndex;

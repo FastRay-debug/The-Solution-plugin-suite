@@ -119,6 +119,7 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                    {
                        sendParamState();
                        sendPresetList();
+                       sendRoomResult();
                    })
                    .withEventListener ("setUiProp", [this] (const juce::var& data)
                    {
@@ -233,8 +234,33 @@ void SolutionAudioProcessorEditor::sendRackState()
     webView.emitEventIfBrowserIsVisible ("rack", juce::var (payload.get()));
 }
 
+void SolutionAudioProcessorEditor::sendRoomResult()
+{
+    const auto& a = audioProcessor.getRoomAnalysis();
+    auto toArray = [] (const auto& arr) { juce::Array<juce::var> out; for (float v : arr) out.add (std::round (v * 100.0f) / 100.0f); return out; };
+    juce::Array<juce::var> bands;
+    for (const auto& b : a.bands)
+    {
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("freq", b.freq); o->setProperty ("gain", b.gainDb); o->setProperty ("q", b.q);
+        bands.add (juce::var (o.get()));
+    }
+    juce::DynamicObject::Ptr payload = new juce::DynamicObject();
+    payload->setProperty ("valid", a.valid);
+    payload->setProperty ("message", a.message);
+    payload->setProperty ("freqs", toArray (a.freqs));
+    payload->setProperty ("measured", toArray (a.measuredDb));
+    payload->setProperty ("correction", toArray (a.correctionDb));
+    payload->setProperty ("result", toArray (a.resultDb));
+    payload->setProperty ("bands", bands);
+    webView.emitEventIfBrowserIsVisible ("roomResult", juce::var (payload.get()));
+}
+
 void SolutionAudioProcessorEditor::timerCallback()
 {
+    if (audioProcessor.pollRoomAnalysis())
+        sendRoomResult();
+
     if (audioProcessor.consumeParamsChanged())
         sendParamState();
     if (++frameCounter % 12 == 0)     // 5 times a second
@@ -254,7 +280,8 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("limiterGr",     audioProcessor.limiterGainReductionDb.load (std::memory_order_relaxed));
     payload->setProperty ("rackLinks",     audioProcessor.getRackLinkCount());
     payload->setProperty ("capturing",     audioProcessor.isRoomCapturing());
-    payload->setProperty ("capturedHz",    audioProcessor.getCapturedModeHz());
+    payload->setProperty ("captureProgress", audioProcessor.getRoomCaptureProgress());
+    payload->setProperty ("analysing",     audioProcessor.isRoomAnalysing());
     payload->setProperty ("cvLfo",         audioProcessor.getCvLfo());
     payload->setProperty ("envFollower",   audioProcessor.getEnvFollower());
     payload->setProperty ("learnedCc",     audioProcessor.getLastLearnedCc());
