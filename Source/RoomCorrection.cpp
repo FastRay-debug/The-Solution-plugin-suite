@@ -18,61 +18,82 @@ namespace
             if (b1 < b0) b1 = b0;
             double power = 0.0;
             for (int b = b0; b <= b1; ++b) power += std::pow (10.0, magDb[(size_t) b] / 10.0);
-            out.measuredDb[(size_t) i] = (float) (10.0 * std::log10 (power / (b1 - b0 + 1) + 1e-20));
+            out.rawDb[(size_t) i] = (float) (10.0 * std::log10 (power / (b1 - b0 + 1) + 1e-20));
         }
     }
 
-    void fitCorrection (RoomAnalysis& a, double fs)
-    {
-        // Normalise so the 200 Hz - 2 kHz average sits at 0 dB.
-        double ref = 0.0; int n = 0;
-        for (int i = 0; i < RoomAnalysis::numPoints; ++i)
-            if (a.freqs[(size_t) i] >= 200.0f && a.freqs[(size_t) i] <= 2000.0f) { ref += a.measuredDb[(size_t) i]; ++n; }
-        ref /= std::max (1, n);
-        for (auto& v : a.measuredDb) v -= (float) ref;
-
-        std::array<float, RoomAnalysis::numPoints> corr {};
-        auto inRange = [&] (int i) { return a.freqs[(size_t) i] >= 25.0f && a.freqs[(size_t) i] <= 5000.0f; };
-
-        for (int iter = 0; iter < RoomCorrector::maxBands; ++iter)
-        {
-            // Largest remaining deviation (peaks weigh fully; dips count half - boosting nulls rarely works).
-            int best = -1; float bestScore = 0.0f;
-            for (int i = 0; i < RoomAnalysis::numPoints; ++i)
-            {
-                if (! inRange (i)) continue;
-                const float err = a.measuredDb[(size_t) i] + corr[(size_t) i];
-                const float score = err > 0.0f ? err : -0.5f * err;
-                if (score > bestScore) { bestScore = score; best = i; }
-            }
-            if (best < 0 || bestScore < 1.5f) break;
-
-            const float err = a.measuredDb[(size_t) best] + corr[(size_t) best];
-            const float gain = juce::jlimit (-12.0f, 3.0f, -err);
-
-            // Bandwidth from where the error falls to half its height.
-            int lo = best, hi = best;
-            while (lo > 0 && std::abs (a.measuredDb[(size_t) lo] + corr[(size_t) lo]) > std::abs (err) * 0.5f) --lo;
-            while (hi < RoomAnalysis::numPoints - 1 && std::abs (a.measuredDb[(size_t) hi] + corr[(size_t) hi]) > std::abs (err) * 0.5f) ++hi;
-            const double octaves = std::max (0.1, std::log2 ((double) a.freqs[(size_t) hi] / a.freqs[(size_t) lo]));
-            const double q = juce::jlimit (0.5, 12.0, std::sqrt (std::pow (2.0, octaves)) / (std::pow (2.0, octaves) - 1.0));
-
-            EqBand band { a.freqs[(size_t) best], gain, (float) q };
-            a.bands.push_back (band);
-            const auto c = RoomCorrector::peaking (fs, band.freq, band.gainDb, band.q);
-            for (int i = 0; i < RoomAnalysis::numPoints; ++i)
-                corr[(size_t) i] += (float) RoomCorrector::magnitudeDb (c, fs, a.freqs[(size_t) i]);
-        }
-
-        for (int i = 0; i < RoomAnalysis::numPoints; ++i)
-        {
-            a.correctionDb[(size_t) i] = corr[(size_t) i];
-            a.resultDb[(size_t) i] = a.measuredDb[(size_t) i] + corr[(size_t) i];
-        }
-    }
 }
 
-RoomAnalysis RoomMeasurement::analyse() const
+void refitRoomAnalysis (RoomAnalysis& a, const MicProfile& mic, double fs)
+{
+    constexpr int N = RoomAnalysis::numPoints;
+    constexpr double pointsPerOctave = (N - 1) / (3.0 * 3.3219280948873622);   // 10 octaves-ish over 20 Hz-20 kHz
+    a.micName = mic.name;
+    a.fitLowHz = std::max (25.0f, mic.reliableLowHz);
+    a.fitHighHz = std::min (5000.0f, mic.reliableHighHz);
+    a.bands.clear();
+
+    // 1. Remove the mic's own colouration.
+    std::array<float, N> comp {};
+    for (int i = 0; i < N; ++i)
+        comp[(size_t) i] = a.rawDb[(size_t) i] - mic.responseAt (a.freqs[(size_t) i]);
+
+    // 2. Extra smoothing for less trustworthy mics (beyond the 1/6 octave already applied).
+    const int half = (int) std::round (std::max (0.0, (mic.smoothingOctaves - 1.0 / 6.0)) * pointsPerOctave / 2.0);
+    for (int i = 0; i < N; ++i)
+    {
+        double power = 0.0; int n = 0;
+        for (int k = std::max (0, i - half); k <= std::min (N - 1, i + half); ++k) { power += std::pow (10.0, comp[(size_t) k] / 10.0); ++n; }
+        a.measuredDb[(size_t) i] = (float) (10.0 * std::log10 (power / n + 1e-20));
+    }
+
+    // 3. Normalise so the trusted mid-band average sits at 0 dB.
+    const float refLo = std::max (200.0f, a.fitLowHz), refHi = std::min (2000.0f, a.fitHighHz);
+    double ref = 0.0; int n = 0;
+    for (int i = 0; i < N; ++i)
+        if (a.freqs[(size_t) i] >= refLo && a.freqs[(size_t) i] <= refHi) { ref += a.measuredDb[(size_t) i]; ++n; }
+    ref /= std::max (1, n);
+    for (auto& v : a.measuredDb) v -= (float) ref;
+
+    // 4. Fit peaking filters only where this mic can be trusted.
+    std::array<float, N> corr {};
+    auto inRange = [&] (int i) { return a.freqs[(size_t) i] >= a.fitLowHz && a.freqs[(size_t) i] <= a.fitHighHz; };
+    for (int iter = 0; iter < RoomCorrector::maxBands; ++iter)
+    {
+        int best = -1; float bestScore = 0.0f;
+        for (int i = 0; i < N; ++i)
+        {
+            if (! inRange (i)) continue;
+            const float err = a.measuredDb[(size_t) i] + corr[(size_t) i];
+            const float score = err > 0.0f ? err : -0.5f * err;     // dips count half: boosting nulls rarely works
+            if (score > bestScore) { bestScore = score; best = i; }
+        }
+        if (best < 0 || bestScore < 1.5f) break;
+
+        const float err = a.measuredDb[(size_t) best] + corr[(size_t) best];
+        const float gain = juce::jlimit (-mic.maxCutDb, 3.0f, -err);
+        int lo = best, hi = best;
+        while (lo > 0 && std::abs (a.measuredDb[(size_t) lo] + corr[(size_t) lo]) > std::abs (err) * 0.5f) --lo;
+        while (hi < N - 1 && std::abs (a.measuredDb[(size_t) hi] + corr[(size_t) hi]) > std::abs (err) * 0.5f) ++hi;
+        const double octaves = std::max (0.1, std::log2 ((double) a.freqs[(size_t) hi] / a.freqs[(size_t) lo]));
+        const double q = juce::jlimit (0.5, 12.0, std::sqrt (std::pow (2.0, octaves)) / (std::pow (2.0, octaves) - 1.0));
+
+        EqBand band { a.freqs[(size_t) best], gain, (float) q };
+        a.bands.push_back (band);
+        const auto c = RoomCorrector::peaking (fs, band.freq, band.gainDb, band.q);
+        for (int i = 0; i < N; ++i)
+            corr[(size_t) i] += (float) RoomCorrector::magnitudeDb (c, fs, a.freqs[(size_t) i]);
+    }
+    for (int i = 0; i < N; ++i)
+    {
+        a.correctionDb[(size_t) i] = corr[(size_t) i];
+        a.resultDb[(size_t) i] = a.measuredDb[(size_t) i] + corr[(size_t) i];
+    }
+    a.message = juce::String (a.bands.size()) + " correction filter" + (a.bands.size() == 1 ? "" : "s") + " fitted ("
+              + juce::String (juce::roundToInt (a.fitLowHz)) + " Hz-" + juce::String (a.fitHighHz / 1000.0f, 1) + " kHz, " + mic.name + ")";
+}
+
+RoomAnalysis RoomMeasurement::analyse (const MicProfile& mic) const
 {
     RoomAnalysis result;
     if (state.load() != State::finished || sweep.empty())
@@ -131,11 +152,11 @@ RoomAnalysis RoomMeasurement::analyse() const
 
     std::vector<float> magDb ((size_t) M / 2);
     for (int k = 0; k < M / 2; ++k) magDb[(size_t) k] = (float) (20.0 * std::log10 (std::abs (spec[(size_t) k]) + 1e-12));
+    const auto warning = result.message;
     smoothToPoints (magDb, fs / M, result);
-    fitCorrection (result, fs);
-
+    refitRoomAnalysis (result, mic, fs);
     result.valid = true;
-    result.message += juce::String (result.bands.size()) + " correction filter" + (result.bands.size() == 1 ? "" : "s") + " fitted";
+    result.message = warning + result.message;
     return result;
 }
 }

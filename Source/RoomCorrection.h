@@ -6,6 +6,7 @@
 #include <cmath>
 #include <complex>
 #include <vector>
+#include "MicProfiles.h"
 
 // Real room measurement + correction.
 //  1. Measure: the plugin plays an exponential sine sweep to the speakers while recording
@@ -20,10 +21,14 @@ namespace SolutionDSP
     struct RoomAnalysis
     {
         static constexpr int numPoints = 240;               // log-spaced 20 Hz - 20 kHz
-        std::array<float, numPoints> freqs {}, measuredDb {}, correctionDb {}, resultDb {};
+        std::array<float, numPoints> freqs {};
+        std::array<float, numPoints> rawDb {};          // as the mic heard it (1/6-oct smoothed, unnormalised)
+        std::array<float, numPoints> measuredDb {};     // after mic compensation + normalisation
+        std::array<float, numPoints> correctionDb {}, resultDb {};
         std::vector<EqBand> bands;
         bool valid = false;
-        juce::String message;
+        juce::String message, micName;
+        float fitLowHz = 25.0f, fitHighHz = 5000.0f;
 
         static float pointFreq (int i) { return 20.0f * std::pow (1000.0f, (float) i / (numPoints - 1)); }
     };
@@ -75,7 +80,7 @@ namespace SolutionDSP
         }
 
         // Background thread, after finished.
-        RoomAnalysis analyse() const;
+        RoomAnalysis analyse (const MicProfile& mic) const;
         void markConsumed() { state.store (State::idle); }
 
     private:
@@ -85,6 +90,9 @@ namespace SolutionDSP
         std::atomic<int> position { 0 };
         std::atomic<State> state { State::idle };
     };
+
+    // Recompute compensation + correction from the stored raw response (e.g. after changing mic).
+    void refitRoomAnalysis (RoomAnalysis& analysis, const MicProfile& mic, double sampleRate);
 
     //==========================================================================
     // Applies the fitted correction filters (stereo, double precision, allocation-free).

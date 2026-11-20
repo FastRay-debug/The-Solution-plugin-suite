@@ -573,11 +573,18 @@
         <span style="color:#EF4444">■ Your room</span><span style="color:var(--gold)">■ Correction</span><span style="color:#10B981">■ Corrected</span>
         <span id="roomMsg" style="color:var(--accent2);margin-left:auto;"></span>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;font-size:11px;">
+        <span>MEASURED WITH</span>
+        <select id="micSelect" onchange="if (this.value === 'calfile') return; window.__JUCE__ && window.__JUCE__.backend.emitEvent('setMic', { id: this.value })" style="flex:1;"></select>
+        <button onclick="window.__JUCE__ && window.__JUCE__.backend.emitEvent('loadMicCal', {})" data-tip="Use the calibration file that came with your mic">LOAD CAL FILE...</button>
+      </div>
+      <div id="micNote" style="font-size:10px;color:var(--mute);"></div>
       <div class="ctrl"><label>CORRECTION AMOUNT <span id="v-room_correct_amount">100%</span></label>
         <input type="range" data-sync="room_correct_amount" min="0" max="1" step="0.01" value="1" oninput="bind('room_correct_amount', this.value, '%', 100)"></div>
       <div style="font-size:10px;color:var(--mute);line-height:1.5;">
-        <b>How to measure:</b> put this module on a track whose <b>input is your measurement mic</b> and whose <b>output goes to your speakers</b>.
-        Place the mic where your head is, set a comfortable volume, then press <b>● SWEEP</b> and stay quiet. Correction mostly cuts room boom (25 Hz-5 kHz) and never boosts more than 3 dB.
+        <b>How to measure:</b> put this module on a track whose <b>input is your mic</b> (any mic) and whose <b>output goes to your speakers</b>.
+        <b>Any mic works</b> - pick it above (or "Any / unknown") so the plugin can allow for its sound and only correct where it can be trusted. You can change it after measuring; no need to re-measure.
+        Place the mic where your head is, set a comfortable volume, then press <b>● SWEEP</b> and stay quiet. Correction mostly cuts room boom and never boosts more than 3 dB.
         Use it on your monitoring path only - turn it off before you bounce.
       </div>
       <button onclick="document.getElementById('roomCorrModal').classList.remove('open')">CLOSE</button>
@@ -1107,6 +1114,18 @@
       }
       svg.innerHTML = g;
       document.getElementById('roomMsg').textContent = m ? (m.message || '') : '';
+      if (m && m.mics) {
+        const sel = document.getElementById('micSelect');
+        sel.innerHTML = m.mics.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`).join('') +
+          (m.micId === 'calfile' ? `<option value="calfile">${escapeHtml(m.micName)}</option>` : '');
+        sel.value = m.micId;
+        document.getElementById('micNote').textContent = 'Correcting ' + Math.round(m.fitLow) + ' Hz - ' + (m.fitHigh / 1000).toFixed(1) + ' kHz, where this mic can be trusted.' +
+          (m.micId === 'calfile' || m.micId === 'measurement' ? '' : ' Built-in mic curves are approximate; a calibration file is exact.');
+      }
+      if (m && m.valid && m.fitLow) {
+        const shade = (a, b) => `<rect x="${x(a)}" y="8" width="${Math.max(0, x(b) - x(a))}" height="${H - 24}" fill="#000" opacity="0.45"/>`;
+        svg.innerHTML += shade(20, m.fitLow) + shade(m.fitHigh, 20000);
+      }
     }
     function openRack() { renderRack(); document.getElementById('rackModal').classList.add('open'); }
     function renderRack() {
@@ -1251,6 +1270,7 @@
         document.getElementById('captureBtn').classList.remove('active');
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
+      window.__JUCE__.backend.addEventListener('roomNotice', (msg) => alert(msg));
       window.__JUCE__.backend.addEventListener('rack', (m) => {
         window._rackState = m;
         if (document.getElementById('rackModal').classList.contains('open')) renderRack();

@@ -54,6 +54,11 @@ public:
     bool pollRoomAnalysis();
     const SolutionDSP::RoomAnalysis& getRoomAnalysis() const { return roomAnalysis; }
     bool isRoomAnalysing() const { return analysisBusy.load(); }
+
+    // Which mic did the measuring (message thread). Changing it refits the correction instantly.
+    const SolutionDSP::MicProfile& getMicProfile() const { return micProfile; }
+    void setMicProfile (const juce::String& builtInId);
+    bool loadMicCalibration (const juce::File& file);      // REW/miniDSP style .cal/.txt
     int getRackLinkCount() const { return rackLinkBus->activeInstances.load (std::memory_order_relaxed); }
     int getRackSlot() const { return rackSlot; }
     SolutionDSP::RackLinkBus& getRackBus() { return *rackLinkBus; }
@@ -116,6 +121,9 @@ private:
     juce::CriticalSection analysisLock;
     std::atomic<bool> analysisBusy { false };
     void applyRoomAnalysis (const SolutionDSP::RoomAnalysis&, bool saveToState);
+    void saveMicToState();
+    void refitForCurrentMic();
+    SolutionDSP::MicProfile micProfile { SolutionDSP::findMicProfile ("generic") };
     juce::ThreadPool analysisPool { 1 };                         // declared last: joins first on destruction
     int rackSlot = -1;
     double preparedSampleRate = 0.0;

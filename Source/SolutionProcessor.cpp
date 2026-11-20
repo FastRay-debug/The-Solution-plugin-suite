@@ -310,9 +310,9 @@ bool SolutionAudioProcessor::pollRoomAnalysis()
     using State = SolutionDSP::RoomMeasurement::State;
     if (measurement.getState() == State::finished && ! analysisBusy.exchange (true))
     {
-        analysisPool.addJob ([this]
+        analysisPool.addJob ([this, mic = micProfile]
         {
-            auto result = std::make_unique<SolutionDSP::RoomAnalysis> (measurement.analyse());
+            auto result = std::make_unique<SolutionDSP::RoomAnalysis> (measurement.analyse (mic));
             const juce::ScopedLock sl (analysisLock);
             finishedAnalysis = std::move (result);
         });
@@ -348,9 +348,48 @@ void SolutionAudioProcessor::applyRoomAnalysis (const SolutionDSP::RoomAnalysis&
     for (const auto& b : analysis.bands)
         rc.appendChild (juce::ValueTree ("BAND", { { "freq", b.freq }, { "gain", b.gainDb }, { "q", b.q } }), nullptr);
     auto join = [] (const auto& arr) { juce::StringArray sa; for (float v : arr) sa.add (juce::String (v, 2)); return sa.joinIntoString (","); };
-    rc.setProperty ("measured", join (analysis.measuredDb), nullptr);
+    rc.setProperty ("raw", join (analysis.rawDb), nullptr);   // refit on load with the saved mic
     rc.setProperty ("message", analysis.message, nullptr);
     apvts.state.appendChild (rc, nullptr);
+}
+
+void SolutionAudioProcessor::saveMicToState()
+{
+    apvts.state.setProperty ("micProfile", micProfile.id, nullptr);
+    if (micProfile.id == "calfile")
+    {
+        juce::StringArray pts;
+        for (const auto& [f, db] : micProfile.response) pts.add (juce::String (f, 2) + ":" + juce::String (db, 2));
+        apvts.state.setProperty ("micCalName", micProfile.name.fromFirstOccurrenceOf ("Calibrated: ", false, false), nullptr);
+        apvts.state.setProperty ("micCal", pts.joinIntoString (","), nullptr);
+    }
+}
+
+void SolutionAudioProcessor::refitForCurrentMic()
+{
+    if (! roomAnalysis.valid)
+        return;
+    auto updated = roomAnalysis;
+    SolutionDSP::refitRoomAnalysis (updated, micProfile, preparedSampleRate > 0.0 ? preparedSampleRate : 48000.0);
+    applyRoomAnalysis (updated, true);
+}
+
+void SolutionAudioProcessor::setMicProfile (const juce::String& builtInId)
+{
+    micProfile = SolutionDSP::findMicProfile (builtInId);
+    saveMicToState();
+    refitForCurrentMic();
+}
+
+bool SolutionAudioProcessor::loadMicCalibration (const juce::File& file)
+{
+    auto points = SolutionDSP::parseCalibrationFile (file.loadFileAsString());
+    if (points.empty())
+        return false;
+    micProfile = SolutionDSP::makeCalibratedProfile (file.getFileNameWithoutExtension(), std::move (points));
+    saveMicToState();
+    refitForCurrentMic();
+    return true;
 }
 
 void SolutionAudioProcessor::setCurrentProgram (int index)
@@ -394,26 +433,33 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
     migrateState (tree, savedVersion);
     apvts.replaceState (tree);
 
-    // Restore a saved room correction.
+    // Restore the measuring mic, then the saved room measurement (refitted for that mic).
+    const auto micId = apvts.state.getProperty ("micProfile", "generic").toString();
+    if (micId == "calfile")
+    {
+        std::vector<std::pair<float, float>> pts;
+        for (const auto& p : juce::StringArray::fromTokens (apvts.state.getProperty ("micCal").toString(), ",", {}))
+            pts.emplace_back (p.upToFirstOccurrenceOf (":", false, false).getFloatValue(), p.fromFirstOccurrenceOf (":", false, false).getFloatValue());
+        micProfile = SolutionDSP::makeCalibratedProfile (apvts.state.getProperty ("micCalName").toString(), std::move (pts));
+    }
+    else
+        micProfile = SolutionDSP::findMicProfile (micId);
+
     SolutionDSP::RoomAnalysis restored;
     const auto rc = apvts.state.getChildWithName ("ROOMCORRECTION");
     if (rc.isValid())
     {
-        for (const auto& b : rc)
-            restored.bands.push_back ({ (float) b.getProperty ("freq"), (float) b.getProperty ("gain"), (float) b.getProperty ("q") });
-        juce::StringArray measured; measured.addTokens (rc.getProperty ("measured").toString(), ",", {});
-        for (int i = 0; i < SolutionDSP::RoomAnalysis::numPoints; ++i)
+        juce::StringArray raw; raw.addTokens (rc.getProperty ("raw").toString(), ",", {});
+        if (raw.size() == SolutionDSP::RoomAnalysis::numPoints)
         {
-            restored.freqs[(size_t) i] = SolutionDSP::RoomAnalysis::pointFreq (i);
-            restored.measuredDb[(size_t) i] = i < measured.size() ? measured[i].getFloatValue() : 0.0f;
-            double corr = 0.0;
-            for (const auto& b : restored.bands)
-                corr += SolutionDSP::RoomCorrector::magnitudeDb (SolutionDSP::RoomCorrector::peaking (48000.0, b.freq, b.gainDb, b.q), 48000.0, restored.freqs[(size_t) i]);
-            restored.correctionDb[(size_t) i] = (float) corr;
-            restored.resultDb[(size_t) i] = restored.measuredDb[(size_t) i] + (float) corr;
+            for (int i = 0; i < SolutionDSP::RoomAnalysis::numPoints; ++i)
+            {
+                restored.freqs[(size_t) i] = SolutionDSP::RoomAnalysis::pointFreq (i);
+                restored.rawDb[(size_t) i] = raw[i].getFloatValue();
+            }
+            SolutionDSP::refitRoomAnalysis (restored, micProfile, preparedSampleRate > 0.0 ? preparedSampleRate : 48000.0);
+            restored.valid = true;
         }
-        restored.valid = true;
-        restored.message = rc.getProperty ("message").toString();
     }
     applyRoomAnalysis (restored, false);
     markParamsChanged();

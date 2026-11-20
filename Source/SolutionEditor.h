@@ -19,6 +19,7 @@ private:
     void handlePresetCommand (const juce::var& data);
     void sendRackState();
     void sendRoomResult();
+    std::unique_ptr<juce::FileChooser> micFileChooser;
     int frameCounter = 0;
     static juce::File findSharedSkinsFolder();
 

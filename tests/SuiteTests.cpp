@@ -44,7 +44,8 @@ static const std::pair<const char*, ModuleId> modules[] = {
     { "TheLoft", ModuleId::Loft }, { "TheOrbit", ModuleId::Orbit }, { "TheBridge", ModuleId::Bridge },
     { "TheVoid", ModuleId::Void }, { "TheAnchor", ModuleId::Anchor }, { "TheAether", ModuleId::Aether },
     { "TheMosaic", ModuleId::Mosaic }, { "Innerspace", ModuleId::Innerspace },
-    { "TheMatrix", ModuleId::Matrix }, { "TheScope", ModuleId::Scope } };
+    { "TheMatrix", ModuleId::Matrix }, { "TheScope", ModuleId::Scope },
+    { "TheCrown", ModuleId::Crown }, { "Chimera", ModuleId::Chimera } };
 
 static ProcessParams randomParams (std::mt19937& rng)
 {
@@ -482,6 +483,7 @@ static void testRoomCorrection()
 
     SolutionAudioProcessor proc;
     proc.prepareToPlay (fs, bs);
+    proc.setMicProfile ("measurement");
     proc.triggerRoomSweep (3.0f);
     EXPECT (proc.isRoomCapturing(), "measurement didn't start");
 
@@ -513,10 +515,31 @@ static void testRoomCorrection()
     EXPECT (found60 && found120, "didn't fit cuts at the 60 Hz and 120 Hz room modes");
     for (const auto& b : a.bands) EXPECT (b.gainDb <= 3.01f && b.gainDb >= -12.01f, "band gain %.1f dB out of range", b.gainDb);
 
+    const auto measuredBands = a.bands;   // keep: switching mic below refits the live analysis
+
+    // Mic compensation: switching mic refits instantly from the stored measurement, within that mic's limits.
+    proc.setMicProfile ("laptop");
+    for (const auto& b : proc.getRoomAnalysis().bands)
+        EXPECT (b.freq >= 149.0f && b.gainDb >= -6.01f, "laptop mic: band at %.0f Hz / %.1f dB is outside its trusted range or cut limit", b.freq, b.gainDb);
+    EXPECT (proc.getRoomAnalysis().micName.contains ("Laptop"), "mic name not recorded");
+
+    // A calibration file that says "this mic has +6 dB at 60 Hz" should shrink the 60 Hz cut by about 6 dB.
+    const auto calFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("solution_test_mic.cal");
+    calFile.replaceWithText ("\"Sens Factor =-1.2dB\"\n* comment\n20 0\n40 0\n50 3\n60 6\n70 3\n90 0\n1000 0\n20000 0\n");
+    EXPECT (proc.loadMicCalibration (calFile), "calibration file not accepted");
+    float cut60 = 0.0f;
+    for (const auto& b : proc.getRoomAnalysis().bands) if (b.freq > 50 && b.freq < 72) cut60 = std::min (cut60, b.gainDb);
+    float cut60Before = 0.0f;
+    for (const auto& b : measuredBands) if (b.freq > 50 && b.freq < 72) cut60Before = std::min (cut60Before, b.gainDb);
+    EXPECT (cut60 > cut60Before + 3.0f, "calibration didn't reduce the 60 Hz cut (%.1f -> %.1f dB)", cut60Before, cut60);
+    calFile.deleteFile();
+    EXPECT (! proc.loadMicCalibration (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("missing.cal")), "missing calibration file should be rejected");
+    proc.setMicProfile ("measurement");
+
     // Correction survives a session save/reload.
     juce::MemoryBlock state; proc.getStateInformation (state);
     SolutionAudioProcessor reloaded; reloaded.setStateInformation (state.getData(), (int) state.getSize());
-    EXPECT (reloaded.getRoomAnalysis().valid && reloaded.getRoomAnalysis().bands.size() == a.bands.size(), "room correction not restored from the session");
+    EXPECT (reloaded.getRoomAnalysis().valid && reloaded.getRoomAnalysis().bands.size() == measuredBands.size(), "room correction not restored from the session");
 
     // Correction actually filters audio when switched on (and not when off).
     reloaded.prepareToPlay (fs, bs);

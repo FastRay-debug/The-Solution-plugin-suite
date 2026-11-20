@@ -13,7 +13,8 @@
 
 namespace SolutionDSP
 {
-    enum class ModuleId { Bunker, Stage, Land, Loft, Orbit, Bridge, Void, Anchor, Aether, Mosaic, Innerspace, Matrix, Scope, Unknown };
+    // Crown and Chimera are original-design modules not (yet) built as plugins; their tuning is kept.
+    enum class ModuleId { Bunker, Stage, Land, Loft, Orbit, Bridge, Void, Anchor, Aether, Mosaic, Innerspace, Matrix, Scope, Crown, Chimera, Unknown };
 
     inline ModuleId moduleIdFromName (const char* name)
     {
@@ -22,7 +23,8 @@ namespace SolutionDSP
             { "TheLoft", ModuleId::Loft },     { "TheOrbit", ModuleId::Orbit },   { "TheBridge", ModuleId::Bridge },
             { "TheVoid", ModuleId::Void },     { "TheAnchor", ModuleId::Anchor }, { "TheAether", ModuleId::Aether },
             { "TheMosaic", ModuleId::Mosaic }, { "Innerspace", ModuleId::Innerspace },
-            { "TheMatrix", ModuleId::Matrix }, { "TheScope", ModuleId::Scope } };
+            { "TheMatrix", ModuleId::Matrix }, { "TheScope", ModuleId::Scope },
+            { "TheCrown", ModuleId::Crown },   { "Chimera", ModuleId::Chimera } };
         for (const auto& [n, id] : table)
             if (std::strcmp (n, name) == 0)
                 return id;
@@ -32,7 +34,8 @@ namespace SolutionDSP
     inline const char* moduleDisplayName (ModuleId id)
     {
         static constexpr const char* names[] = { "The Bunker", "The Stage", "The Land", "The Loft", "The Orbit", "The Bridge",
-                                                 "The Void", "The Anchor", "The Aether", "The Mosaic", "Innerspace", "The Matrix", "The Scope", "Unknown" };
+                                                 "The Void", "The Anchor", "The Aether", "The Mosaic", "Innerspace", "The Matrix", "The Scope",
+                                                 "The Crown", "Chimera", "Unknown" };
         return names[std::clamp (static_cast<int> (id), 0, static_cast<int> (ModuleId::Unknown))];
     }
 
@@ -152,7 +155,8 @@ namespace SolutionDSP
             lowShelf.prepare (spec);
             midPeak.prepare (spec);
             highShelf.prepare (spec);
-                        for (auto* f : { &lowShelf, &midPeak, &highShelf })
+            modeNotch.prepare (spec);
+            for (auto* f : { &lowShelf, &midPeak, &highShelf, &modeNotch })
                 preallocateBiquad (*f, sampleRate);
             setProfile (currentProfile);
         }
@@ -164,6 +168,7 @@ namespace SolutionDSP
             lowShelf.reset();
             midPeak.reset();
             highShelf.reset();
+            modeNotch.reset();
             if (neuralModel != nullptr)
                 neuralModel->reset();
         }
@@ -218,6 +223,8 @@ namespace SolutionDSP
                 tapMsL = 0.0f; tapMsR = 0.0f;
             }
 
+            // Original suite tuning: fixed 115 Hz "mode notch" (-2.85 dB, Q 4) in every translation profile.
+            *modeNotch.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, 115.0f, 4.0f, 0.72f);
         }
 
         void process (juce::AudioBuffer<float>& buffer, float mix, int profileIndex)
@@ -239,6 +246,7 @@ namespace SolutionDSP
             lowShelf.process (ctx);
             midPeak.process (ctx);
             highShelf.process (ctx);
+            modeNotch.process (ctx);
 
             const float dL = static_cast<float> ((tapMsL * 0.001) * sampleRate);
             const float dR = static_cast<float> ((tapMsR * 0.001) * sampleRate);
@@ -281,7 +289,7 @@ namespace SolutionDSP
         juce::AudioBuffer<float> wetBuffer;
         juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayL { 16384 };
         juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayR { 16384 };
-        juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> lowShelf, midPeak, highShelf;
+        juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> lowShelf, midPeak, highShelf, modeNotch;
         std::unique_ptr<RTNeural::Model<float>> neuralModel;
     };
 
@@ -437,6 +445,7 @@ namespace SolutionDSP
                 }
             }
             else if (moduleId == ModuleId::Loft || moduleId == ModuleId::Aether || moduleId == ModuleId::Mosaic
+                     || moduleId == ModuleId::Crown || moduleId == ModuleId::Chimera
                      || moduleId == ModuleId::Stage || moduleId == ModuleId::Land || moduleId == ModuleId::Orbit || moduleId == ModuleId::Void)
             {
                 auto blk = juce::dsp::AudioBlock<float> (buffer).getSubsetChannelBlock (0, 2);
@@ -458,8 +467,9 @@ namespace SolutionDSP
             {
                 const float duckGain = p.dialogueDuck ? 0.82f : 1.0f;    // gentle mid-band duck when enabled
                 const float airDrive = 1.0f + effectiveDepth * (moduleId == ModuleId::Aether ? 2.1f : 1.6f);
-                const float clipDrive = 1.0f + (effectiveDepth + p.regenThrottle * 0.4f) * (moduleId == ModuleId::Anchor ? 2.5f : 1.4f);
-                const float morphDrive = 1.0f + effectiveDepth * 2.0f;
+                const float clipDrive = 1.0f + (effectiveDepth + p.regenThrottle * 0.4f)
+                                        * (moduleId == ModuleId::Anchor ? 2.5f : (moduleId == ModuleId::Crown ? 1.8f : 1.4f));
+                const float morphDrive = 1.0f + effectiveDepth * (moduleId == ModuleId::Chimera ? 2.4f : 2.0f);
 
                 auto base = juce::dsp::AudioBlock<float> (buffer).getSubsetChannelBlock (0, 2);
                 auto up = oversampler.processSamplesUp (base);
@@ -474,8 +484,10 @@ namespace SolutionDSP
                             case ModuleId::Loft:
                             case ModuleId::Aether:  x = 0.7f * x + 0.3f * std::tanh (x * airDrive); break;
                             case ModuleId::Anchor:
-                            case ModuleId::Bridge:  x = applyClipper (x, clipDrive); break;
-                            case ModuleId::Mosaic:  x = 0.6f * x + 0.4f * applyClipper (x, morphDrive); break;
+                            case ModuleId::Bridge:
+                            case ModuleId::Crown:   x = applyClipper (x, clipDrive); break;
+                            case ModuleId::Mosaic:
+                            case ModuleId::Chimera: x = 0.6f * x + 0.4f * applyClipper (x, morphDrive); break;
                             default: break;
                         }
                         x *= duckGain;

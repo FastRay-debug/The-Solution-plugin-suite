@@ -126,6 +126,24 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                        if (auto* obj = data.getDynamicObject())
                            audioProcessor.setUiProperty (obj->getProperty ("key").toString(), obj->getProperty ("value").toString());
                    })
+                   .withEventListener ("setMic", [this] (const juce::var& data)
+                   {
+                       if (auto* obj = data.getDynamicObject())
+                           audioProcessor.setMicProfile (obj->getProperty ("id").toString());
+                       sendRoomResult();
+                   })
+                   .withEventListener ("loadMicCal", [this] (const juce::var&)
+                   {
+                       micFileChooser = std::make_unique<juce::FileChooser> ("Choose your mic's calibration file", juce::File(), "*.cal;*.txt;*.frd;*.csv");
+                       micFileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                                    [this] (const juce::FileChooser& fc)
+                       {
+                           const auto file = fc.getResult();
+                           if (file.existsAsFile() && ! audioProcessor.loadMicCalibration (file))
+                               webView.emitEventIfBrowserIsVisible ("roomNotice", juce::var ("That file doesn't look like a mic calibration file (expected lines of: frequency dB)."));
+                           sendRoomResult();
+                       });
+                   })
                    .withEventListener ("resetLoudness", [this] (const juce::var&) { audioProcessor.loudness.requestReset(); })
                    .withEventListener ("presetCommand", [this] (const juce::var& data) { handlePresetCommand (data); }))
 {
@@ -253,6 +271,20 @@ void SolutionAudioProcessorEditor::sendRoomResult()
     payload->setProperty ("correction", toArray (a.correctionDb));
     payload->setProperty ("result", toArray (a.resultDb));
     payload->setProperty ("bands", bands);
+
+    juce::Array<juce::var> mics;
+    for (const auto& m : SolutionDSP::builtInMicProfiles())
+    {
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("id", m.id); o->setProperty ("name", m.name);
+        mics.add (juce::var (o.get()));
+    }
+    const auto& mic = audioProcessor.getMicProfile();
+    payload->setProperty ("mics", mics);
+    payload->setProperty ("micId", mic.id);
+    payload->setProperty ("micName", mic.name);
+    payload->setProperty ("fitLow", juce::jmax (25.0f, mic.reliableLowHz));
+    payload->setProperty ("fitHigh", juce::jmin (5000.0f, mic.reliableHighHz));
     webView.emitEventIfBrowserIsVisible ("roomResult", juce::var (payload.get()));
 }
 
