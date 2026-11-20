@@ -11,6 +11,7 @@
 #include "Metering.h"
 #include "Dynamics.h"
 #include "RoomCorrection.h"
+#include "Spatial.h"
 #include <atomic>
 #include <array>
 
@@ -75,7 +76,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 3;   // v2: Rack Link + Glue, v3: room correction
+    static constexpr int stateVersion = 4;   // v2: Rack Link + Glue, v3: room correction, v4: binaural
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -115,6 +116,7 @@ private:
     SolutionDSP::LinkDucker ducker;
     SolutionDSP::RoomMeasurement measurement;
     SolutionDSP::RoomCorrector roomCorrector;
+    SolutionDSP::BinauralRenderer binaural;
     juce::AudioBuffer<float> measureOut;
     SolutionDSP::RoomAnalysis roomAnalysis;                      // message thread
     std::unique_ptr<SolutionDSP::RoomAnalysis> finishedAnalysis; // handed over from the worker

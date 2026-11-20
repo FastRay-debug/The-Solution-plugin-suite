@@ -73,6 +73,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v4: binaural headphone rendering
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "binaural_mode", 4 },     "Binaural Headphone Mode", false));
     // --- v3: measured room correction
     params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "room_correct_on", 3 },     "Room Correction", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "room_correct_amount", 3 }, "Room Correction Amount", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
@@ -98,6 +100,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     ceilingLimiter.prepare (sampleRate);
     glue.prepare (sampleRate);
     roomCorrector.prepare (sampleRate);
+    binaural.prepare (sampleRate);
     measureOut.setSize (2, samplesPerBlock, false, true, true);
     duckKey.prepare (sampleRate);
     ducker.prepare (sampleRate);
@@ -197,6 +200,11 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     p.regenThrottle   = apvts.getRawParameterValue ("regen_throttle")->load();
     p.dialogueDuck    = apvts.getRawParameterValue ("dialogue_duck")->load() > 0.5f;
 
+    // Binaural mode places the sound around the head itself, so the engine's pan/Haas steps aside.
+    const bool binauralOn = apvts.getRawParameterValue ("binaural_mode")->load() > 0.5f;
+    const float binauralAz = p.azimuthDeg, binauralWidth = p.width;
+    if (binauralOn) { p.azimuthDeg = 0.0f; p.haasMs = 0.0f; }
+
     moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
 
     const bool ceilingOn   = apvts.getRawParameterValue ("stage_ceiling_guard")->load() > 0.5f;
@@ -213,6 +221,9 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             left[i]  = dryL[i] * (1.0f - p.wetMix) + left[i]  * p.wetMix;
             right[i] = dryR[i] * (1.0f - p.wetMix) + right[i] * p.wetMix;
         }
+
+    if (binauralOn && ! p.tapeCalTone)
+        binaural.process (left, right, numSamples, binauralAz, p.elevationDeg, binauralWidth);
 
     // Rack Link ducking: dip when another source in my group is playing (no routing needed).
     if (! p.tapeCalTone)

@@ -367,6 +367,7 @@
       </div>
       <div class="wing-actions">
         <button id="sculptBtn" onclick="toggleSculpt()" data-tip="Predictive Transient Sculpting">⚡ TRANSIENT SCULPT: OFF</button>
+        <button id="binauralBtn" onclick="toggleBinaural()" data-tip="Headphones: hear the mix on virtual speakers around your head. Azimuth rotates, Elevation raises, Width spreads.">🎧 BINAURAL: OFF</button>
         <button id="safeZoneBtn" onclick="toggleSafeZone()" data-tip="Visual Sub-Bass Safe-Zone Overlay (20-250 Hz)">⌖ SUB SAFE-ZONE: OFF</button>
       </div>
     </div>
@@ -988,6 +989,14 @@
     }
     function doUndo() { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('undoAction', {}); }
     function doRedo() { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('redoAction', {}); }
+    let binauralOn = false;
+    function toggleBinaural() {
+      binauralOn = !binauralOn;
+      const b = document.getElementById('binauralBtn');
+      b.classList.toggle('active', binauralOn);
+      b.textContent = binauralOn ? '🎧 BINAURAL: ON' : '🎧 BINAURAL: OFF';
+      bind('binaural_mode', binauralOn ? 1 : 0, '', 1);
+    }
     let sculptOn = false;
     function toggleSculpt() {
       sculptOn = !sculptOn;
@@ -1238,6 +1247,7 @@
       if (values.stage_ceiling_guard !== undefined && on('stage_ceiling_guard') !== guardOn) toggleCeilingGuard();
       if (values.tape_cal_tone !== undefined && on('tape_cal_tone') !== calOn) toggleCalTone();
       if (values.ultra_wide !== undefined && (values.ultra_wide > 0.001) !== uwOn) toggleUltraWide();
+      if (values.binaural_mode !== undefined && on('binaural_mode') !== binauralOn) toggleBinaural();
     }
 
     function rmsToDb(r) { return r > 0.0001 ? Math.max(-60, 20 * Math.log10(r)) : -60; }

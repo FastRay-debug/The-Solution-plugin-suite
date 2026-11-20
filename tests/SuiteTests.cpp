@@ -559,6 +559,65 @@ static void testRoomCorrection()
     std::printf ("  done\n");
 }
 
+static void testBinaural()
+{
+    std::printf ("== Binaural headphone rendering\n");
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+    {
+        auto render = [&] (float az, float el, juce::AudioBuffer<float>& out)
+        {
+            SolutionDSP::BinauralRenderer r; r.prepare (fs);
+            juce::Random rnd (11);
+            out.setSize (2, (int) fs);
+            for (int i = 0; i < out.getNumSamples(); ++i) { const float v = rnd.nextFloat() * 0.5f - 0.25f; out.setSample (0, i, v); out.setSample (1, i, v); }
+            r.process (out.getWritePointer (0), out.getWritePointer (1), out.getNumSamples(), az, el, 0.0f);   // width 0: one point source
+        };
+        auto hfEnergyDb = [&] (const juce::AudioBuffer<float>& b, int ch) {   // simple first-difference high-pass
+            double e = 0; for (int i = 1; i < b.getNumSamples(); ++i) { const double d = b.getSample (ch, i) - b.getSample (ch, i - 1); e += d * d; }
+            return 10.0 * std::log10 (e + 1e-20);
+        };
+        auto lagOfMaxXcorr = [&] (const juce::AudioBuffer<float>& b) {   // >0 = left ear late
+            int best = 0; double bestV = -1e9;
+            for (int lag = -80; lag <= 80; ++lag) {
+                double v = 0; for (int i = 200; i < b.getNumSamples() - 200; ++i) v += (double) b.getSample (1, i) * b.getSample (0, i + lag);
+                if (v > bestV) { bestV = v; best = lag; }
+            }
+            return best;
+        };
+
+        juce::AudioBuffer<float> right90, front, back;
+        render (90.0f, 0.0f, right90);
+        const double ild = hfEnergyDb (right90, 1) - hfEnergyDb (right90, 0);
+        const int lag = lagOfMaxXcorr (right90);
+        const double expected = SolutionDSP::BinauralRenderer::itdSeconds (90.0) * fs;
+        EXPECT (ild > 6.0, "source at +90 deg: right ear should be much brighter (ILD %.1f dB) at %.0f Hz", ild, fs);
+        EXPECT (std::abs (lag - expected) <= 2.0, "source at +90 deg: left ear delay %d samples, expected ~%.1f at %.0f Hz", lag, expected, fs);
+
+        render (0.0f, 0.0f, front);
+        float maxDiff = 0.0f;
+        for (int i = 0; i < front.getNumSamples(); ++i) maxDiff = std::max (maxDiff, std::abs (front.getSample (0, i) - front.getSample (1, i)));
+        EXPECT (maxDiff < 1e-5f, "a source straight ahead should reach both ears identically (diff %g)", maxDiff);
+
+        render (180.0f, 0.0f, back);
+        EXPECT (hfEnergyDb (back, 0) < hfEnergyDb (front, 0) - 1.0, "a source behind should sound duller than in front at %.0f Hz", fs);
+    }
+
+    // Through the plugin: finite, no audio-thread allocation, and actually changes the image.
+    SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 256);
+    setParam (proc, "binaural_mode", 1.0f); setParam (proc, "stage_azimuth", 60.0f);
+    juce::MidiBuffer midi; bool finite = true; int allocs = 0;
+    for (int k = 0; k < 100; ++k)
+    {
+        juce::AudioBuffer<float> b (2, 256); fillSine (b, 48000.0, 2000.0, 0.2f, 0.0, k * 256);
+        allocCount = 0; trackAllocs = true; proc.processBlock (b, midi); trackAllocs = false;
+        if (k > 0) allocs += allocCount.load();
+        for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < 256; ++i) finite &= std::isfinite (b.getSample (ch, i));
+        if (k == 99) EXPECT (blockRmsDb (b) > -40.0, "binaural mode went silent");
+    }
+    EXPECT (finite && allocs == 0, "binaural processing: finite=%d allocations=%d", (int) finite, allocs);
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -569,6 +628,7 @@ int main()
     testLatencyAndCeiling();
     testRackLink();
     testRoomCorrection();
+    testBinaural();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }
