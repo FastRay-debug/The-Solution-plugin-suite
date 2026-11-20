@@ -120,6 +120,7 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                        sendParamState();
                        sendPresetList();
                        sendRoomResult();
+                       sendCharacterState();
                    })
                    .withEventListener ("setUiProp", [this] (const juce::var& data)
                    {
@@ -143,6 +144,24 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                                webView.emitEventIfBrowserIsVisible ("roomNotice", juce::var ("That file doesn't look like a mic calibration file (expected lines of: frequency dB)."));
                            sendRoomResult();
                        });
+                   })
+                   .withEventListener ("character", [this] (const juce::var& data)
+                   {
+                       auto* obj = data.getDynamicObject();
+                       const auto cmd = obj != nullptr ? obj->getProperty ("cmd").toString() : juce::String();
+                       juce::String message;
+                       if (cmd == "select")
+                       {
+                           const auto name = obj->getProperty ("name").toString();
+                           message = audioProcessor.setCharacterModel (name);
+                           if (message.isEmpty()) message = name.isEmpty() ? "Character off" : "Loaded " + name;
+                       }
+                       else if (cmd == "reveal")
+                       {
+                           SolutionDSP::NeuralCharacter::getModelsFolder().createDirectory();
+                           SolutionDSP::NeuralCharacter::getModelsFolder().startAsProcess();
+                       }
+                       sendCharacterState (message);
                    })
                    .withEventListener ("assistant", [this] (const juce::var& data) { handleAssistantCommand (data); })
                    .withEventListener ("resetLoudness", [this] (const juce::var&) { audioProcessor.loudness.requestReset(); })
@@ -354,8 +373,28 @@ void SolutionAudioProcessorEditor::sendAssistantState()
     webView.emitEventIfBrowserIsVisible ("assistantState", juce::var (payload.get()));
 }
 
+void SolutionAudioProcessorEditor::sendCharacterState (const juce::String& message)
+{
+    juce::Array<juce::var> models;
+    for (const auto& m : SolutionDSP::NeuralCharacter::listModels()) models.add (m);
+    juce::DynamicObject::Ptr payload = new juce::DynamicObject();
+    payload->setProperty ("models", models);
+    payload->setProperty ("current", audioProcessor.getCharacterModelName());
+    payload->setProperty ("folder", SolutionDSP::NeuralCharacter::getModelsFolder().getFullPathName());
+    payload->setProperty ("message", message);
+    const double trained = audioProcessor.character.getTrainedSampleRate(), host = audioProcessor.getSampleRate();
+    payload->setProperty ("rateWarning", trained > 0.0 && host > 0.0 && std::abs (trained / host - 1.0) > 0.01
+                                             ? "This model was trained at " + juce::String (trained / 1000.0, 1) + " kHz; your session runs at "
+                                               + juce::String (host / 1000.0, 1) + " kHz, so its tone may differ slightly."
+                                             : juce::String());
+    webView.emitEventIfBrowserIsVisible ("characterState", juce::var (payload.get()));
+}
+
 void SolutionAudioProcessorEditor::timerCallback()
 {
+    if (frameCounter % 120 == 0)
+        audioProcessor.character.housekeeping();   // free models the audio thread has swapped out
+
     if (frameCounter % 60 == 30)
     {
         const bool busy = audioProcessor.assistant.tap.isEnabled() || audioProcessor.assistant.loadingReference.load();

@@ -73,6 +73,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v6: neural character
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "char_amount", 6 },     "Character Amount", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "char_drive", 6 },      "Character Drive (dB)", juce::NormalisableRange<float> (-12.0f, 18.0f, 0.1f), 0.0f));
     // --- v5: stem focus
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "stem_focus", 5 },      "Stem Focus",
                           juce::StringArray { "Off (whole mix)", "Drums / hits", "Tonal / sustained", "Vocal / centre" }, 0));
@@ -240,7 +243,12 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (stemListen)
         p.wetMix = 1.0f;         // listen mode: hear exactly what's being targeted, unprocessed
     else
+    {
         moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
+        if (! p.tapeCalTone)      // neural Character (only does anything once a model is chosen)
+            character.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples,
+                               apvts.getRawParameterValue ("char_drive")->load(), apvts.getRawParameterValue ("char_amount")->load());
+    }
     if (stemOn && ! stemListen)
         for (int ch = 0; ch < 2; ++ch)
             buffer.addFrom (ch, 0, stemRest, ch, 0, numSamples);   // processed focus + untouched rest
@@ -341,6 +349,20 @@ juce::AudioProcessorEditor* SolutionAudioProcessor::createEditor()
    #else
     return new SolutionAudioProcessorEditor (*this);
    #endif
+}
+
+juce::String SolutionAudioProcessor::setCharacterModel (const juce::String& modelName)
+{
+    character.housekeeping();
+    apvts.state.setProperty ("charModel", modelName, nullptr);
+    if (modelName.isEmpty()) { character.setModel (nullptr); return {}; }
+
+    juce::String error;
+    auto model = SolutionDSP::NeuralCharacter::load (SolutionDSP::NeuralCharacter::getModelsFolder().getChildFile (modelName + ".json"), error);
+    if (model == nullptr)
+        return error.isNotEmpty() ? error : "Couldn't load " + modelName;
+    character.setModel (std::move (model));
+    return {};
 }
 
 void SolutionAudioProcessor::updateLatencyNow()
@@ -597,6 +619,11 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
         }
     }
     applyRoomAnalysis (restored, false);
+
+    // Neural Character model (if the file is still there).
+    const auto charModel = apvts.state.getProperty ("charModel").toString();
+    if (charModel.isNotEmpty() || character.getModelName().isNotEmpty())
+        setCharacterModel (charModel);
     markParamsChanged();
 }
 

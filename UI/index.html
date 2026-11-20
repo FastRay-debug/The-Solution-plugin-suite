@@ -318,6 +318,7 @@
       <button id="emuBtn" onclick="openEmulator()" data-tip="Built-in Audio Emulator">▶ AUDIO</button>
       <button onclick="openVault()" data-tip="The Vault: Presets & A/B">🗄 VAULT</button>
       <button onclick="openAssistant()" data-tip="Mix Assistant: compare with a reference track or genre target">🎯 ASSIST</button>
+      <button onclick="openCharacter()" data-tip="Neural Character: run a captured model of real hardware on this module">🧠 CHARACTER</button>
       <button onclick="openMatrix()" data-tip="The Matrix: CV & MIDI Learn">⚡ MATRIX</button>
       <button onclick="doUndo()" data-tip="Undo">↩</button>
       <button onclick="doRedo()" data-tip="Redo">↪</button>
@@ -596,6 +597,24 @@
         Use it on your monitoring path only - turn it off before you bounce.
       </div>
       <button onclick="document.getElementById('roomCorrModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="charModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="min-width:520px;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">NEURAL CHARACTER</strong>
+      <div style="font-size:11px;color:var(--mute);">Runs a neural model of real gear (tape, tubes, consoles...) on this module's sound. Drop RTNeural <b>.json</b> models into the Models folder.</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select id="charSelect" onchange="charCmd('select', { name: this.value })" style="flex:1;"></select>
+        <button onclick="charCmd('list')">↻ RESCAN</button>
+        <button onclick="charCmd('reveal')">📂 MODELS FOLDER</button>
+      </div>
+      <div id="charMsg" style="font-size:11px;color:var(--accent2);"></div>
+      <div class="ctrl"><label>DRIVE INTO MODEL <span id="v-char_drive">0.0 dB</span></label>
+        <input type="range" data-sync="char_drive" min="-12" max="18" step="0.1" value="0" oninput="bind('char_drive', this.value, ' dB', 1)"></div>
+      <div class="ctrl"><label>AMOUNT <span id="v-char_amount">100%</span></label>
+        <input type="range" data-sync="char_amount" min="0" max="1" step="0.01" value="1" oninput="bind('char_amount', this.value, '%', 100)"></div>
+      <button onclick="document.getElementById('charModal').classList.remove('open')">CLOSE</button>
     </div>
   </div>
 
@@ -1172,6 +1191,16 @@
         svg.innerHTML += shade(20, m.fitLow) + shade(m.fitHigh, 20000);
       }
     }
+    const charCmd = (cmd, extra) => { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('character', Object.assign({ cmd }, extra || {})); };
+    function openCharacter() { charCmd('list'); renderCharacter(); document.getElementById('charModal').classList.add('open'); }
+    function renderCharacter() {
+      const m = window._char;
+      const sel = document.getElementById('charSelect');
+      if (!m) { sel.innerHTML = '<option value="">(no models loaded)</option>'; return; }
+      sel.innerHTML = '<option value="">None (character off)</option>' + m.models.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      sel.value = m.current || '';
+      document.getElementById('charMsg').textContent = [m.message, m.rateWarning, m.models.length ? '' : 'No models yet - put .json models in: ' + m.folder].filter(Boolean).join(' · ');
+    }
     const assistCmd = (cmd, extra) => { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('assistant', Object.assign({ cmd }, extra || {})); };
     function openAssistant() { renderAssistant(); document.getElementById('assistModal').classList.add('open'); assistCmd('status'); }
     function toggleListen() { assistCmd(window._assist && window._assist.listening ? 'stop' : 'listen'); }
@@ -1311,6 +1340,8 @@
         if (id === 'link_duck_depth') showValue(id, v, ' dB', 1);
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
+        if (id === 'char_amount') showValue(id, v, '%', 100);
+        if (id === 'char_drive') showValue(id, v, ' dB', 1);
       }
       const on = (id) => values[id] !== undefined && values[id] > 0.5;
       if (values.dialogue_duck !== undefined && on('dialogue_duck') !== duckOn) toggleDuck();
@@ -1352,6 +1383,7 @@
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
       window.__JUCE__.backend.addEventListener('roomNotice', (msg) => alert(msg));
+      window.__JUCE__.backend.addEventListener('characterState', (m) => { window._char = m; renderCharacter(); });
       window.__JUCE__.backend.addEventListener('assistantState', (m) => { window._assist = m; if (document.getElementById('assistModal').classList.contains('open')) renderAssistant(); });
       window.__JUCE__.backend.addEventListener('rack', (m) => {
         window._rackState = m;

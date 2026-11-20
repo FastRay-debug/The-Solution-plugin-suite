@@ -785,6 +785,68 @@ static void testStemFocus()
     std::printf ("  done\n");
 }
 
+static void testNeuralCharacter()
+{
+    std::printf ("== Neural Character models\n");
+    using SolutionDSP::NeuralCharacter;
+    const auto tmp = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("solution_models_test");
+    tmp.createDirectory();
+    const auto half = tmp.getChildFile ("Half.json"), soft = tmp.getChildFile ("Soft.json"), bad = tmp.getChildFile ("Broken.json"), stereo = tmp.getChildFile ("TwoIn.json");
+    half.replaceWithText (R"({"in_shape":[null,null,1],"samplerate":48000,"layers":[{"type":"dense","activation":"","shape":[null,null,1],"weights":[[[0.5]],[0.0]]}]})");
+    soft.replaceWithText (R"({"in_shape":[null,null,1],"layers":[{"type":"dense","activation":"tanh","shape":[null,null,1],"weights":[[[2.0]],[0.0]]}]})");
+    bad.replaceWithText ("{ this is not json");
+    stereo.replaceWithText (R"({"in_shape":[null,null,2],"layers":[{"type":"dense","activation":"","shape":[null,null,1],"weights":[[[1.0],[1.0]],[0.0]]}]})");
+
+    juce::String err;
+    EXPECT (NeuralCharacter::load (half, err) != nullptr, "valid model failed to load: %s", err.toRawUTF8());
+    err = {}; EXPECT (NeuralCharacter::load (bad, err) == nullptr && err.isNotEmpty(), "broken JSON should be rejected with a message");
+    err = {}; EXPECT (NeuralCharacter::load (stereo, err) == nullptr && err.contains ("1 input"), "2-input model should be rejected");
+
+    NeuralCharacter nc;
+    juce::AudioBuffer<float> b (2, 256);
+    auto runBlock = [&] (float drive, float amount) { fillSine (b, 48000.0, 300.0, 0.4f); allocCount = 0; trackAllocs = true; nc.process (b.getWritePointer (0), b.getWritePointer (1), 256, drive, amount); trackAllocs = false; return allocCount.load(); };
+
+    nc.setModel (NeuralCharacter::load (half, err));
+    int allocs = runBlock (0.0f, 1.0f);
+    juce::AudioBuffer<float> ref (2, 256); fillSine (ref, 48000.0, 300.0, 0.4f);
+    float maxErr = 0.0f; for (int i = 0; i < 256; ++i) maxErr = std::max (maxErr, std::abs (b.getSample (0, i) - 0.5f * ref.getSample (0, i)));
+    EXPECT (maxErr < 1e-5f, "x0.5 model output wrong (err %g)", maxErr);
+    EXPECT (std::abs (nc.getTrainedSampleRate() - 48000.0) < 1.0, "model sample rate not read");
+    allocs += runBlock (6.0206f, 1.0f);   // +6 dB drive -> 0.5 * 2x = unity
+    maxErr = 0.0f; for (int i = 0; i < 256; ++i) maxErr = std::max (maxErr, std::abs (b.getSample (1, i) - ref.getSample (1, i)));
+    EXPECT (maxErr < 1e-4f, "drive into model wrong (err %g)", maxErr);
+    allocs += runBlock (0.0f, 0.0f);
+    maxErr = 0.0f; for (int i = 0; i < 256; ++i) maxErr = std::max (maxErr, std::abs (b.getSample (0, i) - ref.getSample (0, i)));
+    EXPECT (maxErr == 0.0f, "amount 0 must be an exact bypass");
+
+    nc.setModel (NeuralCharacter::load (soft, err));                 // live swap
+    allocs += runBlock (0.0f, 1.0f);
+    for (int i = 0; i < 256; ++i) maxErr = std::max (maxErr, std::abs (b.getSample (0, i) - std::tanh (2.0f * ref.getSample (0, i))));
+    EXPECT (maxErr < 1e-4f && nc.getModelName() == "Soft", "model swap failed");
+    EXPECT (allocs == 0, "Character processing / model swap allocated %d times on the audio thread", allocs);
+    nc.housekeeping();
+    nc.setModel (nullptr); runBlock (0.0f, 1.0f); nc.housekeeping();
+    EXPECT (nc.getModelName().isEmpty(), "clearing the model failed");
+
+    // Through the plugin: model chosen by name from the Models folder, restored with the session.
+    const auto folder = NeuralCharacter::getModelsFolder();
+    const bool folderExisted = folder.isDirectory();
+    folder.createDirectory();
+    const auto installed = folder.getChildFile ("SolutionTestHalf.json");
+    half.copyFileTo (installed);
+    SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 256);
+    EXPECT (proc.setCharacterModel ("SolutionTestHalf").isEmpty(), "plugin failed to load a model from the Models folder");
+    EXPECT (proc.setCharacterModel ("DoesNotExist").isNotEmpty(), "missing model should report an error");
+    proc.setCharacterModel ("SolutionTestHalf");
+    juce::MemoryBlock state; proc.getStateInformation (state);
+    SolutionAudioProcessor reloaded; reloaded.setStateInformation (state.getData(), (int) state.getSize());
+    EXPECT (reloaded.getCharacterModelName() == "SolutionTestHalf", "Character model not restored with the session");
+    installed.deleteFile();
+    if (! folderExisted) folder.deleteRecursively();
+    tmp.deleteRecursively();
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -798,6 +860,7 @@ int main()
     testBinaural();
     testMixAssistant();
     testStemFocus();
+    testNeuralCharacter();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

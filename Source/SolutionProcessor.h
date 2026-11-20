@@ -14,6 +14,7 @@
 #include "Spatial.h"
 #include "MixAssistant.h"
 #include "StemSplitter.h"
+#include "NeuralCharacter.h"
 #include <atomic>
 #include <array>
 
@@ -78,6 +79,11 @@ public:
     SolutionDSP::CurrentSettings currentSettingsForAssistant() const;
     SolutionDSP::MixProfile assistantMixProfile() const { return assistant.live != nullptr ? assistant.live->finish ("Your mix") : SolutionDSP::MixProfile {}; }
 
+    // Neural Character (message thread). Empty name = no model. Returns an error message or empty.
+    juce::String setCharacterModel (const juce::String& modelName);
+    juce::String getCharacterModelName() const { return apvts.state.getProperty ("charModel").toString(); }
+    SolutionDSP::NeuralCharacter character;
+
     // Stem Focus adds latency only while it's on; the host is told on the message thread.
     void updateLatencyNow();
     int getBaseLatency() const { return moduleEngine.getLatencySamples() + ceilingLimiter.getLatency(); }
@@ -102,7 +108,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 5;   // v2: Rack Link + Glue, v3: room correction, v4: binaural, v5: stem focus
+    static constexpr int stateVersion = 6;   // v2 Rack Link/Glue, v3 room correction, v4 binaural, v5 stem focus, v6 neural character
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }

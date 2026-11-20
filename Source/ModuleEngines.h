@@ -1,13 +1,11 @@
 #pragma once
 
 #include <juce_dsp/juce_dsp.h>
-#include <RTNeural/RTNeural.h>
 #include <cmath>
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <memory>
-#include <fstream>
 #include <cstring>
 #include <utility>
 
@@ -169,23 +167,6 @@ namespace SolutionDSP
             midPeak.reset();
             highShelf.reset();
             modeNotch.reset();
-            if (neuralModel != nullptr)
-                neuralModel->reset();
-        }
-
-        bool loadNeuralProfile (const juce::File& jsonFile)
-        {
-            if (! jsonFile.existsAsFile())
-                return false;
-            std::ifstream stream (jsonFile.getFullPathName().toStdString());
-            if (! stream.is_open())
-                return false;
-            auto loaded = RTNeural::json_parser::parseJson<float> (stream, true);
-            if (loaded == nullptr)
-                return false;
-            loaded->reset();
-            neuralModel = std::move (loaded);
-            return true;
         }
 
         void setProfile (int profileIndex)
@@ -271,12 +252,6 @@ namespace SolutionDSP
                     wl = wl * 0.85f + reflL * 0.15f;
                     wr = wr * 0.85f + reflR * 0.15f;
                 }
-                if (neuralModel != nullptr)
-                {
-                    float in[2] = { wl, wr };
-                    wl = neuralModel->forward (in);
-                    wr = wl;
-                }
                 dryL[i] = dryL[i] * (1.0f - mix) + wl * mix;
                 dryR[i] = dryR[i] * (1.0f - mix) + wr * mix;
             }
@@ -290,7 +265,6 @@ namespace SolutionDSP
         juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayL { 16384 };
         juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayR { 16384 };
         juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> lowShelf, midPeak, highShelf, modeNotch;
-        std::unique_ptr<RTNeural::Model<float>> neuralModel;
     };
 
     class SuiteModuleEngine

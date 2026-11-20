@@ -21,6 +21,7 @@ private:
     void sendRoomResult();
     std::unique_ptr<juce::FileChooser> micFileChooser, referenceChooser;
     void sendAssistantState();
+    void sendCharacterState (const juce::String& message = {});
     bool assistantWasBusy = false;
     void handleAssistantCommand (const juce::var& data);
     int frameCounter = 0;
