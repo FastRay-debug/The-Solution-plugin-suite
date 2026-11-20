@@ -265,6 +265,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (measuring)    // during a measurement the speakers get only the sweep
         for (int ch = 0; ch < 2; ++ch)
             buffer.copyFrom (ch, 0, measureOut, ch, 0, numSamples);
+    else
+        assistant.tap.push (left, right, numSamples);     // Mix Assistant listens to the final output
 
     const float rmsL = static_cast<float> (std::sqrt (sumL2 / numSamples));
     const float rmsR = static_cast<float> (std::sqrt (sumR2 / numSamples));
@@ -401,6 +403,85 @@ bool SolutionAudioProcessor::loadMicCalibration (const juce::File& file)
     saveMicToState();
     refitForCurrentMic();
     return true;
+}
+
+//==============================================================================
+SolutionDSP::CurrentSettings SolutionAudioProcessor::currentSettingsForAssistant() const
+{
+    using M = SolutionDSP::ModuleId;
+    SolutionDSP::CurrentSettings now;
+    now.elevation = apvts.getRawParameterValue ("stage_elevation")->load();
+    now.width     = apvts.getRawParameterValue ("stage_width")->load();
+    now.glue      = apvts.getRawParameterValue ("glue_amount")->load();
+    now.hasAirControl = moduleId == M::Loft || moduleId == M::Aether || moduleId == M::Mosaic || moduleId == M::Stage || moduleId == M::Land
+                     || moduleId == M::Orbit || moduleId == M::Void || moduleId == M::Crown || moduleId == M::Chimera;
+    now.moduleName = SolutionDSP::moduleDisplayName (moduleId);
+    return now;
+}
+
+void SolutionAudioProcessor::assistantStartListening()
+{
+    assistant.live = std::make_unique<SolutionDSP::MixAnalyser> (preparedSampleRate > 0.0 ? preparedSampleRate : 48000.0);
+    assistant.comparison = {};
+    assistant.tap.setEnabled (true);
+}
+
+void SolutionAudioProcessor::assistantPoll()
+{
+    if (assistant.live != nullptr && assistant.tap.isEnabled())
+        assistant.tap.drain ([this] (const float* l, const float* r, int n) { assistant.live->addStereo (l, r, n); });
+    if (assistant.live != nullptr && assistant.reference.valid && assistant.live->getSecondsAnalysed() > 3.0)
+    {
+        const auto mix = assistant.live->finish ("Your mix");
+        if (mix.valid)
+            assistant.comparison = SolutionDSP::compareMixes (mix, assistant.reference, currentSettingsForAssistant());
+    }
+}
+
+void SolutionAudioProcessor::assistantLoadReference (const juce::File& file)
+{
+    if (assistant.loadingReference.exchange (true))
+        return;
+    analysisPool.addJob ([this, file]
+    {
+        juce::String error;
+        auto profile = SolutionDSP::analyseReferenceFile (file, error);
+        juce::MessageManager::callAsync ([this, profile, error, alive = std::weak_ptr<bool> (aliveFlag)]
+        {
+            if (alive.expired()) return;
+            assistant.referenceError = error;
+            if (profile.valid) assistant.reference = profile;
+            assistant.loadingReference = false;
+        });
+    });
+}
+
+void SolutionAudioProcessor::assistantUseGenre (const juce::String& genre)
+{
+    assistant.reference = SolutionDSP::genreTarget (genre);
+    assistant.referenceError = {};
+}
+
+bool SolutionAudioProcessor::assistantApply (int index)
+{
+    const auto& list = assistant.comparison.suggestions;
+    bool applied = false;
+    undoManager.beginNewTransaction ("Mix Assistant");
+    for (int i = 0; i < (int) list.size(); ++i)
+    {
+        if ((index >= 0 && i != index) || list[(size_t) i].paramId.isEmpty())
+            continue;
+        if (auto* param = apvts.getParameter (list[(size_t) i].paramId))
+        {
+            param->beginChangeGesture();
+            param->setValueNotifyingHost (param->convertTo0to1 (list[(size_t) i].newValue));
+            param->endChangeGesture();
+            applied = true;
+        }
+    }
+    if (applied && assistant.live != nullptr)
+        assistantStartListening();   // listen again to hear the result
+    return applied;
 }
 
 void SolutionAudioProcessor::setCurrentProgram (int index)

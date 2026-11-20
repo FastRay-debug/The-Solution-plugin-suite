@@ -144,6 +144,7 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                            sendRoomResult();
                        });
                    })
+                   .withEventListener ("assistant", [this] (const juce::var& data) { handleAssistantCommand (data); })
                    .withEventListener ("resetLoudness", [this] (const juce::var&) { audioProcessor.loudness.requestReset(); })
                    .withEventListener ("presetCommand", [this] (const juce::var& data) { handlePresetCommand (data); }))
 {
@@ -288,8 +289,81 @@ void SolutionAudioProcessorEditor::sendRoomResult()
     webView.emitEventIfBrowserIsVisible ("roomResult", juce::var (payload.get()));
 }
 
+void SolutionAudioProcessorEditor::handleAssistantCommand (const juce::var& data)
+{
+    auto* obj = data.getDynamicObject();
+    if (obj == nullptr) return;
+    const auto cmd = obj->getProperty ("cmd").toString();
+    if (cmd == "listen")       audioProcessor.assistantStartListening();
+    else if (cmd == "stop")    audioProcessor.assistantStopListening();
+    else if (cmd == "genre")   audioProcessor.assistantUseGenre (obj->getProperty ("name").toString());
+    else if (cmd == "apply")   audioProcessor.assistantApply ((int) obj->getProperty ("index"));
+    else if (cmd == "loadRef")
+    {
+        referenceChooser = std::make_unique<juce::FileChooser> ("Choose a reference track", juce::File(), "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.ogg");
+        referenceChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                       [this] (const juce::FileChooser& fc)
+        {
+            if (fc.getResult().existsAsFile())
+                audioProcessor.assistantLoadReference (fc.getResult());
+            sendAssistantState();
+        });
+    }
+    sendAssistantState();
+}
+
+void SolutionAudioProcessorEditor::sendAssistantState()
+{
+    audioProcessor.assistantPoll();
+    const auto& a = audioProcessor.assistant;
+    auto profileVar = [] (const SolutionDSP::MixProfile& p)
+    {
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("valid", p.valid);
+        o->setProperty ("name", p.name);
+        o->setProperty ("lufs", p.lufs);
+        o->setProperty ("plr", p.plr());
+        o->setProperty ("width", p.widthDb());
+        o->setProperty ("seconds", p.seconds);
+        return juce::var (o.get());
+    };
+    juce::DynamicObject::Ptr payload = new juce::DynamicObject();
+    payload->setProperty ("listening", a.tap.isEnabled());
+    payload->setProperty ("loading", a.loadingReference.load());
+    payload->setProperty ("error", a.referenceError);
+    payload->setProperty ("reference", profileVar (a.reference));
+    payload->setProperty ("mix", profileVar (audioProcessor.assistantMixProfile()));
+    juce::Array<juce::var> diff, freqs, suggestions, genres;
+    for (int b = 0; b < SolutionDSP::MixProfile::numBands; ++b)
+    {
+        diff.add (std::round (a.comparison.diffDb[(size_t) b] * 10.0f) / 10.0f);
+        freqs.add (SolutionDSP::MixProfile::bandCentre (b));
+    }
+    for (const auto& sgn : a.comparison.suggestions)
+    {
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("text", sgn.text);
+        o->setProperty ("canApply", sgn.paramId.isNotEmpty());
+        suggestions.add (juce::var (o.get()));
+    }
+    for (const auto& g : SolutionDSP::genreTargetNames()) genres.add (g);
+    payload->setProperty ("diff", diff);
+    payload->setProperty ("freqs", freqs);
+    payload->setProperty ("suggestions", suggestions);
+    payload->setProperty ("genres", genres);
+    webView.emitEventIfBrowserIsVisible ("assistantState", juce::var (payload.get()));
+}
+
 void SolutionAudioProcessorEditor::timerCallback()
 {
+    if (frameCounter % 60 == 30)
+    {
+        const bool busy = audioProcessor.assistant.tap.isEnabled() || audioProcessor.assistant.loadingReference.load();
+        if (busy || assistantWasBusy)
+            sendAssistantState();
+        assistantWasBusy = busy;
+    }
+
     if (audioProcessor.pollRoomAnalysis())
         sendRoomResult();
 

@@ -618,6 +618,79 @@ static void testBinaural()
     std::printf ("  done\n");
 }
 
+static void testMixAssistant()
+{
+    std::printf ("== Mix Assistant\n");
+    using namespace SolutionDSP;
+    const double fs = 48000.0;
+    juce::Random rnd (5);
+
+    // White noise rises 1 dB per third-octave band; L=R has no side; L=-R is all side.
+    {
+        MixAnalyser an (fs);
+        juce::AudioBuffer<float> b (2, (int) fs * 6);
+        for (int i = 0; i < b.getNumSamples(); ++i) { const float v = rnd.nextFloat() * 0.4f - 0.2f; b.setSample (0, i, v); b.setSample (1, i, v); }
+        an.addStereo (b.getReadPointer (0), b.getReadPointer (1), b.getNumSamples());
+        const auto p = an.finish ("noise");
+        const float slope = (p.midDb[27] - p.midDb[12]) / 15.0f;
+        EXPECT (std::abs (slope - 1.0f) < 0.2f, "white noise should rise ~1 dB per third-octave band (got %.2f)", slope);
+        EXPECT (p.widthDb() < -40.0f, "identical channels should have no side signal (width %.1f dB)", p.widthDb());
+        EXPECT (std::abs (p.lufs - (-10.0f)) < 3.0f && p.valid, "noise loudness looks wrong (%.1f LUFS)", p.lufs);
+    }
+
+    // Reference track from a real WAV file.
+    const auto wav = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("solution_ref_test.wav");
+    {
+        juce::AudioBuffer<float> b (2, (int) fs * 8);
+        for (int i = 0; i < b.getNumSamples(); ++i) { const float m = rnd.nextFloat() * 0.3f - 0.15f, sd = rnd.nextFloat() * 0.2f - 0.1f; b.setSample (0, i, m + sd); b.setSample (1, i, m - sd); }
+        wav.deleteFile();
+        std::unique_ptr<juce::FileOutputStream> os (wav.createOutputStream());
+        std::unique_ptr<juce::AudioFormatWriter> w (juce::WavAudioFormat().createWriterFor (os.get(), fs, 2, 24, {}, 0));
+        if (w != nullptr) { os.release(); w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples()); }
+    }
+    juce::String err;
+    const auto ref = analyseReferenceFile (wav, err);
+    EXPECT (ref.valid && std::abs (ref.seconds - 8.0) < 0.1, "reference WAV analysis failed: %s", err.toRawUTF8());
+    wav.deleteFile();
+    EXPECT (! analyseReferenceFile (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("nope.wav"), err).valid && err.isNotEmpty(), "missing file should give an error");
+
+    // A dull, narrow, very dynamic mix vs that bright, wide, dense reference.
+    SolutionAudioProcessor proc; proc.prepareToPlay (fs, 512);
+    setParam (proc, "global_mix", 0.0f); setParam (proc, "stage_ceiling_guard", 0.0f);
+    proc.assistant.reference = ref;
+    proc.assistantStartListening();
+    juce::MidiBuffer midi;
+    float lp = 0.0f;
+    for (int k = 0; k < (int) (fs * 8 / 512); ++k)
+    {
+        juce::AudioBuffer<float> b (2, 512);
+        const float level = (k / 40) % 2 == 0 ? 0.3f : 0.03f;              // very dynamic
+        for (int i = 0; i < 512; ++i) { lp += 0.08f * ((rnd.nextFloat() * 2.0f - 1.0f) - lp); b.setSample (0, i, level * lp); b.setSample (1, i, level * lp * 0.97f); }   // dull + narrow
+        proc.processBlock (b, midi);
+        if (k % 50 == 0) proc.assistantPoll();
+    }
+    proc.assistantPoll();
+    const auto& sug = proc.assistant.comparison.suggestions;
+    float elevation = 0, width = 0, glue = 0; bool hasE = false, hasW = false, hasG = false;
+    for (const auto& sgn : sug)
+    {
+        if (sgn.paramId == "stage_elevation") { hasE = true; elevation = sgn.newValue; }
+        if (sgn.paramId == "stage_width")     { hasW = true; width = sgn.newValue; }
+        if (sgn.paramId == "glue_amount")     { hasG = true; glue = sgn.newValue; }
+    }
+    EXPECT (hasE && elevation > 10.0f, "dull mix: should suggest more air via Elevation (got %d / %.1f)", (int) hasE, elevation);
+    EXPECT (hasW && width > 1.2f, "narrow mix: should suggest more width (got %d / %.2f)", (int) hasW, width);
+    EXPECT (hasG && glue > 0.1f, "dynamic mix: should suggest Glue (got %d / %.2f)", (int) hasG, glue);
+    EXPECT (proc.assistantApply (-1), "apply all did nothing");
+    auto real = [&] (const char* id) { auto* p = proc.apvts.getParameter (id); return p->convertFrom0to1 (p->getValue()); };
+    EXPECT (std::abs (real ("stage_width") - width) < 0.02f && std::abs (real ("glue_amount") - glue) < 0.02f, "apply didn't set the suggested values");
+
+    // Genre targets exist and compare without crashing.
+    for (const auto& g : genreTargetNames())
+        EXPECT (genreTarget (g).valid, "genre target %s invalid", g.toRawUTF8());
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -629,6 +702,7 @@ int main()
     testRackLink();
     testRoomCorrection();
     testBinaural();
+    testMixAssistant();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

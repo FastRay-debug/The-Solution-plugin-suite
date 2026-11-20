@@ -136,6 +136,8 @@ function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
             Source/PresetManager.h
             Source/RoomCorrection.cpp
             Source/RoomCorrection.h
+            Source/MixAssistant.cpp
+            Source/MixAssistant.h
             Source/SolutionEditor.cpp
             Source/SolutionEditor.h
     )
@@ -149,6 +151,7 @@ function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
             JUCE_WEB_BROWSER=1
             JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
             JUCE_USE_CURL=0
+            JUCE_USE_MP3AUDIOFORMAT=1
             JUCE_VST3_CAN_REPLACE_VST2=0
             SOLUTION_CEILING_DBFS=-0.5
             SOLUTION_TOOLTIP_DELAY_MS=600
@@ -192,7 +195,7 @@ add_solution_module(TheScope   Scp1 "The Scope"   "com.fastraymedia.thesolution.
 # 4. Automated tests (cmake -B build -DSOLUTION_BUILD_TESTS=ON && cmake --build build --target SuiteTests)
 if(SOLUTION_BUILD_TESTS)
     juce_add_console_app(SuiteTests PRODUCT_NAME "SuiteTests")
-    target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp Source/PresetManager.cpp Source/RoomCorrection.cpp)
+    target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp Source/PresetManager.cpp Source/RoomCorrection.cpp Source/MixAssistant.cpp)
     target_compile_definitions(SuiteTests PRIVATE
         SOLUTION_HEADLESS=1
         JucePlugin_Name="SuiteTests"
@@ -200,10 +203,12 @@ if(SOLUTION_BUILD_TESTS)
         SOLUTION_MODULE_ID="TheStage"
         SOLUTION_CEILING_DBFS=-0.5
         JUCE_USE_CURL=0
+        JUCE_USE_MP3AUDIOFORMAT=1
         JUCE_WEB_BROWSER=0)
     target_link_libraries(SuiteTests PRIVATE
         RTNeural
         juce::juce_audio_processors
+        juce::juce_audio_formats
         juce::juce_dsp
         juce::juce_recommended_config_flags)
 endif()

@@ -317,6 +317,7 @@
       </select>
       <button id="emuBtn" onclick="openEmulator()" data-tip="Built-in Audio Emulator">▶ AUDIO</button>
       <button onclick="openVault()" data-tip="The Vault: Presets & A/B">🗄 VAULT</button>
+      <button onclick="openAssistant()" data-tip="Mix Assistant: compare with a reference track or genre target">🎯 ASSIST</button>
       <button onclick="openMatrix()" data-tip="The Matrix: CV & MIDI Learn">⚡ MATRIX</button>
       <button onclick="doUndo()" data-tip="Undo">↩</button>
       <button onclick="doRedo()" data-tip="Redo">↪</button>
@@ -589,6 +590,35 @@
         Use it on your monitoring path only - turn it off before you bounce.
       </div>
       <button onclick="document.getElementById('roomCorrModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="assistModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="min-width:620px;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">MIX ASSISTANT · MATCH A REFERENCE</strong>
+      <div style="display:flex;gap:6px;align-items:center;font-size:11px;flex-wrap:wrap;">
+        <span>COMPARE WITH</span>
+        <button onclick="assistCmd('loadRef')">📂 LOAD REFERENCE TRACK...</button>
+        <span>or</span>
+        <select id="genreSelect" onchange="if (this.value) assistCmd('genre', { name: this.value })"><option value="">Genre target...</option></select>
+        <span id="refName" style="color:var(--accent2);"></span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button id="listenBtn" onclick="toggleListen()">● LISTEN TO MY MIX</button>
+        <span id="listenInfo" style="font-size:11px;color:var(--mute);">Play your song (the loudest section works best), at least 10 seconds.</span>
+      </div>
+      <table style="width:100%;font-family:monospace;font-size:11px;">
+        <tr style="color:var(--accent2);text-align:left;"><th></th><th>LOUDNESS</th><th>PEAK-TO-LOUDNESS</th><th>WIDTH (S/M)</th></tr>
+        <tr><td>Your mix</td><td id="aMixL">—</td><td id="aMixP">—</td><td id="aMixW">—</td></tr>
+        <tr><td>Reference</td><td id="aRefL">—</td><td id="aRefP">—</td><td id="aRefW">—</td></tr>
+      </table>
+      <svg id="assistPlot" viewBox="0 0 580 150" style="width:100%;background:#05070a;border:1px solid #1f2937;border-radius:4px;"></svg>
+      <div style="font-size:10px;color:var(--mute);">Bars above the line: the reference has more of that range (loudness-matched). Below: your mix has more.</div>
+      <div id="assistList" style="display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;font-size:11px;"></div>
+      <div style="display:flex;gap:6px;">
+        <button onclick="assistCmd('apply', { index: -1 })">✓ APPLY ALL SUGGESTED SETTINGS</button>
+        <button onclick="document.getElementById('assistModal').classList.remove('open')" style="margin-left:auto;">CLOSE</button>
+      </div>
     </div>
   </div>
 
@@ -1136,6 +1166,41 @@
         svg.innerHTML += shade(20, m.fitLow) + shade(m.fitHigh, 20000);
       }
     }
+    const assistCmd = (cmd, extra) => { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('assistant', Object.assign({ cmd }, extra || {})); };
+    function openAssistant() { renderAssistant(); document.getElementById('assistModal').classList.add('open'); assistCmd('status'); }
+    function toggleListen() { assistCmd(window._assist && window._assist.listening ? 'stop' : 'listen'); }
+    function renderAssistant() {
+      const m = window._assist;
+      if (!m) return;
+      const gs = document.getElementById('genreSelect');
+      if (gs.options.length <= 1 && m.genres) gs.innerHTML += m.genres.map(g => `<option>${escapeHtml(g)}</option>`).join('');
+      document.getElementById('refName').textContent = m.loading ? 'Analysing reference...' : (m.error ? m.error : (m.reference.valid ? '✓ ' + m.reference.name : ''));
+      document.getElementById('listenBtn').textContent = m.listening ? '■ STOP LISTENING' : '● LISTEN TO MY MIX';
+      document.getElementById('listenBtn').classList.toggle('active', m.listening);
+      document.getElementById('listenInfo').textContent = m.listening ? ('Listening... ' + Math.round(m.mix.seconds || 0) + ' s analysed') :
+        (m.mix.valid ? 'Analysed ' + Math.round(m.mix.seconds) + ' s of your mix.' : 'Play your song (the loudest section works best), at least 10 seconds.');
+      const f = (v, u) => (v === undefined || v <= -69.9) ? '—' : v.toFixed(1) + u;
+      document.getElementById('aMixL').textContent = m.mix.valid ? f(m.mix.lufs, ' LUFS') : '—';
+      document.getElementById('aMixP').textContent = m.mix.valid ? f(m.mix.plr, ' dB') : '—';
+      document.getElementById('aMixW').textContent = m.mix.valid ? f(m.mix.width, ' dB') : '—';
+      document.getElementById('aRefL').textContent = m.reference.valid ? f(m.reference.lufs, ' LUFS') : '—';
+      document.getElementById('aRefP').textContent = m.reference.valid ? f(m.reference.plr, ' dB') : '—';
+      document.getElementById('aRefW').textContent = m.reference.valid ? f(m.reference.width, ' dB') : '—';
+      const W = 580, H = 150, n = m.diff.length, bw = (W - 40) / n, y0 = H / 2 - 6, scale = (H - 30) / 24;
+      let g = `<line x1="30" x2="${W - 10}" y1="${y0}" y2="${y0}" stroke="#374151"/>`;
+      [-12, -6, 6, 12].forEach(d => { g += `<text x="2" y="${y0 - d * scale + 3}" fill="#6b7280" font-size="9">${d > 0 ? '+' + d : d}</text>`; });
+      const have = m.mix.valid && m.reference.valid && m.suggestions.length;
+      m.diff.forEach((d, i) => {
+        const v = Math.max(-12, Math.min(12, have ? d : 0)), x = 30 + i * bw, h = Math.abs(v) * scale;
+        g += `<rect x="${x + 1}" y="${v > 0 ? y0 - h : y0}" width="${bw - 2}" height="${h}" fill="${v > 0 ? '#38BDF8' : '#F59E0B'}"/>`;
+        const fr = m.freqs[i]; if ([31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000].some(c => Math.abs(fr / c - 1) < 0.05))
+          g += `<text x="${x + bw / 2}" y="${H - 3}" fill="#6b7280" font-size="8" text-anchor="middle">${fr >= 1000 ? Math.round(fr / 1000) + 'k' : Math.round(fr)}</text>`;
+      });
+      if (!have) g += `<text x="${W / 2}" y="${y0 - 10}" fill="#9ca3af" font-size="11" text-anchor="middle">Choose a reference, then listen to your mix</text>`;
+      document.getElementById('assistPlot').innerHTML = g;
+      document.getElementById('assistList').innerHTML = have ? m.suggestions.map((s, i) =>
+        `<div class="preset-item"><span>${escapeHtml(s.text)}</span>${s.canApply ? `<button onclick="assistCmd('apply', { index: ${i} })">APPLY</button>` : ''}</div>`).join('') : '';
+    }
     function openRack() { renderRack(); document.getElementById('rackModal').classList.add('open'); }
     function renderRack() {
       const m = window._rackState;
@@ -1281,6 +1346,7 @@
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
       window.__JUCE__.backend.addEventListener('roomNotice', (msg) => alert(msg));
+      window.__JUCE__.backend.addEventListener('assistantState', (m) => { window._assist = m; if (document.getElementById('assistModal').classList.contains('open')) renderAssistant(); });
       window.__JUCE__.backend.addEventListener('rack', (m) => {
         window._rackState = m;
         if (document.getElementById('rackModal').classList.contains('open')) renderRack();

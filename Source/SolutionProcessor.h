@@ -12,6 +12,7 @@
 #include "Dynamics.h"
 #include "RoomCorrection.h"
 #include "Spatial.h"
+#include "MixAssistant.h"
 #include <atomic>
 #include <array>
 
@@ -55,6 +56,25 @@ public:
     bool pollRoomAnalysis();
     const SolutionDSP::RoomAnalysis& getRoomAnalysis() const { return roomAnalysis; }
     bool isRoomAnalysing() const { return analysisBusy.load(); }
+
+    // Mix Assistant (message thread, except the audio tap).
+    struct Assistant
+    {
+        SolutionDSP::AudioTap tap;                                // audio thread -> analyser
+        std::unique_ptr<SolutionDSP::MixAnalyser> live;
+        SolutionDSP::MixProfile reference;
+        SolutionDSP::MixComparison comparison;
+        std::atomic<bool> loadingReference { false };
+        juce::String referenceError;
+    } assistant;
+    void assistantStartListening();
+    void assistantStopListening() { assistant.tap.setEnabled (false); }
+    void assistantPoll();                                         // drain tap + refresh comparison
+    void assistantLoadReference (const juce::File&);              // analysed on a background thread
+    void assistantUseGenre (const juce::String& genre);
+    bool assistantApply (int suggestionIndex);                    // -1 = apply all
+    SolutionDSP::CurrentSettings currentSettingsForAssistant() const;
+    SolutionDSP::MixProfile assistantMixProfile() const { return assistant.live != nullptr ? assistant.live->finish ("Your mix") : SolutionDSP::MixProfile {}; }
 
     // Which mic did the measuring (message thread). Changing it refits the correction instantly.
     const SolutionDSP::MicProfile& getMicProfile() const { return micProfile; }
@@ -126,6 +146,7 @@ private:
     void saveMicToState();
     void refitForCurrentMic();
     SolutionDSP::MicProfile micProfile { SolutionDSP::findMicProfile ("generic") };
+    std::shared_ptr<bool> aliveFlag = std::make_shared<bool> (true);   // lets async callbacks check we still exist
     juce::ThreadPool analysisPool { 1 };                         // declared last: joins first on destruction
     int rackSlot = -1;
     double preparedSampleRate = 0.0;

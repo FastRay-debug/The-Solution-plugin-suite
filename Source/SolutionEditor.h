@@ -19,7 +19,10 @@ private:
     void handlePresetCommand (const juce::var& data);
     void sendRackState();
     void sendRoomResult();
-    std::unique_ptr<juce::FileChooser> micFileChooser;
+    std::unique_ptr<juce::FileChooser> micFileChooser, referenceChooser;
+    void sendAssistantState();
+    bool assistantWasBusy = false;
+    void handleAssistantCommand (const juce::var& data);
     int frameCounter = 0;
     static juce::File findSharedSkinsFolder();
 
