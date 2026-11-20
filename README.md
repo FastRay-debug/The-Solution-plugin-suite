@@ -1,5 +1,15 @@
 # The Solution — Complete Modular Audio Suite
 
+## Download Ready-Made Builds (no compiling)
+
+Every push to GitHub builds all 13 modules automatically:
+
+1. Open the repo's **Actions** tab and click the latest green **Build plugins** run.
+2. Scroll to **Artifacts** and download **TheSolution-Windows** or **TheSolution-macOS**.
+3. Unzip it and follow `HOW TO INSTALL.txt` inside.
+
+Tagged versions (e.g. `v0.2.0`) are also published on the **Releases** page.
+
 ## One-Click Build & Install (Windows 11)
 
 1. Extract this folder anywhere on your computer.
