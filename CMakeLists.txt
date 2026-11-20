@@ -129,6 +129,8 @@ function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
             Source/ModuleEngines.h
             Source/SolutionProcessor.cpp
             Source/SolutionProcessor.h
+            Source/PresetManager.cpp
+            Source/PresetManager.h
             Source/SolutionEditor.cpp
             Source/SolutionEditor.h
     )
@@ -185,7 +187,7 @@ add_solution_module(TheScope   Scp1 "The Scope"   "com.fastraymedia.thesolution.
 # 4. Automated tests (cmake -B build -DSOLUTION_BUILD_TESTS=ON && cmake --build build --target SuiteTests)
 if(SOLUTION_BUILD_TESTS)
     juce_add_console_app(SuiteTests PRODUCT_NAME "SuiteTests")
-    target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp)
+    target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp Source/PresetManager.cpp)
     target_compile_definitions(SuiteTests PRIVATE
         SOLUTION_HEADLESS=1
         JucePlugin_Name="SuiteTests"

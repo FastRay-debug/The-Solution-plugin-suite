@@ -204,11 +204,66 @@ static void testProcessorState()
     std::printf ("  done\n");
 }
 
+static void testPresets()
+{
+    std::printf ("== Presets\n");
+    const auto tmp = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("SolutionPresetTest_" + juce::String (juce::Random::getSystemRandom().nextInt()));
+    SolutionAudioProcessor proc;
+    PresetManager pm (proc.apvts, tmp);
+
+    EXPECT (pm.getNumFactoryPresets() >= 5, "expected factory presets, got %d", pm.getNumFactoryPresets());
+    EXPECT (proc.getNumPrograms() == pm.getNumFactoryPresets(), "DAW program list doesn't match factory presets");
+
+    // Every factory preset loads and only uses real parameter IDs.
+    for (int i = 0; i < pm.getNumFactoryPresets(); ++i)
+        EXPECT (pm.loadFactoryPreset (i), "factory preset %d failed to load", i);
+
+    auto* width = proc.apvts.getParameter ("stage_width");
+    EXPECT (pm.loadPreset ("Wide Chorus Lift"), "load by name failed");
+    EXPECT (std::abs (width->convertFrom0to1 (width->getValue()) - 1.5f) < 0.011f, "factory preset value not applied");
+
+    // Save -> change -> load restores; reserved names refused; delete works.
+    width->setValueNotifyingHost (width->convertTo0to1 (0.42f));
+    EXPECT (pm.savePreset ("My Test <Preset>", "#User"), "save failed");
+    EXPECT (! pm.savePreset ("Init", "#User"), "saving over a factory preset name should be refused");
+    width->setValueNotifyingHost (width->convertTo0to1 (1.9f));
+    EXPECT (pm.loadPreset ("My Test <Preset>"), "user preset failed to load");
+    EXPECT (std::abs (width->convertFrom0to1 (width->getValue()) - 0.42f) < 0.011f, "user preset value not restored");
+    bool listed = false;
+    for (const auto& info : pm.getAllPresets()) listed |= (info.name == "My Test <Preset>" && ! info.factory);
+    EXPECT (listed, "saved preset missing from the list");
+    EXPECT (pm.deletePreset ("My Test <Preset>"), "delete failed");
+    EXPECT (! pm.deletePreset ("Init"), "factory presets must not be deletable");
+    EXPECT (! pm.loadPreset ("does not exist"), "loading a missing preset should fail cleanly");
+
+    // A preset missing parameters (e.g. made by an older version) falls back to defaults.
+    tmp.createDirectory();
+    tmp.getChildFile ("Old.solpreset").replaceWithText ("<SolutionPreset name=\"Old\" tag=\"#User\"><PARAM id=\"stage_depth\" value=\"0.9\"/></SolutionPreset>");
+    EXPECT (pm.loadPreset ("Old"), "old-format preset failed to load");
+    EXPECT (std::abs (width->getValue() - width->getDefaultValue()) < 1e-6f, "missing parameter didn't fall back to default");
+
+    // Saved session carries a state version and survives a round trip.
+    juce::MemoryBlock block;
+    proc.getStateInformation (block);
+    auto xml = juce::AudioProcessor::getXmlFromBinary (block.getData(), (int) block.getSize());
+    EXPECT (xml != nullptr && xml->getIntAttribute ("stateVersion") == SolutionAudioProcessor::stateVersion, "session state is missing its version number");
+
+    proc.setUiProperty ("skin", "giza");
+    proc.getStateInformation (block);
+    SolutionAudioProcessor restored;
+    restored.setStateInformation (block.getData(), (int) block.getSize());
+    EXPECT (restored.getUiProperty ("skin") == "giza", "skin choice not saved with the session");
+
+    tmp.deleteRecursively();
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
     testEngines();
     testProcessorState();
+    testPresets();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

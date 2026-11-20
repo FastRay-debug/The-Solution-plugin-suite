@@ -15,6 +15,10 @@ SolutionAudioProcessor::SolutionAudioProcessor()
     for (auto& slot : ccToParamIndex)
         slot.store (-1, std::memory_order_relaxed);
 
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            apvts.addParameterListener (ranged->getParameterID(), this);
+
     learnableParamIds = {
         "stage_azimuth", "stage_elevation", "stage_depth", "stage_haas_itd",
         "stage_width", "stage_anchor_hz", "stage_ms_mid", "stage_ms_side",
@@ -24,6 +28,9 @@ SolutionAudioProcessor::SolutionAudioProcessor()
 
 SolutionAudioProcessor::~SolutionAudioProcessor()
 {
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            apvts.removeParameterListener (ranged->getParameterID(), this);
     rackLinkBus->activeInstances.fetch_sub (1, std::memory_order_relaxed);
 }
 
@@ -44,26 +51,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("stage_azimuth",       "Azimuth",            juce::NormalisableRange<float> (-180.0f, 180.0f, 0.1f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("stage_elevation",     "Elevation",          juce::NormalisableRange<float> (-90.0f,  90.0f,  0.1f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("stage_depth",         "Depth / Drive",      juce::NormalisableRange<float> (0.0f,    1.0f,   0.001f), 0.25f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("stage_haas_itd",      "Haas ITD (ms)",      juce::NormalisableRange<float> (0.0f,    35.0f,  0.1f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("stage_width",         "Stage Width",        juce::NormalisableRange<float> (0.0f,    2.0f,   0.01f), 1.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("stage_anchor_hz",     "Low-End Anchor",     juce::NormalisableRange<float> (20.0f,   250.0f, 1.0f), 90.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("stage_ms_mid",        "Split-Core Mid",     juce::NormalisableRange<float> (-12.0f,  12.0f,  0.1f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("stage_ms_side",       "Split-Core Side",    juce::NormalisableRange<float> (-12.0f,  12.0f,  0.1f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("room_match_mix",      "Room Matcher Mix",   juce::NormalisableRange<float> (0.0f,    1.0f,   0.01f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterInt>    ("room_profile",        "Room Profile",       0, 3, 1));
-    params.push_back (std::make_unique<juce::AudioParameterInt>    ("patch_order",         "Rear Patch Order",   0, 2, 0));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("global_mix",          "Global Wet/Dry",     juce::NormalisableRange<float> (0.0f,    1.0f,   0.01f), 1.0f));
-    params.push_back (std::make_unique<juce::AudioParameterBool>   ("stage_ceiling_guard", "Sub-Ceiling Guard (-0.5 dBFS)", true));
-    params.push_back (std::make_unique<juce::AudioParameterBool>   ("transient_sculpt",    "Predictive Transient Sculpting", false));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("ultra_wide",          "Ultra Wide (Haas-Kempf)", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterBool>   ("tape_cal_tone",       "Tape Calibration Tone", false));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("cv_mod_depth",        "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterInt>    ("clipper_shape",       "Multiband Clipper Shape", 0, 2, 0));
-    params.push_back (std::make_unique<juce::AudioParameterFloat>  ("regen_throttle",      "Regen Throttle", 0.0f, 1.0f, 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterBool>   ("dialogue_duck",       "Dialogue Ducking", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "stage_azimuth", 1 },        "Azimuth",            juce::NormalisableRange<float> (-180.0f, 180.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "stage_elevation", 1 },      "Elevation",          juce::NormalisableRange<float> (-90.0f,  90.0f,  0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "stage_depth", 1 },          "Depth / Drive",      juce::NormalisableRange<float> (0.0f,    1.0f,   0.001f), 0.25f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "stage_haas_itd", 1 },       "Haas ITD (ms)",      juce::NormalisableRange<float> (0.0f,    35.0f,  0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "stage_width", 1 },          "Stage Width",        juce::NormalisableRange<float> (0.0f,    2.0f,   0.01f), 1.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "stage_anchor_hz", 1 },      "Low-End Anchor",     juce::NormalisableRange<float> (20.0f,   250.0f, 1.0f), 90.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "stage_ms_mid", 1 },         "Split-Core Mid",     juce::NormalisableRange<float> (-12.0f,  12.0f,  0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "stage_ms_side", 1 },        "Split-Core Side",    juce::NormalisableRange<float> (-12.0f,  12.0f,  0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "room_match_mix", 1 },       "Room Matcher Mix",   juce::NormalisableRange<float> (0.0f,    1.0f,   0.01f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "room_profile", 1 },         "Room Profile",       0, 3, 1));
+    params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "patch_order", 1 },          "Rear Patch Order",   0, 2, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "global_mix", 1 },           "Global Wet/Dry",     juce::NormalisableRange<float> (0.0f,    1.0f,   0.01f), 1.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "stage_ceiling_guard", 1 },  "Sub-Ceiling Guard (-0.5 dBFS)", true));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "transient_sculpt", 1 },     "Predictive Transient Sculpting", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "ultra_wide", 1 },           "Ultra Wide (Haas-Kempf)", 0.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "tape_cal_tone", 1 },        "Tape Calibration Tone", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "dialogue_duck", 1 },        "Dialogue Ducking", false));
 
     return { params.begin(), params.end() };
 }
@@ -205,18 +212,47 @@ juce::AudioProcessorEditor* SolutionAudioProcessor::createEditor()
    #endif
 }
 
+void SolutionAudioProcessor::setCurrentProgram (int index)
+{
+    if (presets.loadFactoryPreset (index))
+        currentProgram = index;
+}
+
 void SolutionAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+    state.setProperty ("stateVersion", stateVersion, nullptr);
+   #ifdef JucePlugin_VersionString
+    state.setProperty ("pluginVersion", JucePlugin_VersionString, nullptr);
+   #endif
+    state.setProperty ("module", SOLUTION_MODULE_ID, nullptr);
+    state.setProperty ("preset", presets.getCurrentPresetName(), nullptr);
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     copyXmlToBinary (*xml, destData);
 }
 
+void SolutionAudioProcessor::migrateState (juce::ValueTree& state, int fromVersion)
+{
+    // Version 0 = sessions saved before versioning existed (same layout as v1).
+    // Future example:  if (fromVersion < 2) rename "old_id" -> "new_id" in the PARAM children.
+    juce::ignoreUnused (state, fromVersion);
+}
+
 void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    if (data == nullptr || sizeInBytes <= 0)
+        return;
     std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
-    if (xmlState != nullptr && xmlState->hasTagName (apvts.state.getType()))
-        apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+    if (xmlState == nullptr || ! xmlState->hasTagName (apvts.state.getType()))
+        return;
+
+    auto tree = juce::ValueTree::fromXml (*xmlState);
+    const int savedVersion = tree.getProperty ("stateVersion", 0);
+    if (savedVersion > stateVersion)
+        DBG ("Session was saved by a newer version of The Solution - loading what we understand");
+    migrateState (tree, savedVersion);
+    apvts.replaceState (tree);
+    markParamsChanged();
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

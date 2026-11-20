@@ -413,7 +413,7 @@
         </div>
       </div>
       <div class="wing-actions">
-        <select onchange="bind('room_profile', this.value, '', 1)" style="width:100%;">
+        <select data-sync="room_profile" onchange="bind('room_profile', this.value, '', 1)" style="width:100%;">
           <option value="0">Room: Bypass</option>
           <option value="1" selected>Room: Mastering Studio</option>
           <option value="2">Room: '69 Lincoln Cabin</option>
@@ -541,6 +541,7 @@
         <button onclick="filterVault('#SubBass')">#SubBass</button>
         <button onclick="filterVault('#Cinematic')">#Cinematic</button>
         <button onclick="filterVault('#Master')">#Master</button>
+        <button onclick="filterVault('#User')">#User</button>
       </div>
       <div class="ctrl"><label>AUDITION LEVEL <span id="v-audition">0.0 dB</span></label><input type="range" min="-24" max="0" step="0.5" value="0" oninput="document.getElementById('v-audition').textContent=parseFloat(this.value).toFixed(1)+' dB'"></div>
       <div style="display:flex;gap:4px;">
@@ -558,16 +559,16 @@
       <strong style="color:var(--accent2);letter-spacing:0.1em;">THE MATRIX · CV, MIDI &amp; CLIPPER</strong>
       <div class="ctrl">
         <label>CV LFO MOD DEPTH <span id="v-cv_mod_depth">0%</span></label>
-        <input type="range" min="0" max="1" step="0.01" value="0" oninput="bind('cv_mod_depth', this.value, '%', 100)">
+        <input data-sync="cv_mod_depth" type="range" min="0" max="1" step="0.01" value="0" oninput="bind('cv_mod_depth', this.value, '%', 100)">
       </div>
       <div class="ctrl">
         <label>REGEN THROTTLE (ORBIT FEEDBACK) <span id="v-regen_throttle">0%</span></label>
-        <input type="range" min="0" max="1" step="0.01" value="0" oninput="bind('regen_throttle', this.value, '%', 100)">
+        <input data-sync="regen_throttle" type="range" min="0" max="1" step="0.01" value="0" oninput="bind('regen_throttle', this.value, '%', 100)">
       </div>
       <button id="duckBtn" onclick="toggleDuck()">🎙 AI DIALOGUE DUCKING: OFF</button>
       <div class="ctrl">
         <label>MULTIBAND CLIPPER SHAPE</label>
-        <select onchange="bind('clipper_shape', this.value, '', 1)">
+        <select data-sync="clipper_shape" onchange="bind('clipper_shape', this.value, '', 1)">
           <option value="0" selected>Soft Knee (Transparent)</option>
           <option value="1">Warm Tube (Asymmetric)</option>
           <option value="2">Hard Brickwall (-0.5 dBFS)</option>
@@ -726,6 +727,7 @@
     };
 
     const knobRegistry = {};
+    let activeDragParam = null;   // knob under the mouse - don't let plugin updates fight the drag
     function initKnobs() {
       document.querySelectorAll('.knob-wrap').forEach(el => {
         const param = el.dataset.param, min = parseFloat(el.dataset.min), max = parseFloat(el.dataset.max);
@@ -753,16 +755,16 @@
           fgArc.setAttribute('stroke-dasharray', `${(norm * 127).toFixed(1)} 170`);
         }
         renderKnob(val);
-        knobRegistry[param] = { set: (v) => renderKnob(v) };
+        knobRegistry[param] = { set: (v) => renderKnob(v), unit, mult };
 
         let dragging = false, startY = 0, startVal = val;
-        el.addEventListener('mousedown', (e) => { dragging = true; startY = e.clientY; startVal = val; e.preventDefault(); });
+        el.addEventListener('mousedown', (e) => { dragging = true; activeDragParam = param; startY = e.clientY; startVal = val; e.preventDefault(); });
         window.addEventListener('mousemove', (e) => {
           if (!dragging) return;
           const next = Math.max(min, Math.min(max, startVal + ((startY - e.clientY) / 140) * (max - min)));
           renderKnob(next); bind(param, next, unit, mult);
         });
-        window.addEventListener('mouseup', () => dragging = false);
+        window.addEventListener('mouseup', () => { if (dragging && activeDragParam === param) activeDragParam = null; dragging = false; });
         el.addEventListener('wheel', (e) => {
           e.preventDefault();
           const next = Math.max(min, Math.min(max, val + (max - min) * (e.deltaY < 0 ? 0.03 : -0.03)));
@@ -785,8 +787,9 @@
     }
     updateSkinVisibility();
 
-    function applySkin(key) {
+    function applySkin(key, fromPlugin) {
       if (!skinsEnabled) return;
+      if (!fromPlugin && window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('setUiProp', { key: 'skin', value: key });
       const s = SKINS[key] || SKINS.lincoln69;
       const r = document.documentElement.style;
       r.setProperty('--bg', s.bg); r.setProperty('--accent', s.accent);
@@ -1024,6 +1027,9 @@
     window._vaultMem = [];
     function getVaultSaved() { try { return JSON.parse(localStorage.getItem('solution_vault') || '[]'); } catch (e) { return window._vaultMem; } }
     function setVaultSaved(arr) { window._vaultMem = arr; try { localStorage.setItem('solution_vault', JSON.stringify(arr)); } catch (e) {} }
+    const hasPlugin = () => !!(window.__JUCE__ && window.__JUCE__.backend);
+    const presetCmd = (cmd, extra) => window.__JUCE__.backend.emitEvent('presetCommand', Object.assign({ cmd }, extra || {}));
+    let pluginPresets = null, currentPreset = '', vaultMessage = '';
     function openVault() { renderVault(); document.getElementById('vaultModal').classList.add('open'); }
     function filterVault(tag) { vaultFilter = tag; renderVault(); }
     function toggleLockPin() { lockPin = !lockPin; document.getElementById('pinBtn').classList.toggle('active', lockPin); }
@@ -1042,20 +1048,46 @@
     function saveUserPreset() {
       const name = document.getElementById('presetName').value.trim();
       if (!name) return;
+      if (hasPlugin()) {
+        presetCmd('save', { name, tag: vaultFilter === 'ALL' ? '#User' : vaultFilter });
+        document.getElementById('presetName').value = '';
+        return;
+      }
       const saved = getVaultSaved();
       saved.unshift({ name, tag: '#Master', params: { stage_depth: state.stage_depth, stage_width: state.stage_width, stage_azimuth: state.stage_azimuth } });
       setVaultSaved(saved.slice(0, 20));
       document.getElementById('presetName').value = '';
       renderVault();
     }
+    function escapeHtml(t) { return String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
     function renderVault() {
+      if (pluginPresets) {
+        const list = pluginPresets.filter(p => vaultFilter === 'ALL' || p.tag === vaultFilter);
+        document.getElementById('vaultList').innerHTML =
+          (vaultMessage ? `<div style="font-size:11px;color:var(--accent2)">${escapeHtml(vaultMessage)}</div>` : '') +
+          list.map((p, idx) =>
+            `<div class="preset-item"><span><b>${p.name === currentPreset ? '▶ ' : ''}${escapeHtml(p.name)}</b> <small style="color:var(--accent2)">${escapeHtml(p.tag)}${p.factory ? ' · factory' : ''}</small></span>` +
+            `<span><button onclick="loadVaultIdx(${idx})">LOAD</button>${p.factory ? '' : ` <button onclick="deleteVaultIdx(${idx})">DEL</button>`}</span></div>`
+          ).join('') +
+          `<button onclick="presetCmd('reveal')" style="margin-top:4px">📂 OPEN PRESETS FOLDER</button>`;
+        window._vaultVisible = list;
+        return;
+      }
       const all = [...getVaultSaved(), ...FACTORY_PRESETS].filter(p => vaultFilter === 'ALL' || p.tag === vaultFilter);
       document.getElementById('vaultList').innerHTML = all.map((p, idx) =>
         `<div class="preset-item"><span><b>${p.name}</b> <small style="color:var(--accent2)">${p.tag}</small></span><button onclick="loadVaultIdx(${idx})">LOAD</button></div>`
       ).join('');
       window._vaultVisible = all;
     }
-    function loadVaultIdx(i) { if (window._vaultVisible && window._vaultVisible[i]) applyPresetParams(window._vaultVisible[i].params); }
+    function loadVaultIdx(i) {
+      const p = window._vaultVisible && window._vaultVisible[i];
+      if (!p) return;
+      if (pluginPresets) presetCmd('load', { name: p.name }); else applyPresetParams(p.params);
+    }
+    function deleteVaultIdx(i) {
+      const p = window._vaultVisible && window._vaultVisible[i];
+      if (p && !p.factory && confirm('Delete preset "' + p.name + '"?')) presetCmd('delete', { name: p.name });
+    }
 
     const state = { stage_azimuth: 0, stage_elevation: 0, stage_depth: 0.25, stage_width: 1.0, rms: 0.14 };
     let vizMode = 0;
@@ -1066,12 +1098,33 @@
       document.getElementById('vizBadge').textContent = VIZ_MODES[vizMode] + ' · CLICK TO CYCLE · SHIFT+SPACE: PRECISION';
     }
 
+    function showValue(id, num, unit, mult = 1) {
+      const el = document.getElementById('v-' + id);
+      if (el) el.textContent = (num * mult).toFixed(mult === 100 ? 0 : 1) + unit;
+    }
     function bind(id, val, unit, mult = 1) {
       const num = parseFloat(val);
       state[id] = num;
-      const el = document.getElementById('v-' + id);
-      if (el) el.textContent = (num * mult).toFixed(mult === 100 ? 0 : 1) + unit;
+      showValue(id, num, unit, mult);
       if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('setParam', { id: id, value: num });
+    }
+
+    // ---- Plugin -> UI: keep every control in step with the real parameter values
+    // (session reload, presets, DAW automation, undo/redo).
+    function syncFromPlugin(values) {
+      for (const [id, v] of Object.entries(values)) {
+        if (id === activeDragParam) continue;
+        state[id] = v;
+        const k = knobRegistry[id];
+        if (k) { k.set(v); showValue(id, v, k.unit, k.mult); }
+        document.querySelectorAll('[data-sync="' + id + '"]').forEach(el => { el.value = String(Math.round(v * 100) / 100); });
+      }
+      const on = (id) => values[id] !== undefined && values[id] > 0.5;
+      if (values.dialogue_duck !== undefined && on('dialogue_duck') !== duckOn) toggleDuck();
+      if (values.transient_sculpt !== undefined && on('transient_sculpt') !== sculptOn) toggleSculpt();
+      if (values.stage_ceiling_guard !== undefined && on('stage_ceiling_guard') !== guardOn) toggleCeilingGuard();
+      if (values.tape_cal_tone !== undefined && on('tape_cal_tone') !== calOn) toggleCalTone();
+      if (values.ultra_wide !== undefined && (values.ultra_wide > 0.001) !== uwOn) toggleUltraWide();
     }
 
     function rmsToDb(r) { return r > 0.0001 ? Math.max(-60, 20 * Math.log10(r)) : -60; }
@@ -1082,6 +1135,22 @@
     }
 
     if (window.__JUCE__ && window.__JUCE__.backend) {
+      window.__JUCE__.backend.addEventListener('paramState', (m) => {
+        if (m.values) syncFromPlugin(m.values);
+        if (m.ui && m.ui.skin && SKINS[m.ui.skin]) {
+          const sel = document.getElementById('skinSelect');
+          if (sel) sel.value = m.ui.skin;
+          applySkin(m.ui.skin, true);
+        }
+        if (m.preset !== undefined && m.preset !== currentPreset) { currentPreset = m.preset; if (pluginPresets) renderVault(); }
+      });
+      window.__JUCE__.backend.addEventListener('presetList', (m) => {
+        pluginPresets = m.presets || [];
+        currentPreset = m.current || '';
+        vaultMessage = m.message || '';
+        renderVault();
+      });
+      window.__JUCE__.backend.emitEvent('uiReady', {});
       window.__JUCE__.backend.addEventListener('telemetry', (t) => {
         if (t.module) setModuleTitle(t.module);
         if (t.skinsEnabled !== undefined && t.skinsEnabled !== skinsEnabled) { skinsEnabled = !!t.skinsEnabled; updateSkinVisibility(); }

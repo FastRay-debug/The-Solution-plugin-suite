@@ -14,6 +14,9 @@ public:
 
 private:
     void timerCallback() override;
+    void sendParamState();
+    void sendPresetList (const juce::String& message = {});
+    void handlePresetCommand (const juce::var& data);
     static juce::File findSharedSkinsFolder();
 
     SolutionAudioProcessor& audioProcessor;

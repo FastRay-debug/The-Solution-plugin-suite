@@ -113,7 +113,19 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                    {
                        if (auto* obj = data.getDynamicObject())
                            audioProcessor.armMidiLearn (obj->getProperty ("id").toString());
-                   }))
+                   })
+                   // Page finished loading: send it the real parameter values + saved UI settings
+                   .withEventListener ("uiReady", [this] (const juce::var&)
+                   {
+                       sendParamState();
+                       sendPresetList();
+                   })
+                   .withEventListener ("setUiProp", [this] (const juce::var& data)
+                   {
+                       if (auto* obj = data.getDynamicObject())
+                           audioProcessor.setUiProperty (obj->getProperty ("key").toString(), obj->getProperty ("value").toString());
+                   })
+                   .withEventListener ("presetCommand", [this] (const juce::var& data) { handlePresetCommand (data); }))
 {
     addAndMakeVisible (webView);
     const auto escapedName = juce::URL::addEscapeChars (juce::String (SOLUTION_MODULE_NAME), true);
@@ -130,8 +142,73 @@ void SolutionAudioProcessorEditor::resized()
     webView.setBounds (getLocalBounds());
 }
 
+void SolutionAudioProcessorEditor::sendParamState()
+{
+    juce::DynamicObject::Ptr values = new juce::DynamicObject();
+    for (auto* p : audioProcessor.getParameters())
+        if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (p))
+            values->setProperty (param->getParameterID(), param->convertFrom0to1 (param->getValue()));
+
+    juce::DynamicObject::Ptr ui = new juce::DynamicObject();
+    ui->setProperty ("skin", audioProcessor.getUiProperty ("skin"));
+
+    juce::DynamicObject::Ptr payload = new juce::DynamicObject();
+    payload->setProperty ("values", juce::var (values.get()));
+    payload->setProperty ("ui", juce::var (ui.get()));
+    payload->setProperty ("preset", audioProcessor.presets.getCurrentPresetName());
+    webView.emitEventIfBrowserIsVisible ("paramState", juce::var (payload.get()));
+}
+
+void SolutionAudioProcessorEditor::sendPresetList (const juce::String& message)
+{
+    juce::Array<juce::var> list;
+    for (const auto& info : audioProcessor.presets.getAllPresets())
+    {
+        juce::DynamicObject::Ptr item = new juce::DynamicObject();
+        item->setProperty ("name", info.name);
+        item->setProperty ("tag", info.tag);
+        item->setProperty ("factory", info.factory);
+        list.add (juce::var (item.get()));
+    }
+    juce::DynamicObject::Ptr payload = new juce::DynamicObject();
+    payload->setProperty ("presets", list);
+    payload->setProperty ("current", audioProcessor.presets.getCurrentPresetName());
+    payload->setProperty ("folder", audioProcessor.presets.getFolder().getFullPathName());
+    payload->setProperty ("message", message);
+    webView.emitEventIfBrowserIsVisible ("presetList", juce::var (payload.get()));
+}
+
+void SolutionAudioProcessorEditor::handlePresetCommand (const juce::var& data)
+{
+    auto* obj = data.getDynamicObject();
+    if (obj == nullptr)
+        return;
+    const auto cmd  = obj->getProperty ("cmd").toString();
+    const auto name = obj->getProperty ("name").toString();
+    auto& pm = audioProcessor.presets;
+
+    juce::String message;
+    if (cmd == "load")
+        message = pm.loadPreset (name) ? "Loaded " + name : "Couldn't load " + name;
+    else if (cmd == "save")
+        message = pm.savePreset (name, obj->getProperty ("tag").toString()) ? "Saved " + name : "Couldn't save " + name + " (factory names are reserved)";
+    else if (cmd == "delete")
+        message = pm.deletePreset (name) ? "Deleted " + name : "Couldn't delete " + name;
+    else if (cmd == "reveal")
+    {
+        pm.getFolder().createDirectory();
+        pm.getFolder().startAsProcess();
+    }
+
+    sendPresetList (message);
+    sendParamState();
+}
+
 void SolutionAudioProcessorEditor::timerCallback()
 {
+    if (audioProcessor.consumeParamsChanged())
+        sendParamState();
+
     juce::DynamicObject::Ptr payload = new juce::DynamicObject();
     payload->setProperty ("module",        juce::String (SOLUTION_MODULE_NAME));
     payload->setProperty ("skinsEnabled",  skinsAvailable);

@@ -7,10 +7,12 @@
 #endif
 #include <juce_dsp/juce_dsp.h>
 #include "ModuleEngines.h"
+#include "PresetManager.h"
 #include <atomic>
 #include <array>
 
-class SolutionAudioProcessor final : public juce::AudioProcessor
+class SolutionAudioProcessor final : public juce::AudioProcessor,
+                                     private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     SolutionAudioProcessor();
@@ -31,10 +33,11 @@ public:
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.05; }
 
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
+    // Factory presets double as the DAW's program list
+    int getNumPrograms() override { return std::max (1, presets.getNumFactoryPresets()); }
+    int getCurrentProgram() override { return currentProgram; }
+    void setCurrentProgram (int index) override;
+    const juce::String getProgramName (int index) override { return presets.getFactoryPresetName (index); }
     void changeProgramName (int, const juce::String&) override {}
 
     void getStateInformation (juce::MemoryBlock& destData) override;
@@ -52,6 +55,19 @@ public:
 
     juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
+    PresetManager presets { apvts };
+
+    // Saved-state format version. Bump it and extend migrateState() whenever a
+    // parameter is renamed, removed or changes range, so old sessions still load.
+    static constexpr int stateVersion = 1;
+
+    // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
+    juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
+    void setUiProperty (const juce::String& key, const juce::String& value) { apvts.state.setProperty ("ui_" + key, value, nullptr); }
+
+    // True when any parameter changed since the last call (host automation, preset, undo...).
+    bool consumeParamsChanged() { return paramsChanged.exchange (false, std::memory_order_acq_rel); }
+    void markParamsChanged() { paramsChanged.store (true, std::memory_order_release); }
 
     std::atomic<float> rmsLeft { 0.0f };
     std::atomic<float> rmsRight { 0.0f };
@@ -62,6 +78,11 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+    static void migrateState (juce::ValueTree& state, int fromVersion);
+    void parameterChanged (const juce::String&, float) override { markParamsChanged(); }
+
+    std::atomic<bool> paramsChanged { true };
+    int currentProgram = 0;
 
     const SolutionDSP::ModuleId moduleId { SolutionDSP::moduleIdFromName (SOLUTION_MODULE_ID) };
     SolutionDSP::SuiteModuleEngine moduleEngine;
