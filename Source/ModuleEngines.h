@@ -137,6 +137,7 @@ namespace SolutionDSP
         int   clipperShape    = 0; // 0: Soft Knee, 1: Warm Tube, 2: Hard Brickwall
         float regenThrottle   = 0.0f;
         bool  dialogueDuck    = false;
+        bool  modeNotch       = true;    // fixed 115 Hz notch in the room translation profiles
     };
 
     class RoomMatcherEngine
@@ -208,7 +209,7 @@ namespace SolutionDSP
             *modeNotch.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, 115.0f, 4.0f, 0.72f);
         }
 
-        void process (juce::AudioBuffer<float>& buffer, float mix, int profileIndex)
+        void process (juce::AudioBuffer<float>& buffer, float mix, int profileIndex, bool notchOn = true)
         {
             const int numSamples = buffer.getNumSamples();
 
@@ -227,7 +228,10 @@ namespace SolutionDSP
             lowShelf.process (ctx);
             midPeak.process (ctx);
             highShelf.process (ctx);
-            modeNotch.process (ctx);
+            if (notchOn)
+                modeNotch.process (ctx);
+            else
+                modeNotch.reset();     // start clean when switched back on
 
             const float dL = static_cast<float> ((tapMsL * 0.001) * sampleRate);
             const float dR = static_cast<float> ((tapMsR * 0.001) * sampleRate);
@@ -359,7 +363,7 @@ namespace SolutionDSP
             const float cvOffset = bus.cvLfoValue.load (std::memory_order_relaxed) * p.cvModDepth;
 
             if (p.patchOrder == 1)
-                roomMatcher.process (buffer, p.roomMix, p.roomProfile);
+                roomMatcher.process (buffer, p.roomMix, p.roomProfile, p.modeNotch);
 
             const float effectiveDepth = std::clamp (p.depth + cvOffset * 0.25f, 0.0f, 1.0f);
             const float effectiveWidth = std::clamp (p.width + cvOffset * 0.35f, 0.0f, 2.0f);
@@ -527,7 +531,7 @@ namespace SolutionDSP
             }
 
             if (p.patchOrder != 1)
-                roomMatcher.process (buffer, p.roomMix, p.roomProfile);
+                roomMatcher.process (buffer, p.roomMix, p.roomProfile, p.modeNotch);
         }
 
     private:

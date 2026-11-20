@@ -444,6 +444,7 @@
           <label style="font-size:9px;display:flex;gap:3px;align-items:center;flex:1;" data-tip="Apply your measured room correction"><input type="checkbox" data-sync="room_correct_on" onchange="bind('room_correct_on', this.checked ? 1 : 0, '', 1)"> CORRECT ROOM</label>
           <button onclick="openRoomCorr()" style="font-size:9px;" data-tip="See your room's measured response and the correction">VIEW</button>
         </div>
+        <label style="font-size:9px;display:flex;gap:3px;align-items:center;" data-tip="Fixed 115 Hz room-mode notch (-2.85 dB) in the Mastering, '69 Lincoln and Club profiles"><input type="checkbox" data-sync="mode_notch_on" checked onchange="bind('mode_notch_on', this.checked ? 1 : 0, '', 1)"> 115 Hz NOTCH</label>
         <span id="captureStatus" style="font-size:9px;color:var(--mute);text-align:center;">Room not measured yet</span>
       </div>
     </div>

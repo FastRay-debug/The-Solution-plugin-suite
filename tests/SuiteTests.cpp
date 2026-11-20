@@ -907,6 +907,30 @@ static void testRemote()
     std::printf ("  done\n");
 }
 
+static void testModeNotchSwitch()
+{
+    std::printf ("== 115 Hz mode notch switch\n");
+    // A 115 Hz tone through a translation profile at 100% Room Matcher mix: switching the
+    // notch off should bring back about 2.85 dB at 115 Hz and change nothing at 1 kHz.
+    auto level = [] (bool notchOn, double hz)
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
+        auto* defaultNotch = proc.apvts.getParameter ("mode_notch_on");
+        EXPECT (defaultNotch->getValue() > 0.5f, "notch should default to on (original design)");
+        setParam (proc, "room_profile", 1.0f); setParam (proc, "room_match_mix", 1.0f);
+        setParam (proc, "stage_ceiling_guard", 0.0f); setParam (proc, "mode_notch_on", notchOn ? 1.0f : 0.0f);
+        juce::MidiBuffer midi; double db = 0.0;
+        for (int k = 0; k < 120; ++k) { juce::AudioBuffer<float> b (2, 512); fillSine (b, 48000.0, hz, 0.05f, 0.0, k * 512); proc.processBlock (b, midi); db = blockRmsDb (b); }
+        return db;
+    };
+    const double on115 = level (true, 115.0), off115 = level (false, 115.0);
+    const double on1k = level (true, 1000.0), off1k = level (false, 1000.0);
+    std::printf ("  115 Hz: notch on %.2f dB, off %.2f dB | 1 kHz: on %.2f, off %.2f\n", on115, off115, on1k, off1k);
+    EXPECT (off115 - on115 > 2.0 && off115 - on115 < 3.5, "switching the notch off should restore ~2.85 dB at 115 Hz (got %.2f)", off115 - on115);
+    EXPECT (std::abs (on1k - off1k) < 0.1, "the notch must not affect 1 kHz (%.2f dB)", on1k - off1k);
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -922,6 +946,7 @@ int main()
     testStemFocus();
     testNeuralCharacter();
     testRemote();
+    testModeNotchSwitch();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

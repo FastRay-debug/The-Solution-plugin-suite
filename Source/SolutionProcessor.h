@@ -116,7 +116,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 6;   // v2 Rack Link/Glue, v3 room correction, v4 binaural, v5 stem focus, v6 neural character
+    static constexpr int stateVersion = 7;   // v7: 115 Hz notch switch
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
