@@ -1,6 +1,7 @@
 #include "SolutionProcessor.h"
 #if ! SOLUTION_HEADLESS
  #include "SolutionEditor.h"
+ #include "BinaryData.h"
 #endif
 #include <cmath>
 #include <algorithm>
@@ -30,6 +31,7 @@ SolutionAudioProcessor::SolutionAudioProcessor()
 
 SolutionAudioProcessor::~SolutionAudioProcessor()
 {
+    remote.reset();      // stop serving before anything it reads goes away
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             apvts.removeParameterListener (ranged->getParameterID(), this);
@@ -349,6 +351,86 @@ juce::AudioProcessorEditor* SolutionAudioProcessor::createEditor()
    #else
     return new SolutionAudioProcessorEditor (*this);
    #endif
+}
+
+juce::var SolutionAudioProcessor::getRemoteState() const
+{
+    juce::Array<juce::var> params;
+    for (auto* p : getParameters())
+    {
+        auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p);
+        if (ranged == nullptr) continue;
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("id", ranged->getParameterID());
+        o->setProperty ("name", ranged->getName (40));
+        o->setProperty ("value", ranged->convertFrom0to1 (ranged->getValue()));
+        if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (ranged))
+        {
+            o->setProperty ("type", "choice");
+            juce::Array<juce::var> names; for (const auto& c : choice->choices) names.add (c);
+            o->setProperty ("choices", names);
+        }
+        else if (dynamic_cast<juce::AudioParameterBool*> (ranged) != nullptr)
+            o->setProperty ("type", "bool");
+        else
+        {
+            const auto& range = ranged->getNormalisableRange();
+            o->setProperty ("type", "float");
+            o->setProperty ("min", range.start); o->setProperty ("max", range.end); o->setProperty ("step", range.interval);
+        }
+        params.add (juce::var (o.get()));
+    }
+    juce::DynamicObject::Ptr state = new juce::DynamicObject();
+    state->setProperty ("module", juce::String (SolutionDSP::moduleDisplayName (moduleId)));
+    state->setProperty ("params", params);
+    state->setProperty ("lufs", loudness.shortTerm.load());
+    state->setProperty ("truePeak", loudness.truePeakDb.load());
+    state->setProperty ("gr", limiterGainReductionDb.load() + glueGainReductionDb.load() + duckGainReductionDb.load());
+    juce::Array<juce::var> presetNames;
+    {
+        const juce::ScopedLock sl (remotePresetLock);
+        for (const auto& n : remotePresetNames) presetNames.add (n);
+    }
+    state->setProperty ("presets", presetNames);
+    return juce::var (state.get());
+}
+
+bool SolutionAudioProcessor::startRemote (const juce::String& bindAddress)
+{
+    {
+        const juce::ScopedLock sl (remotePresetLock);
+        remotePresetNames.clear();
+        for (const auto& info : presets.getAllPresets()) remotePresetNames.add (info.name);
+    }
+    SolutionDSP::RemoteServer::Host host;
+    host.getPage = []
+    {
+       #if SOLUTION_HEADLESS
+        return juce::String ("<!doctype html><title>The Solution Remote</title>");
+       #else
+        return juce::String::fromUTF8 (BinaryData::remote_html, BinaryData::remote_htmlSize);
+       #endif
+    };
+    host.getState = [this] { return getRemoteState(); };
+    host.setParam = [this] (const juce::String& id, float value)
+    {
+        if (auto* param = apvts.getParameter (id))
+        {
+            const auto& range = param->getNormalisableRange();
+            param->beginChangeGesture();
+            param->setValueNotifyingHost (param->convertTo0to1 (juce::jlimit (range.start, range.end, value)));
+            param->endChangeGesture();
+        }
+    };
+    host.loadPreset = [this] (const juce::String& name) { presets.loadPreset (name); };
+    host.runOnMessageThread = [this] (std::function<void()> fn)
+    {
+        if (remoteExecutor) { remoteExecutor (std::move (fn)); return; }
+        juce::MessageManager::callAsync ([fn = std::move (fn), alive = std::weak_ptr<bool> (aliveFlag)] { if (! alive.expired()) fn(); });
+    };
+    remote = std::make_unique<SolutionDSP::RemoteServer> (std::move (host));
+    const int firstPort = 47800 + std::max (0, rackSlot) % 64;
+    return remote->start (firstPort, 100, bindAddress);
 }
 
 juce::String SolutionAudioProcessor::setCharacterModel (const juce::String& modelName)

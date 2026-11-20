@@ -121,6 +121,7 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                        sendPresetList();
                        sendRoomResult();
                        sendCharacterState();
+                       sendRemoteState();
                    })
                    .withEventListener ("setUiProp", [this] (const juce::var& data)
                    {
@@ -144,6 +145,16 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                                webView.emitEventIfBrowserIsVisible ("roomNotice", juce::var ("That file doesn't look like a mic calibration file (expected lines of: frequency dB)."));
                            sendRoomResult();
                        });
+                   })
+                   .withEventListener ("remote", [this] (const juce::var& data)
+                   {
+                       const auto cmd = data.getProperty ("cmd", {}).toString();
+                       juce::String error;
+                       if (cmd == "start" && ! audioProcessor.startRemote())
+                           error = "Couldn't open a network port (47800-47999). Another app may be using them, or your firewall/host blocks it.";
+                       else if (cmd == "stop")
+                           audioProcessor.stopRemote();
+                       sendRemoteState (error);
                    })
                    .withEventListener ("character", [this] (const juce::var& data)
                    {
@@ -390,8 +401,24 @@ void SolutionAudioProcessorEditor::sendCharacterState (const juce::String& messa
     webView.emitEventIfBrowserIsVisible ("characterState", juce::var (payload.get()));
 }
 
+void SolutionAudioProcessorEditor::sendRemoteState (const juce::String& error)
+{
+    auto* r = audioProcessor.getRemote();
+    juce::DynamicObject::Ptr payload = new juce::DynamicObject();
+    const bool running = r != nullptr && r->isRunning();
+    payload->setProperty ("running", running);
+    payload->setProperty ("url", running ? r->getUrl() : juce::String());
+    payload->setProperty ("code", running ? r->getPairingCode() : juce::String());
+    payload->setProperty ("devices", running ? r->getConnectedDevices() : 0);
+    payload->setProperty ("error", error);
+    webView.emitEventIfBrowserIsVisible ("remoteState", juce::var (payload.get()));
+}
+
 void SolutionAudioProcessorEditor::timerCallback()
 {
+    if (frameCounter % 120 == 60 && audioProcessor.getRemote() != nullptr && audioProcessor.getRemote()->isRunning())
+        sendRemoteState();
+
     if (frameCounter % 120 == 0)
         audioProcessor.character.housekeeping();   // free models the audio thread has swapped out
 

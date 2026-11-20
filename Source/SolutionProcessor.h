@@ -15,6 +15,7 @@
 #include "MixAssistant.h"
 #include "StemSplitter.h"
 #include "NeuralCharacter.h"
+#include "RemoteControl.h"
 #include <atomic>
 #include <array>
 
@@ -83,6 +84,13 @@ public:
     juce::String setCharacterModel (const juce::String& modelName);
     juce::String getCharacterModelName() const { return apvts.state.getProperty ("charModel").toString(); }
     SolutionDSP::NeuralCharacter character;
+
+    // Phone / tablet remote (message thread). Off until started; never saved as "on".
+    bool startRemote (const juce::String& bindAddress = {});
+    void stopRemote() { if (remote != nullptr) remote->stop(); }
+    SolutionDSP::RemoteServer* getRemote() { return remote.get(); }
+    std::function<void (std::function<void()>)> remoteExecutor;   // tests run commands inline
+    juce::var getRemoteState() const;
 
     // Stem Focus adds latency only while it's on; the host is told on the message thread.
     void updateLatencyNow();
@@ -164,6 +172,9 @@ private:
     void saveMicToState();
     void refitForCurrentMic();
     SolutionDSP::MicProfile micProfile { SolutionDSP::findMicProfile ("generic") };
+    std::unique_ptr<SolutionDSP::RemoteServer> remote;
+    juce::StringArray remotePresetNames;
+    juce::CriticalSection remotePresetLock;
     std::shared_ptr<bool> aliveFlag = std::make_shared<bool> (true);   // lets async callbacks check we still exist
     juce::ThreadPool analysisPool { 1 };                         // declared last: joins first on destruction
     int rackSlot = -1;

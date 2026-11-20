@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Solution Remote</title>
+<style>
+  :root { --bg:#07090C; --panel:#11161d; --text:#e5e7eb; --mute:#9ca3af; --accent:#F59E0B; --accent2:#38BDF8; --good:#10B981; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:16px; padding-bottom:40px; }
+  h1 { font-size:18px; letter-spacing:.08em; color:var(--accent); margin:0 0 4px; }
+  .sub { color:var(--mute); font-size:13px; margin-bottom:14px; }
+  .card { background:var(--panel); border:1px solid #1f2937; border-radius:12px; padding:14px; margin-bottom:12px; }
+  input[type=text] { width:100%; font-size:28px; letter-spacing:.3em; text-align:center; padding:12px; border-radius:10px; border:1px solid #374151; background:#0b0f14; color:var(--text); }
+  button, select { font-size:16px; padding:12px 14px; border-radius:10px; border:1px solid #374151; background:#1f2937; color:var(--text); width:100%; }
+  button.primary { background:var(--accent); color:#111; border:none; font-weight:600; margin-top:10px; }
+  .meters { display:flex; justify-content:space-between; font-family:ui-monospace,monospace; font-size:14px; }
+  .meters b { color:var(--good); }
+  .param { margin:14px 0; }
+  .param label { display:flex; justify-content:space-between; font-size:13px; color:var(--mute); margin-bottom:6px; }
+  .param label span { color:var(--text); font-family:ui-monospace,monospace; }
+  input[type=range] { width:100%; height:36px; accent-color:var(--accent); }
+  .toggle { display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:14px; }
+  .toggle input { width:28px; height:28px; accent-color:var(--accent); }
+  .err { color:#EF4444; font-size:14px; min-height:20px; margin-top:8px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+  <h1 id="title">THE SOLUTION · REMOTE</h1>
+  <div class="sub" id="subtitle">Fast Ray Media</div>
+
+  <div id="pairCard" class="card">
+    <div style="margin-bottom:8px;">Enter the 6-digit code shown in the plugin's 📱 REMOTE panel:</div>
+    <input id="code" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="••••••">
+    <button class="primary" onclick="pair()">CONNECT</button>
+    <div class="err" id="pairErr"></div>
+  </div>
+
+  <div id="main" class="hidden">
+    <div class="card meters"><span>LUFS <b id="mLufs">—</b></span><span>TP <b id="mTp">—</b></span><span>GR <b id="mGr">—</b></span></div>
+    <div class="card"><select id="presets" onchange="if (this.value) post('/api/preset', { name: this.value })"></select></div>
+    <div class="card" id="params"></div>
+    <div class="err" id="mainErr"></div>
+  </div>
+
+<script>
+  let token = sessionStorage.getItem('solutionToken') || '';
+  let touching = null, lastSend = 0, pendingSend = null, built = false;
+
+  async function post(path, body) {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) });
+    if (r.status === 401) { showPair(); }
+    return r;
+  }
+  async function pair() {
+    const code = document.getElementById('code').value.trim();
+    const r = await post('/api/pair', { code });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.token) { token = j.token; sessionStorage.setItem('solutionToken', token); showMain(); }
+    else document.getElementById('pairErr').textContent = j.error || 'Could not connect';
+  }
+  function showPair() { token = ''; sessionStorage.removeItem('solutionToken'); document.getElementById('pairCard').classList.remove('hidden'); document.getElementById('main').classList.add('hidden'); }
+  function showMain() { document.getElementById('pairCard').classList.add('hidden'); document.getElementById('main').classList.remove('hidden'); poll(); }
+
+  function fmt(p, v) {
+    if (p.type === 'choice') return p.choices[Math.round(v)] || v;
+    if (p.type === 'bool') return v > 0.5 ? 'On' : 'Off';
+    return (Math.abs(p.max - p.min) <= 2 && p.max <= 2 ? Math.round(v * 100) + '%' : (+v).toFixed(1));
+  }
+  function send(id, value) {
+    pendingSend = { id, value };
+    const now = Date.now();
+    if (now - lastSend > 50) { lastSend = now; post('/api/param', pendingSend); pendingSend = null; }
+    else setTimeout(() => { if (pendingSend) { lastSend = Date.now(); post('/api/param', pendingSend); pendingSend = null; } }, 60);
+  }
+  function el(tag, attrs, html) { const e = document.createElement(tag); Object.assign(e, attrs || {}); if (html !== undefined) e.textContent = html; return e; }
+
+  function build(state) {
+    const box = document.getElementById('params'); box.innerHTML = '';
+    state.params.forEach(p => {
+      if (p.type === 'bool') {
+        const row = el('label', { className: 'toggle' }); row.append(el('span', {}, p.name));
+        const cb = el('input', { type: 'checkbox', id: 'p_' + p.id });
+        cb.onchange = () => send(p.id, cb.checked ? 1 : 0);
+        row.append(cb); box.append(row);
+      } else if (p.type === 'choice') {
+        const wrap = el('div', { className: 'param' }); wrap.append(el('label', {}, p.name));
+        const sel = el('select', { id: 'p_' + p.id });
+        p.choices.forEach((c, i) => sel.append(el('option', { value: i }, c)));
+        sel.onchange = () => send(p.id, +sel.value);
+        wrap.append(sel); box.append(wrap);
+      } else {
+        const wrap = el('div', { className: 'param' });
+        const lab = el('label'); lab.append(el('b', {}, p.name)); const val = el('span', { id: 'v_' + p.id }); lab.append(val);
+        const r = el('input', { type: 'range', min: p.min, max: p.max, step: p.step || 'any', id: 'p_' + p.id });
+        r.oninput = () => { touching = p.id; val.textContent = fmt(p, r.value); send(p.id, +r.value); };
+        r.onchange = () => { touching = null; };
+        r.addEventListener('touchend', () => { touching = null; });
+        wrap.append(lab, r); box.append(wrap);
+      }
+    });
+    built = true;
+  }
+
+  function update(state) {
+    document.getElementById('title').textContent = (state.module || 'THE SOLUTION').toUpperCase() + ' · REMOTE';
+    if (!built) build(state);
+    state.params.forEach(p => {
+      if (p.id === touching) return;
+      const e = document.getElementById('p_' + p.id); if (!e) return;
+      if (p.type === 'bool') e.checked = p.value > 0.5; else e.value = p.value;
+      const v = document.getElementById('v_' + p.id); if (v) v.textContent = fmt(p, p.value);
+    });
+    const f = (x) => x <= -69.9 ? '—' : x.toFixed(1);
+    document.getElementById('mLufs').textContent = f(state.lufs);
+    document.getElementById('mTp').textContent = f(state.truePeak);
+    document.getElementById('mGr').textContent = state.gr < -0.05 ? state.gr.toFixed(1) : '0.0';
+    const sel = document.getElementById('presets');
+    const want = ['<option value="">Presets...</option>'].concat(state.presets.map(n => `<option>${n.replace(/[&<>"]/g, '')}</option>`)).join('');
+    if (sel.dataset.sig !== want) { sel.innerHTML = want; sel.dataset.sig = want; }
+  }
+
+  async function poll() {
+    if (!token) return;
+    try {
+      const r = await fetch('/api/state', { headers: { Authorization: 'Bearer ' + token } });
+      if (r.status === 401) return showPair();
+      update(await r.json());
+      document.getElementById('mainErr').textContent = '';
+    } catch (e) { document.getElementById('mainErr').textContent = 'Lost connection - is the plugin still open?'; }
+    setTimeout(poll, 400);
+  }
+  if (token) showMain();
+</script>
+</body>
+</html>

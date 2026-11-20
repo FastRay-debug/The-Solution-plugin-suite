@@ -847,6 +847,66 @@ static void testNeuralCharacter()
     std::printf ("  done\n");
 }
 
+struct HttpResult { int status = 0; juce::String body; };
+static HttpResult http (int port, const juce::String& method, const juce::String& path, const juce::String& body = {}, const juce::String& token = {})
+{
+    juce::StreamingSocket s;
+    HttpResult r;
+    if (! s.connect ("127.0.0.1", port, 2000)) return r;
+    juce::String req;
+    req << method << " " << path << " HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: " << (int) body.getNumBytesAsUTF8() << "\r\n";
+    if (token.isNotEmpty()) req << "Authorization: Bearer " << token << "\r\n";
+    req << "\r\n" << body;
+    s.write (req.toRawUTF8(), (int) req.getNumBytesAsUTF8());
+    juce::MemoryBlock got; char buf[4096];
+    while (s.waitUntilReady (true, 3000) > 0) { const int n = s.read (buf, sizeof (buf), false); if (n <= 0) break; got.append (buf, (size_t) n); }
+    const auto text = got.toString();
+    r.status = text.fromFirstOccurrenceOf (" ", false, false).getIntValue();
+    r.body = text.fromFirstOccurrenceOf ("\r\n\r\n", false, false);
+    return r;
+}
+
+static void testRemote()
+{
+    std::printf ("== Phone / tablet remote\n");
+    SolutionAudioProcessor proc;
+    proc.remoteExecutor = [] (std::function<void()> fn) { fn(); };    // run commands immediately in the test
+    EXPECT (proc.startRemote ("127.0.0.1"), "remote server didn't start");
+    auto* srv = proc.getRemote();
+    const int port = srv->getPort();
+    EXPECT (srv->getPairingCode().length() == 6, "pairing code should be 6 digits");
+
+    EXPECT (http (port, "GET", "/").status == 200, "page not served");
+    EXPECT (http (port, "GET", "/api/state").status == 401, "state must need pairing");
+    EXPECT (http (port, "POST", "/api/param", R"({"id":"stage_width","value":2})", "0123456789abcdef0123456789abcdef").status == 401, "made-up token must be rejected");
+
+    const auto paired = http (port, "POST", "/api/pair", "{\"code\":\"" + srv->getPairingCode() + "\"}");
+    const auto token = juce::JSON::parse (paired.body).getProperty ("token", {}).toString();
+    EXPECT (paired.status == 200 && token.length() == 32, "pairing with the right code failed (%d)", paired.status);
+    EXPECT (srv->getConnectedDevices() == 1, "connected device count wrong");
+
+    const auto state = http (port, "GET", "/api/state", {}, token);
+    const auto json = juce::JSON::parse (state.body);
+    EXPECT (state.status == 200 && json.getProperty ("params", {}).size() == proc.getParameters().size(), "state should list every parameter");
+
+    auto realValue = [&] (const char* id) { auto* p = proc.apvts.getParameter (id); return p->convertFrom0to1 (p->getValue()); };
+    EXPECT (http (port, "POST", "/api/param", R"({"id":"stage_width","value":1.5})", token).status == 200 && std::abs (realValue ("stage_width") - 1.5f) < 0.011f, "phone couldn't set a parameter");
+    http (port, "POST", "/api/param", R"({"id":"stage_width","value":99})", token);
+    EXPECT (std::abs (realValue ("stage_width") - 2.0f) < 0.011f, "out-of-range values must be clamped");
+    EXPECT (http (port, "POST", "/api/param", R"({"id":"","value":1})", token).status == 400, "bad request should be rejected");
+    http (port, "POST", "/api/preset", R"({"name":"Wide Chorus Lift"})", token);
+    EXPECT (proc.presets.getCurrentPresetName() == "Wide Chorus Lift", "phone couldn't load a preset");
+    EXPECT (http (port, "POST", "/api/param", juce::String::repeatedString ("x", 9000), token).status == 413, "oversized request must be refused");
+
+    // Wrong codes: 5 strikes then a lockout (even the right code is refused for a minute).
+    for (int i = 0; i < 5; ++i) http (port, "POST", "/api/pair", R"({"code":"000000"})");
+    EXPECT (http (port, "POST", "/api/pair", "{\"code\":\"" + srv->getPairingCode() + "\"}").status == 429, "brute-force lockout not applied");
+
+    proc.stopRemote();
+    EXPECT (http (port, "GET", "/").status == 0, "server still answering after stop");
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -861,6 +921,7 @@ int main()
     testMixAssistant();
     testStemFocus();
     testNeuralCharacter();
+    testRemote();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

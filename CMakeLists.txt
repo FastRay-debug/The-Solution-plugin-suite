@@ -54,6 +54,7 @@ if(BUNDLE_SKINS)
     set(SOLUTION_BUNDLE_SKINS_VAL 1)
     juce_add_binary_data(SolutionSuiteUI SOURCES
         UI/index.html
+        UI/remote.html
         UI/skins/lincoln69.jpg
         UI/skins/camaro71.jpg
         UI/skins/mach1.jpg
@@ -72,6 +73,7 @@ else()
     set(SOLUTION_BUNDLE_SKINS_VAL 0)
     juce_add_binary_data(SolutionSuiteUI SOURCES
         UI/index.html
+        UI/remote.html
     )
 endif()
 
@@ -138,6 +140,8 @@ function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
             Source/RoomCorrection.h
             Source/MixAssistant.cpp
             Source/MixAssistant.h
+            Source/RemoteControl.cpp
+            Source/RemoteControl.h
             Source/SolutionEditor.cpp
             Source/SolutionEditor.h
     )
@@ -195,7 +199,7 @@ add_solution_module(TheScope   Scp1 "The Scope"   "com.fastraymedia.thesolution.
 # 4. Automated tests (cmake -B build -DSOLUTION_BUILD_TESTS=ON && cmake --build build --target SuiteTests)
 if(SOLUTION_BUILD_TESTS)
     juce_add_console_app(SuiteTests PRODUCT_NAME "SuiteTests")
-    target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp Source/PresetManager.cpp Source/RoomCorrection.cpp Source/MixAssistant.cpp)
+    target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp Source/PresetManager.cpp Source/RoomCorrection.cpp Source/MixAssistant.cpp Source/RemoteControl.cpp)
     target_compile_definitions(SuiteTests PRIVATE
         SOLUTION_HEADLESS=1
         JucePlugin_Name="SuiteTests"

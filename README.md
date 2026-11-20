@@ -1,5 +1,19 @@
 # The Solution — Complete Modular Audio Suite
 
+## What's in every module
+
+| Feature | Where | What it does |
+|---|---|---|
+| Presets | 🗄 VAULT | 10 factory presets + your own, shared by all modules, also in your DAW's preset menu |
+| True-peak ceiling + LUFS | top bar / meter popup | -0.5 dBTP look-ahead limiter; BS.1770 momentary / short-term / integrated loudness |
+| Rack Link | click **LK** | Session view of every module, duck groups (no sidechain routing), suite-wide Glue set on The Scope |
+| Room correction | Room panel → ● SWEEP / VIEW | Measures your room with **any mic**, fits correction filters; mic list + calibration files |
+| Binaural | 🎧 BINAURAL | Hear the mix on virtual speakers around your head (headphones) |
+| Mix Assistant | 🎯 ASSIST | Compare with a reference track or genre target; one-click air / width / glue |
+| Stem Focus | Stem Focus menu | Process only drums, tonal parts or the centre vocal; SOLO to hear it |
+| Neural Character | 🧠 CHARACTER | Run captured models of real hardware (see `docs/NEURAL_MODELS.md`) |
+| Phone remote | 📱 REMOTE | Control the module from a phone/tablet on the same Wi-Fi with a pairing code |
+
 ## Download & Install (Windows)
 
 Every push to GitHub builds a Windows installer automatically:

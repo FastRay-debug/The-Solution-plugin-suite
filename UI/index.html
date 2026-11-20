@@ -319,6 +319,7 @@
       <button onclick="openVault()" data-tip="The Vault: Presets & A/B">🗄 VAULT</button>
       <button onclick="openAssistant()" data-tip="Mix Assistant: compare with a reference track or genre target">🎯 ASSIST</button>
       <button onclick="openCharacter()" data-tip="Neural Character: run a captured model of real hardware on this module">🧠 CHARACTER</button>
+      <button onclick="openRemote()" data-tip="Control this module from your phone or tablet">📱 REMOTE</button>
       <button onclick="openMatrix()" data-tip="The Matrix: CV & MIDI Learn">⚡ MATRIX</button>
       <button onclick="doUndo()" data-tip="Undo">↩</button>
       <button onclick="doRedo()" data-tip="Redo">↪</button>
@@ -597,6 +598,24 @@
         Use it on your monitoring path only - turn it off before you bounce.
       </div>
       <button onclick="document.getElementById('roomCorrModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="remoteModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="min-width:500px;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">PHONE / TABLET REMOTE</strong>
+      <div style="font-size:11px;color:var(--mute);">Control this module from any phone or tablet on the same Wi-Fi - no app needed.</div>
+      <button id="remoteBtn" onclick="remoteCmd(window._remote && window._remote.running ? 'stop' : 'start')">▶ START REMOTE</button>
+      <div id="remoteInfo" style="display:none;text-align:center;">
+        <div style="font-size:11px;color:var(--mute);">1. On your phone, open:</div>
+        <div id="remoteUrl" style="font:600 20px monospace;color:var(--accent2);user-select:all;margin:4px 0 10px;"></div>
+        <div style="font-size:11px;color:var(--mute);">2. Enter this code:</div>
+        <div id="remoteCode" style="font:700 34px monospace;letter-spacing:0.25em;color:var(--gold);margin:4px 0;"></div>
+        <div id="remoteDevices" style="font-size:11px;color:var(--accent2);"></div>
+      </div>
+      <div id="remoteErr" style="font-size:11px;color:#EF4444;"></div>
+      <div style="font-size:10px;color:var(--mute);line-height:1.5;">Only devices with the code can connect, and it stops when you press STOP or close the plugin. Use it on your own trusted network (it isn't encrypted). Windows may ask once to allow your DAW through the firewall - allow <b>private networks</b> only.</div>
+      <button onclick="document.getElementById('remoteModal').classList.remove('open')">CLOSE</button>
     </div>
   </div>
 
@@ -1191,6 +1210,18 @@
         svg.innerHTML += shade(20, m.fitLow) + shade(m.fitHigh, 20000);
       }
     }
+    const remoteCmd = (cmd) => { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('remote', { cmd }); };
+    function openRemote() { remoteCmd('status'); renderRemote(); document.getElementById('remoteModal').classList.add('open'); }
+    function renderRemote() {
+      const m = window._remote || { running: false };
+      document.getElementById('remoteBtn').textContent = m.running ? '■ STOP REMOTE' : '▶ START REMOTE';
+      document.getElementById('remoteBtn').classList.toggle('active', !!m.running);
+      document.getElementById('remoteInfo').style.display = m.running ? '' : 'none';
+      document.getElementById('remoteUrl').textContent = m.url || '';
+      document.getElementById('remoteCode').textContent = m.code || '';
+      document.getElementById('remoteDevices').textContent = m.running ? (m.devices ? m.devices + ' device(s) connected' : 'Waiting for a device...') : '';
+      document.getElementById('remoteErr').textContent = m.error || '';
+    }
     const charCmd = (cmd, extra) => { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('character', Object.assign({ cmd }, extra || {})); };
     function openCharacter() { charCmd('list'); renderCharacter(); document.getElementById('charModal').classList.add('open'); }
     function renderCharacter() {
@@ -1383,6 +1414,7 @@
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
       window.__JUCE__.backend.addEventListener('roomNotice', (msg) => alert(msg));
+      window.__JUCE__.backend.addEventListener('remoteState', (m) => { window._remote = m; renderRemote(); });
       window.__JUCE__.backend.addEventListener('characterState', (m) => { window._char = m; renderCharacter(); });
       window.__JUCE__.backend.addEventListener('assistantState', (m) => { window._assist = m; if (document.getElementById('assistModal').classList.contains('open')) renderAssistant(); });
       window.__JUCE__.backend.addEventListener('rack', (m) => {
