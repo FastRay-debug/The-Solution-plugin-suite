@@ -56,6 +56,7 @@ public:
     void triggerRoomSweep (float seconds = 2.0f);
     bool isRoomCapturing() const { return measurement.getState() == SolutionDSP::RoomMeasurement::State::running; }
     float getRoomCaptureProgress() const { return measurement.getProgress(); }
+    float getAutoNotchDepth() const { return moduleEngine.getRoomMatcher().getAutoNotchDepth(); }
     // Call regularly from the message thread; returns true when a new analysis was applied.
     bool pollRoomAnalysis();
     const SolutionDSP::RoomAnalysis& getRoomAnalysis() const { return roomAnalysis; }

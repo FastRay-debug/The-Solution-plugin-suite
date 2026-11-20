@@ -137,7 +137,7 @@ namespace SolutionDSP
         int   clipperShape    = 0; // 0: Soft Knee, 1: Warm Tube, 2: Hard Brickwall
         float regenThrottle   = 0.0f;
         bool  dialogueDuck    = false;
-        bool  modeNotch       = true;    // fixed 115 Hz notch in the room translation profiles
+        int   modeNotch       = 2;       // fixed 115 Hz notch in the room profiles: 0 off, 1 always on, 2 auto (when 115 Hz builds up)
     };
 
     class RoomMatcherEngine
@@ -155,6 +155,7 @@ namespace SolutionDSP
             midPeak.prepare (spec);
             highShelf.prepare (spec);
             modeNotch.prepare (spec);
+            setupAutoNotch();
             for (auto* f : { &lowShelf, &midPeak, &highShelf, &modeNotch })
                 preallocateBiquad (*f, sampleRate);
             setProfile (currentProfile);
@@ -168,6 +169,7 @@ namespace SolutionDSP
             midPeak.reset();
             highShelf.reset();
             modeNotch.reset();
+            clearAutoNotch();
         }
 
         void setProfile (int profileIndex)
@@ -209,7 +211,7 @@ namespace SolutionDSP
             *modeNotch.state = juce::dsp::IIR::ArrayCoefficients<float>::makePeakFilter (sampleRate, 115.0f, 4.0f, 0.72f);
         }
 
-        void process (juce::AudioBuffer<float>& buffer, float mix, int profileIndex, bool notchOn = true)
+        void process (juce::AudioBuffer<float>& buffer, float mix, int profileIndex, int notchMode = 2)
         {
             const int numSamples = buffer.getNumSamples();
 
@@ -228,10 +230,16 @@ namespace SolutionDSP
             lowShelf.process (ctx);
             midPeak.process (ctx);
             highShelf.process (ctx);
-            if (notchOn)
-                modeNotch.process (ctx);
+            if (notchMode == 1)
+                modeNotch.process (ctx);                       // original: always on
             else
-                modeNotch.reset();     // start clean when switched back on
+            {
+                modeNotch.reset();                             // start clean if switched back to "on"
+                if (notchMode == 2)
+                    autoNotch (wetBuffer, numSamples);         // only when 115 Hz is building up
+                else
+                    autoDepth = 0.0f;
+            }
 
             const float dL = static_cast<float> ((tapMsL * 0.001) * sampleRate);
             const float dR = static_cast<float> ((tapMsR * 0.001) * sampleRate);
@@ -269,6 +277,69 @@ namespace SolutionDSP
         juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayL { 16384 };
         juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayR { 16384 };
         juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> lowShelf, midPeak, highShelf, modeNotch;
+
+    public:
+        // How far the auto notch is engaged right now: 0 = off .. 1 = full -2.85 dB (any thread).
+        float getAutoNotchDepth() const { return autoDepthShared.load (std::memory_order_relaxed); }
+
+    private:
+        // ---- Auto 115 Hz notch: a dynamic version of the fixed notch.
+        // Detector: energy in a 115 Hz band vs. the average of 80 Hz and 165 Hz bands (constant-Q,
+        // so a balanced mix reads ~0 dB). +3 dB buildup starts it, +6 dB gives the full original depth.
+        // Applied as x - k * bandpass115(x): at 115 Hz the gain is (1 - k), so k = 0.28 equals 0.72 (-2.85 dB).
+        struct Bp { double b0 = 0, b2 = 0, a1 = 0, a2 = 0; double z1 = 0, z2 = 0;
+                    void set (double fs, double f, double q) { const double w = juce::MathConstants<double>::twoPi * f / fs, al = std::sin (w) / (2 * q), a0 = 1 + al;
+                                                               b0 = al / a0; b2 = -al / a0; a1 = -2 * std::cos (w) / a0; a2 = (1 - al) / a0; }
+                    double run (double x) { const double y = b0 * x + z1; z1 = -a1 * y + z2; z2 = b2 * x - a2 * y; return y; }
+                    void clear() { z1 = z2 = 0; } };
+
+        void setupAutoNotch()
+        {
+            det115.set (sampleRate, 115.0, 4.0); det80.set (sampleRate, 80.0, 4.0); det165.set (sampleRate, 165.0, 4.0);
+            for (auto& b : apply115) b.set (sampleRate, 115.0, 4.0);
+            envCoeff   = std::exp (-1.0 / (0.050 * sampleRate));       // 50 ms energy window
+            attackCoef = (float) std::exp (-1.0 / (0.020 * sampleRate));
+            releaseCoef = (float) std::exp (-1.0 / (0.300 * sampleRate));
+            clearAutoNotch();
+        }
+        void clearAutoNotch()
+        {
+            det115.clear(); det80.clear(); det165.clear();
+            for (auto& b : apply115) b.clear();
+            e115 = e80 = e165 = 0.0; autoDepth = 0.0f; autoDepthShared = 0.0f;
+        }
+
+        void autoNotch (juce::AudioBuffer<float>& buf, int numSamples)
+        {
+            auto* l = buf.getWritePointer (0);
+            auto* r = buf.getWritePointer (1);
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const double mono = 0.5 * ((double) l[i] + (double) r[i]);
+                const double a = det115.run (mono), b = det80.run (mono), c = det165.run (mono);
+                e115 = envCoeff * e115 + (1 - envCoeff) * a * a;
+                e80  = envCoeff * e80  + (1 - envCoeff) * b * b;
+                e165 = envCoeff * e165 + (1 - envCoeff) * c * c;
+                float target = 0.0f;
+                if (e115 > 1.0e-7)                                     // ignore near-silence (below ~-70 dBFS)
+                {
+                    const double buildupDb = 10.0 * std::log10 (e115 / (0.5 * (e80 + e165) + 1.0e-12));
+                    target = (float) juce::jlimit (0.0, 1.0, (buildupDb - 3.0) / 3.0);
+                }
+                autoDepth = target > autoDepth ? attackCoef * autoDepth + (1 - attackCoef) * target
+                                               : releaseCoef * autoDepth + (1 - releaseCoef) * target;
+                const double k = 0.28 * autoDepth;
+                l[i] = (float) (l[i] - k * apply115[0].run (l[i]));
+                r[i] = (float) (r[i] - k * apply115[1].run (r[i]));
+            }
+            autoDepthShared.store (autoDepth, std::memory_order_relaxed);
+        }
+
+        Bp det115, det80, det165;
+        std::array<Bp, 2> apply115;
+        double e115 = 0, e80 = 0, e165 = 0, envCoeff = 0.99;
+        float autoDepth = 0.0f, attackCoef = 0.99f, releaseCoef = 0.999f;
+        std::atomic<float> autoDepthShared { 0.0f };
     };
 
     class SuiteModuleEngine

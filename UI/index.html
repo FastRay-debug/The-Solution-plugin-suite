@@ -444,7 +444,13 @@
           <label style="font-size:9px;display:flex;gap:3px;align-items:center;flex:1;" data-tip="Apply your measured room correction"><input type="checkbox" data-sync="room_correct_on" onchange="bind('room_correct_on', this.checked ? 1 : 0, '', 1)"> CORRECT ROOM</label>
           <button onclick="openRoomCorr()" style="font-size:9px;" data-tip="See your room's measured response and the correction">VIEW</button>
         </div>
-        <label style="font-size:9px;display:flex;gap:3px;align-items:center;" data-tip="Fixed 115 Hz room-mode notch (-2.85 dB) in the Mastering, '69 Lincoln and Club profiles"><input type="checkbox" data-sync="mode_notch_on" checked onchange="bind('mode_notch_on', this.checked ? 1 : 0, '', 1)"> 115 Hz NOTCH</label>
+        <div style="display:flex;gap:3px;align-items:center;font-size:9px;" data-tip="Fixed 115 Hz room-mode notch (-2.85 dB) in the room profiles. AUTO engages it only when 115 Hz builds up.">
+          <span>115 Hz NOTCH</span>
+          <select data-sync="mode_notch" onchange="bind('mode_notch', this.value, '', 1)" style="flex:1;font-size:9px;">
+            <option value="2" selected>AUTO</option><option value="1">ON</option><option value="0">OFF</option>
+          </select>
+          <span id="notchLed" style="color:var(--mute);min-width:52px;text-align:right;">idle</span>
+        </div>
         <span id="captureStatus" style="font-size:9px;color:var(--mute);text-align:center;">Room not measured yet</span>
       </div>
     </div>
@@ -1439,6 +1445,11 @@
           document.getElementById('popLufsTxt').textContent = t.lufs.toFixed(1);
         }
         if (t.rackLinks !== undefined) document.getElementById('m-links').textContent = t.rackLinks;
+        if (t.notchAuto !== undefined) {
+          const led = document.getElementById('notchLed'), mode = document.querySelector('[data-sync="mode_notch"]').value;
+          led.textContent = mode === '2' ? (t.notchAuto > 0.05 ? '● -' + (t.notchAuto * 2.85).toFixed(1) + ' dB' : 'idle') : (mode === '1' ? '● -2.9 dB' : 'off');
+          led.style.color = (mode === '2' && t.notchAuto > 0.05) || mode === '1' ? 'var(--gold)' : 'var(--mute)';
+        }
         if (t.capturing) document.getElementById('captureStatus').textContent = 'Measuring room... ' + Math.round((t.captureProgress || 0) * 100) + '%';
         else if (t.analysing) document.getElementById('captureStatus').textContent = 'Analysing measurement...';
         if (t.cvLfo !== undefined) document.getElementById('cvReadout').textContent = `CV LFO: ${t.cvLfo.toFixed(2)} · ENV: ${(t.envFollower || 0).toFixed(2)}`;

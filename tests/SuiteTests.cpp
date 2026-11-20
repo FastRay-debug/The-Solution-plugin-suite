@@ -909,25 +909,49 @@ static void testRemote()
 
 static void testModeNotchSwitch()
 {
-    std::printf ("== 115 Hz mode notch switch\n");
-    // A 115 Hz tone through a translation profile at 100% Room Matcher mix: switching the
-    // notch off should bring back about 2.85 dB at 115 Hz and change nothing at 1 kHz.
-    auto level = [] (bool notchOn, double hz)
+    std::printf ("== 115 Hz mode notch: Off / On / Auto\n");
+    juce::Random rnd (77);
+    // Through a translation profile at 100% Room Matcher mix. Returns {level at 115 Hz, auto depth}.
+    auto run = [&] (int mode, bool boomy, double probeHz)
     {
         SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
-        auto* defaultNotch = proc.apvts.getParameter ("mode_notch_on");
-        EXPECT (defaultNotch->getValue() > 0.5f, "notch should default to on (original design)");
+        EXPECT (proc.apvts.getParameter ("mode_notch")->convertFrom0to1 (proc.apvts.getParameter ("mode_notch")->getValue()) == 2.0f, "notch should default to Auto");
         setParam (proc, "room_profile", 1.0f); setParam (proc, "room_match_mix", 1.0f);
-        setParam (proc, "stage_ceiling_guard", 0.0f); setParam (proc, "mode_notch_on", notchOn ? 1.0f : 0.0f);
-        juce::MidiBuffer midi; double db = 0.0;
-        for (int k = 0; k < 120; ++k) { juce::AudioBuffer<float> b (2, 512); fillSine (b, 48000.0, hz, 0.05f, 0.0, k * 512); proc.processBlock (b, midi); db = blockRmsDb (b); }
-        return db;
+        setParam (proc, "stage_ceiling_guard", 0.0f); setParam (proc, "mode_notch", (float) mode);
+        juce::MidiBuffer midi; double db = 0.0; float depth = 0.0f; std::complex<double> acc115;
+        // Pink-ish noise bed (balanced bass) plus, if boomy, a strong 115 Hz build-up. Measure a probe tone level.
+        double b0 = 0, b1 = 0, b2 = 0;
+        for (int k = 0; k < 150; ++k)
+        {
+            juce::AudioBuffer<float> b (2, 512), probe (2, 512);
+            fillSine (probe, 48000.0, probeHz, 0.02f, 0.0, k * 512);
+            for (int i = 0; i < 512; ++i)
+            {
+                const double w = rnd.nextFloat() * 2.0 - 1.0;          // Paul Kellet's cheap pink filter
+                b0 = 0.99765 * b0 + w * 0.0990460; b1 = 0.96300 * b1 + w * 0.2965164; b2 = 0.57000 * b2 + w * 1.0526913;
+                float v = (float) (0.02 * (b0 + b1 + b2 + w * 0.1848));
+                if (boomy) v += 0.15f * (float) std::sin (juce::MathConstants<double>::twoPi * 115.0 * (k * 512 + i) / 48000.0);
+                b.setSample (0, i, v + probe.getSample (0, i)); b.setSample (1, i, v + probe.getSample (1, i));
+            }
+            proc.processBlock (b, midi);
+            if (k >= 100)    // level of the 115 Hz component itself (single-bin DFT over the last 50 blocks)
+                for (int i = 0; i < 512; ++i) acc115 += (double) b.getSample (0, i) * std::polar (1.0, -juce::MathConstants<double>::twoPi * 115.0 * (k * 512 + i) / 48000.0);
+            depth = proc.getAutoNotchDepth();
+        }
+        db = 20.0 * std::log10 (std::abs (acc115) / (50.0 * 512) * 2.0 + 1e-12);
+        return std::pair<double, float> { db, depth };
     };
-    const double on115 = level (true, 115.0), off115 = level (false, 115.0);
-    const double on1k = level (true, 1000.0), off1k = level (false, 1000.0);
-    std::printf ("  115 Hz: notch on %.2f dB, off %.2f dB | 1 kHz: on %.2f, off %.2f\n", on115, off115, on1k, off1k);
-    EXPECT (off115 - on115 > 2.0 && off115 - on115 < 3.5, "switching the notch off should restore ~2.85 dB at 115 Hz (got %.2f)", off115 - on115);
-    EXPECT (std::abs (on1k - off1k) < 0.1, "the notch must not affect 1 kHz (%.2f dB)", on1k - off1k);
+    const auto calm = run (2, false, 1000.0);
+    const auto boom = run (2, true, 1000.0);
+    std::printf ("  auto depth: balanced mix %.2f, 115 Hz build-up %.2f\n", calm.second, boom.second);
+    EXPECT (calm.second < 0.15f, "auto notch should stay out of a balanced mix (depth %.2f)", calm.second);
+    EXPECT (boom.second > 0.9f, "auto notch should fully engage on a 115 Hz build-up (depth %.2f)", boom.second);
+
+    // Level of the 115 Hz boom itself: On and full Auto both cut it by the original 2.85 dB.
+    const double off = run (0, true, 1000.0).first, on = run (1, true, 1000.0).first, autoLvl = boom.first;
+    std::printf ("  115 Hz level: off %.2f dB, on %.2f dB, auto %.2f dB\n", off, on, autoLvl);
+    EXPECT (std::abs ((off - on) - 2.85) < 0.3, "On should cut 115 Hz by 2.85 dB (got %.2f)", off - on);
+    EXPECT (std::abs (autoLvl - on) < 0.3, "Auto at full depth should match On at 115 Hz (%.2f vs %.2f dB)", autoLvl, on);
     std::printf ("  done\n");
 }
 

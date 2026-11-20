@@ -75,8 +75,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
-    // --- v7: switch for the fixed 115 Hz mode notch (on = original design)
-    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "mode_notch_on", 7 },   "115 Hz Mode Notch", true));
+    // --- v7: fixed 115 Hz mode notch - Off / On (original, always) / Auto (only when 115 Hz builds up)
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mode_notch", 7 },      "115 Hz Mode Notch",
+                          juce::StringArray { "Off", "On", "Auto" }, 2));
     // --- v6: neural character
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "char_amount", 6 },     "Character Amount", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "char_drive", 6 },      "Character Drive (dB)", juce::NormalisableRange<float> (-12.0f, 18.0f, 0.1f), 0.0f));
@@ -238,7 +239,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     p.clipperShape    = static_cast<int> (apvts.getRawParameterValue ("clipper_shape")->load());
     p.regenThrottle   = apvts.getRawParameterValue ("regen_throttle")->load();
     p.dialogueDuck    = apvts.getRawParameterValue ("dialogue_duck")->load() > 0.5f;
-    p.modeNotch       = apvts.getRawParameterValue ("mode_notch_on")->load() > 0.5f;
+    p.modeNotch       = static_cast<int> (apvts.getRawParameterValue ("mode_notch")->load());
 
     // Binaural mode places the sound around the head itself, so the engine's pan/Haas steps aside.
     const bool binauralOn = apvts.getRawParameterValue ("binaural_mode")->load() > 0.5f;

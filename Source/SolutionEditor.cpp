@@ -454,6 +454,7 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("capturing",     audioProcessor.isRoomCapturing());
     payload->setProperty ("captureProgress", audioProcessor.getRoomCaptureProgress());
     payload->setProperty ("analysing",     audioProcessor.isRoomAnalysing());
+    payload->setProperty ("notchAuto",     audioProcessor.getAutoNotchDepth());
     payload->setProperty ("cvLfo",         audioProcessor.getCvLfo());
     payload->setProperty ("envFollower",   audioProcessor.getEnvFollower());
     payload->setProperty ("learnedCc",     audioProcessor.getLastLearnedCc());
