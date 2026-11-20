@@ -1,6 +1,10 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+
+#ifndef SOLUTION_HEADLESS
+ #define SOLUTION_HEADLESS 0
+#endif
 #include <juce_dsp/juce_dsp.h>
 #include "ModuleEngines.h"
 #include <atomic>
@@ -19,7 +23,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
-    bool hasEditor() const override { return true; }
+    bool hasEditor() const override { return ! SOLUTION_HEADLESS; }
 
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return true; }

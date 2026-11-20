@@ -1,5 +1,7 @@
 #include "SolutionProcessor.h"
-#include "SolutionEditor.h"
+#if ! SOLUTION_HEADLESS
+ #include "SolutionEditor.h"
+#endif
 #include <cmath>
 #include <algorithm>
 
@@ -196,7 +198,11 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
 juce::AudioProcessorEditor* SolutionAudioProcessor::createEditor()
 {
+   #if SOLUTION_HEADLESS
+    return nullptr;     // test builds have no UI
+   #else
     return new SolutionAudioProcessorEditor (*this);
+   #endif
 }
 
 void SolutionAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

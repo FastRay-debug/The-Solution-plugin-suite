@@ -5,6 +5,7 @@ project(TheSolutionSuite VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(SOLUTION_BUILD_TESTS "Build the automated DSP test program (SuiteTests)" OFF)
 option(BUNDLE_SKINS "Embed skin faceplates in every plugin (OFF = plugins load them from the shared Skins folder)" OFF)
 
 # Persistent dependency cache outside build/ so cleaning build/ never re-downloads JUCE/CLAP/RTNeural
@@ -180,3 +181,22 @@ add_solution_module(TheMosaic  Mos1 "The Mosaic"  "com.fastraymedia.thesolution.
 add_solution_module(Innerspace Inn1 "Innerspace"  "com.fastraymedia.thesolution.innerspace")
 add_solution_module(TheMatrix  Mtx1 "The Matrix"  "com.fastraymedia.thesolution.thematrix")
 add_solution_module(TheScope   Scp1 "The Scope"   "com.fastraymedia.thesolution.thescope")
+
+# 4. Automated tests (cmake -B build -DSOLUTION_BUILD_TESTS=ON && cmake --build build --target SuiteTests)
+if(SOLUTION_BUILD_TESTS)
+    juce_add_console_app(SuiteTests PRODUCT_NAME "SuiteTests")
+    target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp)
+    target_compile_definitions(SuiteTests PRIVATE
+        SOLUTION_HEADLESS=1
+        JucePlugin_Name="SuiteTests"
+        SOLUTION_MODULE_NAME="The Stage"
+        SOLUTION_MODULE_ID="TheStage"
+        SOLUTION_CEILING_DBFS=-0.5
+        JUCE_USE_CURL=0
+        JUCE_WEB_BROWSER=0)
+    target_link_libraries(SuiteTests PRIVATE
+        RTNeural
+        juce::juce_audio_processors
+        juce::juce_dsp
+        juce::juce_recommended_config_flags)
+endif()
