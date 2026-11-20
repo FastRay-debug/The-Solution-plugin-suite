@@ -9,6 +9,7 @@
 #include "ModuleEngines.h"
 #include "PresetManager.h"
 #include "Metering.h"
+#include "Dynamics.h"
 #include <atomic>
 #include <array>
 
@@ -48,6 +49,9 @@ public:
     bool isRoomCapturing() const { return moduleEngine.getRoomMatcher().isCapturing(); }
     float getCapturedModeHz() const { return moduleEngine.getRoomMatcher().getCapturedModeHz(); }
     int getRackLinkCount() const { return rackLinkBus->activeInstances.load (std::memory_order_relaxed); }
+    int getRackSlot() const { return rackSlot; }
+    SolutionDSP::RackLinkBus& getRackBus() { return *rackLinkBus; }
+    void updateTrackProperties (const TrackProperties& properties) override;
     float getCvLfo() const { return rackLinkBus->cvLfoValue.load (std::memory_order_relaxed); }
     float getEnvFollower() const { return rackLinkBus->envFollower.load (std::memory_order_relaxed); }
 
@@ -60,7 +64,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 1;
+    static constexpr int stateVersion = 2;   // v2: Rack Link + Glue parameters
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -77,6 +81,8 @@ public:
     std::atomic<float> lufsMomentary { -60.0f };
     SolutionDSP::LoudnessMeter loudness;                 // BS.1770 momentary / short-term / integrated + true peak
     std::atomic<float> limiterGainReductionDb { 0.0f };
+    std::atomic<float> glueGainReductionDb { 0.0f };
+    std::atomic<float> duckGainReductionDb { 0.0f };
     std::atomic<int>   lastLearnedCc { -1 };
 
 private:
@@ -93,6 +99,10 @@ private:
     juce::AudioBuffer<float> dryCopy;
     SolutionDSP::IntegerDelay dryDelay;                  // keeps dry aligned with the oversampled wet path
     SolutionDSP::TruePeakLimiter ceilingLimiter;         // -0.5 dBTP ceiling guard
+    SolutionDSP::GlueCompressor glue;
+    SolutionDSP::DuckKeyFollower duckKey;
+    SolutionDSP::LinkDucker ducker;
+    int rackSlot = -1;
 
     std::atomic<int> learnArmedIndex { -1 };
     std::array<std::atomic<int>, 128> ccToParamIndex;

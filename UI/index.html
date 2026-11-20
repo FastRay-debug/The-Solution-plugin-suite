@@ -332,7 +332,7 @@
       <span>PH <b id="m-phase" style="color:var(--accent2)">+1.00</b></span>
       <span data-tip="True peak (dBTP) - what streaming services measure">TP <b id="m-peak" style="color:var(--accent)">-60.0</b></span>
       <span>LUFS <b id="m-lufs" style="color:#10B981">-60.0</b></span>
-      <span>LK <b id="m-links" style="color:var(--accent2)">1</b></span>
+      <span onclick="openRack()" style="cursor:pointer" data-tip="Rack Link: every Solution module in this session">LK <b id="m-links" style="color:var(--accent2)">1</b></span>
     </div>
   </div>
 
@@ -558,6 +558,30 @@
       </div>
       <div id="vaultList" style="display:flex;flex-direction:column;gap:5px;max-height:190px;overflow-y:auto;"></div>
       <button onclick="document.getElementById('vaultModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="rackModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="min-width:560px;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">RACK LINK · SESSION</strong>
+      <div style="font-size:11px;color:var(--mute);">Every Solution module in this session. Modules in the same group duck when a group member set to "Duck others" plays - no sidechain routing needed.</div>
+      <table style="width:100%;font-family:monospace;font-size:11px;border-collapse:collapse;">
+        <thead><tr style="color:var(--accent2);text-align:left;"><th>TRACK</th><th>MODULE</th><th>GROUP</th><th>LUFS-S</th><th>dBTP</th><th>GR</th></tr></thead>
+        <tbody id="rackRows"></tbody>
+      </table>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:11px;letter-spacing:0.05em;">THIS MODULE'S GROUP
+          <select data-sync="link_group" onchange="bind('link_group', this.value, '', 1)">
+            <option value="0">Off</option><option value="1">A</option><option value="2">B</option><option value="3">C</option><option value="4">D</option>
+          </select></label>
+        <label style="font-size:11px;letter-spacing:0.05em;"><input type="checkbox" data-sync="link_duck_send" onchange="bind('link_duck_send', this.checked ? 1 : 0, '', 1)"> Duck others in group (use on vocal / kick)</label>
+      </div>
+      <div class="ctrl"><label>DUCK DEPTH <span id="v-link_duck_depth">6.0 dB</span></label>
+        <input type="range" data-sync="link_duck_depth" min="0" max="18" step="0.5" value="6" oninput="bind('link_duck_depth', this.value, ' dB', 1)"></div>
+      <div class="ctrl"><label>GLUE <span id="v-glue_amount">0%</span> <small id="glueGrTxt" style="color:var(--gold)"></small></label>
+        <input type="range" data-sync="glue_amount" min="0" max="1" step="0.01" value="0" oninput="bind('glue_amount', this.value, '%', 100)"></div>
+      <label style="font-size:11px;letter-spacing:0.05em;"><input type="checkbox" data-sync="glue_follow_suite" onchange="bind('glue_follow_suite', this.checked ? 1 : 0, '', 1)"> Follow suite glue (set on The Scope) <span id="suiteGlueTxt" style="color:var(--accent2)"></span></label>
+      <button onclick="document.getElementById('rackModal').classList.remove('open')">CLOSE</button>
     </div>
   </div>
 
@@ -1037,6 +1061,17 @@
     const hasPlugin = () => !!(window.__JUCE__ && window.__JUCE__.backend);
     const presetCmd = (cmd, extra) => window.__JUCE__.backend.emitEvent('presetCommand', Object.assign({ cmd }, extra || {}));
     let pluginPresets = null, currentPreset = '', vaultMessage = '';
+    function openRack() { renderRack(); document.getElementById('rackModal').classList.add('open'); }
+    function renderRack() {
+      const m = window._rackState;
+      if (!m) { document.getElementById('rackRows').innerHTML = '<tr><td colspan="6">Waiting for the plugin...</td></tr>'; return; }
+      const fmt = (v) => (v <= -69.9 ? '—' : v.toFixed(1));
+      document.getElementById('rackRows').innerHTML = (m.instances || []).map(r =>
+        `<tr style="${r.self ? 'color:var(--gold);' : ''}"><td>${r.self ? '▶ ' : ''}${escapeHtml(r.name || '(unnamed track)')}</td><td>${escapeHtml(r.module)}</td>` +
+        `<td>${r.group ? 'ABCD'[r.group - 1] + (r.source ? ' · duck src' : '') : '—'}</td><td>${fmt(r.lufs)}</td><td>${fmt(r.tp)}</td><td>${r.gr < -0.05 ? r.gr.toFixed(1) : '0.0'}</td></tr>`).join('');
+      document.getElementById('suiteGlueTxt').textContent = '(suite: ' + Math.round((m.suiteGlue || 0) * 100) + '%)';
+      document.getElementById('glueGrTxt').textContent = m.glueGr < -0.05 ? 'GR ' + m.glueGr.toFixed(1) + ' dB' : '';
+    }
     function openVault() { renderVault(); document.getElementById('vaultModal').classList.add('open'); }
     function filterVault(tag) { vaultFilter = tag; renderVault(); }
     function toggleLockPin() { lockPin = !lockPin; document.getElementById('pinBtn').classList.toggle('active', lockPin); }
@@ -1124,7 +1159,11 @@
         state[id] = v;
         const k = knobRegistry[id];
         if (k) { k.set(v); showValue(id, v, k.unit, k.mult); }
-        document.querySelectorAll('[data-sync="' + id + '"]').forEach(el => { el.value = String(Math.round(v * 100) / 100); });
+        document.querySelectorAll('[data-sync="' + id + '"]').forEach(el => {
+          if (el.type === 'checkbox') el.checked = v > 0.5; else el.value = String(Math.round(v * 100) / 100);
+        });
+        if (id === 'link_duck_depth') showValue(id, v, ' dB', 1);
+        if (id === 'glue_amount') showValue(id, v, '%', 100);
       }
       const on = (id) => values[id] !== undefined && values[id] > 0.5;
       if (values.dialogue_duck !== undefined && on('dialogue_duck') !== duckOn) toggleDuck();
@@ -1156,6 +1195,10 @@
         currentPreset = m.current || '';
         vaultMessage = m.message || '';
         renderVault();
+      });
+      window.__JUCE__.backend.addEventListener('rack', (m) => {
+        window._rackState = m;
+        if (document.getElementById('rackModal').classList.contains('open')) renderRack();
       });
       window.__JUCE__.backend.emitEvent('uiReady', {});
       window.__JUCE__.backend.addEventListener('telemetry', (t) => {

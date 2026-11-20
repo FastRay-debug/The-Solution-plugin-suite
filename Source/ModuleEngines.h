@@ -29,6 +29,13 @@ namespace SolutionDSP
         return ModuleId::Unknown;
     }
 
+    inline const char* moduleDisplayName (ModuleId id)
+    {
+        static constexpr const char* names[] = { "The Bunker", "The Stage", "The Land", "The Loft", "The Orbit", "The Bridge",
+                                                 "The Void", "The Anchor", "The Aether", "The Mosaic", "Innerspace", "The Matrix", "The Scope", "Unknown" };
+        return names[std::clamp (static_cast<int> (id), 0, static_cast<int> (ModuleId::Unknown))];
+    }
+
     // Biquad coefficients are rewritten in place on the audio thread. Giving every filter
     // a full-size biquad up front means those rewrites never allocate memory.
     template <typename Duplicator>
@@ -36,7 +43,22 @@ namespace SolutionDSP
     {
         *filter.state = juce::dsp::IIR::ArrayCoefficients<float>::makeAllPass (sampleRate, 1000.0f);
     }
-    // Shared across all plugin instances in the same DAW process (Rack Link + Matrix CV Bus)
+    // Shared across all plugin instances in the same DAW process (Rack Link + Matrix CV Bus).
+    // Note: hosts that run each plugin in its own process (some sandbox modes) keep instances apart.
+    struct RackSlot
+    {
+        std::atomic<bool>  active      { false };
+        std::atomic<int>   moduleId    { 0 };
+        std::atomic<int>   group       { 0 };        // 0 = not linked, 1-4 = groups A-D
+        std::atomic<bool>  duckSource  { false };    // this instance ducks the rest of its group
+        std::atomic<float> keyLevel    { 0.0f };     // 0..1 duck key (sources only)
+        std::atomic<float> lufsShort   { -70.0f };
+        std::atomic<float> truePeak    { -70.0f };
+        std::atomic<float> gainReduct  { 0.0f };
+        std::atomic<std::uint32_t> heartbeat { 0 };  // bumps every audio block
+        juce::String trackName;                       // message thread only
+    };
+
     struct RackLinkBus
     {
         std::atomic<int>   activeInstances { 0 };
@@ -46,6 +68,51 @@ namespace SolutionDSP
         std::atomic<float> envFollower     { 0.0f };
         std::atomic<float> lufsMomentary   { -60.0f };
         std::atomic<float> truePeakDb      { -60.0f };
+        std::atomic<float> suiteGlue       { 0.0f };    // set by The Scope, followed by others
+
+        static constexpr int maxSlots = 64;
+        std::array<RackSlot, maxSlots> slots;
+
+        int claimSlot (int moduleId)
+        {
+            for (int i = 0; i < maxSlots; ++i)
+            {
+                bool expected = false;
+                if (slots[(size_t) i].active.compare_exchange_strong (expected, true))
+                {
+                    auto& s = slots[(size_t) i];
+                    s.moduleId = moduleId; s.group = 0; s.duckSource = false; s.keyLevel = 0.0f;
+                    s.lufsShort = -70.0f; s.truePeak = -70.0f; s.gainReduct = 0.0f;
+                    return i;
+                }
+            }
+            return -1;   // more than 64 instances: still works, just not shown/linked
+        }
+
+        void releaseSlot (int index)
+        {
+            if (juce::isPositiveAndBelow (index, maxSlots))
+            {
+                slots[(size_t) index].keyLevel = 0.0f;
+                slots[(size_t) index].duckSource = false;
+                slots[(size_t) index].active = false;
+            }
+        }
+
+        // Loudest duck key among the *other* sources in a group (0..1).
+        float groupKey (int group, int excludeSlot) const
+        {
+            if (group <= 0) return 0.0f;
+            float key = 0.0f;
+            for (int i = 0; i < maxSlots; ++i)
+            {
+                const auto& s = slots[(size_t) i];
+                if (i != excludeSlot && s.active.load (std::memory_order_relaxed)
+                    && s.duckSource.load (std::memory_order_relaxed) && s.group.load (std::memory_order_relaxed) == group)
+                    key = std::max (key, s.keyLevel.load (std::memory_order_relaxed));
+            }
+            return key;
+        }
     };
 
     struct ProcessParams

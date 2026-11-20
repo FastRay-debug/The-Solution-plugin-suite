@@ -12,6 +12,7 @@ SolutionAudioProcessor::SolutionAudioProcessor()
       apvts (*this, &undoManager, "SolutionState", createParameterLayout())
 {
     rackLinkBus->activeInstances.fetch_add (1, std::memory_order_relaxed);
+    rackSlot = rackLinkBus->claimSlot (static_cast<int> (moduleId));
     for (auto& slot : ccToParamIndex)
         slot.store (-1, std::memory_order_relaxed);
 
@@ -22,7 +23,8 @@ SolutionAudioProcessor::SolutionAudioProcessor()
     learnableParamIds = {
         "stage_azimuth", "stage_elevation", "stage_depth", "stage_haas_itd",
         "stage_width", "stage_anchor_hz", "stage_ms_mid", "stage_ms_side",
-        "room_match_mix", "global_mix", "ultra_wide", "cv_mod_depth"
+        "room_match_mix", "global_mix", "ultra_wide", "cv_mod_depth",
+        "glue_amount", "link_duck_depth"
     };
 }
 
@@ -31,6 +33,7 @@ SolutionAudioProcessor::~SolutionAudioProcessor()
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             apvts.removeParameterListener (ranged->getParameterID(), this);
+    rackLinkBus->releaseSlot (rackSlot);
     rackLinkBus->activeInstances.fetch_sub (1, std::memory_order_relaxed);
 }
 
@@ -70,6 +73,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v2: Rack Link + Glue
+    params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "link_group", 2 },        "Rack Link Group", 0, 4, 0,
+                          juce::AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int) { return v == 0 ? juce::String ("Off") : juce::String::charToString ((juce::juce_wchar) ('A' + v - 1)); })));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "link_duck_send", 2 },    "Duck Others In Group", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "link_duck_depth", 2 },   "Link Duck Depth (dB)", juce::NormalisableRange<float> (0.0f, 18.0f, 0.1f), 6.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "glue_amount", 2 },       "Glue", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "glue_follow_suite", 2 }, "Follow Suite Glue", false));
     params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "dialogue_duck", 1 },        "Dialogue Ducking", false));
 
     return { params.begin(), params.end() };
@@ -82,6 +92,9 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     dryCopy.setSize (2, samplesPerBlock, false, true, true);
     dryDelay.prepare (2, moduleEngine.getLatencySamples());
     ceilingLimiter.prepare (sampleRate);
+    glue.prepare (sampleRate);
+    duckKey.prepare (sampleRate);
+    ducker.prepare (sampleRate);
     loudness.prepare (sampleRate);
     setLatencySamples (moduleEngine.getLatencySamples() + ceilingLimiter.getLatency());
 }
@@ -135,6 +148,20 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     for (int ch = 0; ch < 2; ++ch)
         dryCopy.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+
+    // Rack Link: publish this instance's group / duck key (taken from its input).
+    const int linkGroup   = static_cast<int> (apvts.getRawParameterValue ("link_group")->load());
+    const bool duckSender = apvts.getRawParameterValue ("link_duck_send")->load() > 0.5f;
+    const float keyLevel  = duckKey.process (dryCopy.getReadPointer (0), dryCopy.getReadPointer (1), numSamples);
+    if (rackSlot >= 0)
+    {
+        auto& slot = rackLinkBus->slots[(size_t) rackSlot];
+        slot.group.store (linkGroup, std::memory_order_relaxed);
+        slot.duckSource.store (duckSender && linkGroup > 0, std::memory_order_relaxed);
+        slot.keyLevel.store (duckSender ? keyLevel : 0.0f, std::memory_order_relaxed);
+        slot.heartbeat.fetch_add (1, std::memory_order_relaxed);
+    }
+
     dryDelay.process (dryCopy, numSamples);
 
     SolutionDSP::ProcessParams p;
@@ -175,6 +202,22 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             right[i] = dryR[i] * (1.0f - p.wetMix) + right[i] * p.wetMix;
         }
 
+    // Rack Link ducking: dip when another source in my group is playing (no routing needed).
+    if (! p.tapeCalTone)
+    {
+        const float key = (linkGroup > 0 && ! duckSender) ? rackLinkBus->groupKey (linkGroup, rackSlot) : 0.0f;
+        ducker.process (left, right, numSamples, key, apvts.getRawParameterValue ("link_duck_depth")->load());
+        duckGainReductionDb.store (ducker.getGainReductionDb(), std::memory_order_relaxed);
+
+        // Glue: The Scope sets the suite-wide amount; other modules can follow it.
+        const float localGlue = apvts.getRawParameterValue ("glue_amount")->load();
+        if (moduleId == SolutionDSP::ModuleId::Scope)
+            rackLinkBus->suiteGlue.store (localGlue, std::memory_order_relaxed);
+        const bool followSuite = apvts.getRawParameterValue ("glue_follow_suite")->load() > 0.5f;
+        glue.process (left, right, numSamples, followSuite ? rackLinkBus->suiteGlue.load (std::memory_order_relaxed) : localGlue);
+        glueGainReductionDb.store (glue.getGainReductionDb(), std::memory_order_relaxed);
+    }
+
     // True-peak ceiling guard (look-ahead limiter; always in the path so latency never changes).
     ceilingLimiter.process (buffer, numSamples, ceilingLin, ceilingOn);
     limiterGainReductionDb.store (ceilingLimiter.getGainReductionDb(), std::memory_order_relaxed);
@@ -208,6 +251,15 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     rackLinkBus->masterPhase.store (corr, std::memory_order_relaxed);
     rackLinkBus->lufsMomentary.store (lufsVal, std::memory_order_relaxed);
     rackLinkBus->truePeakDb.store (loudness.truePeakDb.load (std::memory_order_relaxed), std::memory_order_relaxed);
+    if (rackSlot >= 0)
+    {
+        auto& slot = rackLinkBus->slots[(size_t) rackSlot];
+        slot.lufsShort.store (loudness.shortTerm.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        slot.truePeak.store (loudness.truePeakDb.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        slot.gainReduct.store (limiterGainReductionDb.load (std::memory_order_relaxed)
+                               + glueGainReductionDb.load (std::memory_order_relaxed)
+                               + duckGainReductionDb.load (std::memory_order_relaxed), std::memory_order_relaxed);
+    }
 }
 
 juce::AudioProcessorEditor* SolutionAudioProcessor::createEditor()
@@ -217,6 +269,12 @@ juce::AudioProcessorEditor* SolutionAudioProcessor::createEditor()
    #else
     return new SolutionAudioProcessorEditor (*this);
    #endif
+}
+
+void SolutionAudioProcessor::updateTrackProperties (const TrackProperties& properties)
+{
+    if (rackSlot >= 0 && properties.name.has_value())
+        rackLinkBus->slots[(size_t) rackSlot].trackName = *properties.name;   // message thread
 }
 
 void SolutionAudioProcessor::setCurrentProgram (int index)

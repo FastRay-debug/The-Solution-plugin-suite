@@ -205,10 +205,40 @@ void SolutionAudioProcessorEditor::handlePresetCommand (const juce::var& data)
     sendParamState();
 }
 
+void SolutionAudioProcessorEditor::sendRackState()
+{
+    auto& bus = audioProcessor.getRackBus();
+    juce::Array<juce::var> list;
+    for (int i = 0; i < SolutionDSP::RackLinkBus::maxSlots; ++i)
+    {
+        const auto& slot = bus.slots[(size_t) i];
+        if (! slot.active.load (std::memory_order_relaxed))
+            continue;
+        juce::DynamicObject::Ptr item = new juce::DynamicObject();
+        item->setProperty ("self",   i == audioProcessor.getRackSlot());
+        item->setProperty ("name",   slot.trackName);
+        item->setProperty ("module", juce::String (SolutionDSP::moduleDisplayName (static_cast<SolutionDSP::ModuleId> (slot.moduleId.load()))));
+        item->setProperty ("group",  slot.group.load());
+        item->setProperty ("source", slot.duckSource.load());
+        item->setProperty ("lufs",   slot.lufsShort.load());
+        item->setProperty ("tp",     slot.truePeak.load());
+        item->setProperty ("gr",     slot.gainReduct.load());
+        list.add (juce::var (item.get()));
+    }
+    juce::DynamicObject::Ptr payload = new juce::DynamicObject();
+    payload->setProperty ("instances", list);
+    payload->setProperty ("suiteGlue", bus.suiteGlue.load());
+    payload->setProperty ("glueGr", audioProcessor.glueGainReductionDb.load());
+    payload->setProperty ("duckGr", audioProcessor.duckGainReductionDb.load());
+    webView.emitEventIfBrowserIsVisible ("rack", juce::var (payload.get()));
+}
+
 void SolutionAudioProcessorEditor::timerCallback()
 {
     if (audioProcessor.consumeParamsChanged())
         sendParamState();
+    if (++frameCounter % 12 == 0)     // 5 times a second
+        sendRackState();
 
     juce::DynamicObject::Ptr payload = new juce::DynamicObject();
     payload->setProperty ("module",        juce::String (SOLUTION_MODULE_NAME));

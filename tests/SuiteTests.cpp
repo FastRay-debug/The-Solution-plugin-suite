@@ -374,6 +374,87 @@ static void testLatencyAndCeiling()
     std::printf ("  done\n");
 }
 
+static void setParam (SolutionAudioProcessor& p, const char* id, float realValue)
+{
+    auto* param = p.apvts.getParameter (id);
+    param->setValueNotifyingHost (param->convertTo0to1 (realValue));
+}
+
+static double blockRmsDb (const juce::AudioBuffer<float>& b)
+{
+    return juce::Decibels::gainToDecibels ((double) (0.5f * (b.getRMSLevel (0, 0, b.getNumSamples()) + b.getRMSLevel (1, 0, b.getNumSamples()))), -120.0);
+}
+
+static void testRackLink()
+{
+    std::printf ("== Rack Link: session registry, cross-instance ducking, glue\n");
+    const double fs = 48000.0; const int bs = 480;
+    juce::MidiBuffer midi;
+
+    SolutionAudioProcessor vocal, music, other;
+    for (auto* p : { &vocal, &music, &other }) { p->prepareToPlay (fs, bs); setParam (*p, "global_mix", 0.0f); }   // dry: isolate link effects
+    vocal.updateTrackProperties ({ juce::String ("Lead Vocal"), std::nullopt });
+    EXPECT (vocal.getRackSlot() >= 0 && music.getRackSlot() >= 0 && vocal.getRackSlot() != music.getRackSlot(), "instances didn't get their own Rack Link slots");
+    EXPECT (vocal.getRackBus().slots[(size_t) vocal.getRackSlot()].trackName == "Lead Vocal", "track name not registered");
+
+    // Group A: vocal ducks music. "other" is in group B and must not duck.
+    setParam (vocal, "link_group", 1.0f); setParam (vocal, "link_duck_send", 1.0f);
+    setParam (music, "link_group", 1.0f); setParam (music, "link_duck_depth", 9.0f);
+    setParam (other, "link_group", 2.0f); setParam (other, "link_duck_depth", 9.0f);
+
+    auto run = [&] (bool vocalActive, double& musicDb, double& otherDb)
+    {
+        for (int k = 0; k < 100; ++k)    // 1 s
+        {
+            juce::AudioBuffer<float> v (2, bs), m (2, bs), o (2, bs);
+            fillSine (v, fs, 440.0, vocalActive ? 0.5f : 0.0f, 0.0, k * bs);
+            fillSine (m, fs, 220.0, 0.25f, 0.0, k * bs);
+            fillSine (o, fs, 330.0, 0.25f, 0.0, k * bs);
+            vocal.processBlock (v, midi); music.processBlock (m, midi); other.processBlock (o, midi);
+            musicDb = blockRmsDb (m); otherDb = blockRmsDb (o);
+        }
+    };
+    double mQuiet, oQuiet, mDucked, oDucked;
+    run (false, mQuiet, oQuiet);
+    run (true, mDucked, oDucked);
+    EXPECT (mQuiet - mDucked > 6.0 && mQuiet - mDucked < 10.0, "music should duck ~9 dB under the vocal, ducked by %.1f dB", mQuiet - mDucked);
+    EXPECT (std::abs (oQuiet - oDucked) < 0.1, "a different group must not duck (changed %.2f dB)", oQuiet - oDucked);
+    double mBack, oBack;
+    run (false, mBack, oBack);
+    EXPECT (std::abs (mBack - mQuiet) < 0.2, "music didn't recover after the vocal stopped (%.1f dB off)", mBack - mQuiet);
+
+    // Glue: 0 = exact bypass; more glue = less dynamic range. The Scope drives "follow suite".
+    SolutionAudioProcessor g;
+    g.prepareToPlay (fs, bs); setParam (g, "global_mix", 0.0f); setParam (g, "stage_ceiling_guard", 0.0f);
+    auto dynamicRange = [&] (SolutionAudioProcessor& proc)
+    {
+        double loud = 0, quiet = 0;
+        for (int k = 0; k < 200; ++k)
+        {
+            juce::AudioBuffer<float> b (2, bs);
+            const bool isLoud = (k / 25) % 2 == 0;
+            fillSine (b, fs, 500.0, isLoud ? 0.7f : 0.07f, 0.0, k * bs);
+            proc.processBlock (b, midi);
+            if (k % 25 == 24) (isLoud ? loud : quiet) = blockRmsDb (b);
+        }
+        return loud - quiet;
+    };
+    const double drOff = dynamicRange (g);
+    setParam (g, "glue_amount", 1.0f);
+    const double drOn = dynamicRange (g);
+    EXPECT (std::abs (drOff - 20.0) < 0.3, "glue off should leave the 20 dB swing untouched (got %.1f)", drOff);
+    EXPECT (drOn < drOff - 3.0, "glue at 100%% should reduce dynamic range (%.1f -> %.1f dB)", drOff, drOn);
+
+    SolutionAudioProcessor follower;
+    follower.prepareToPlay (fs, bs); setParam (follower, "global_mix", 0.0f); setParam (follower, "stage_ceiling_guard", 0.0f);
+    setParam (follower, "glue_follow_suite", 1.0f);
+    follower.getRackBus().suiteGlue.store (1.0f);   // as if The Scope set 100%
+    const double drFollow = dynamicRange (follower);
+    EXPECT (drFollow < drOff - 3.0, "'follow suite glue' didn't pick up the suite amount (%.1f dB)", drFollow);
+    follower.getRackBus().suiteGlue.store (0.0f);
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -382,6 +463,7 @@ int main()
     testPresets();
     testMetering();
     testLatencyAndCeiling();
+    testRackLink();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

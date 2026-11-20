@@ -17,6 +17,8 @@ private:
     void sendParamState();
     void sendPresetList (const juce::String& message = {});
     void handlePresetCommand (const juce::var& data);
+    void sendRackState();
+    int frameCounter = 0;
     static juce::File findSharedSkinsFolder();
 
     SolutionAudioProcessor& audioProcessor;
