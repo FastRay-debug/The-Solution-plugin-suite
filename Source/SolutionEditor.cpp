@@ -125,6 +125,7 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                        if (auto* obj = data.getDynamicObject())
                            audioProcessor.setUiProperty (obj->getProperty ("key").toString(), obj->getProperty ("value").toString());
                    })
+                   .withEventListener ("resetLoudness", [this] (const juce::var&) { audioProcessor.loudness.requestReset(); })
                    .withEventListener ("presetCommand", [this] (const juce::var& data) { handlePresetCommand (data); }))
 {
     addAndMakeVisible (webView);
@@ -216,7 +217,11 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("rmsR",          audioProcessor.rmsRight.load (std::memory_order_relaxed));
     payload->setProperty ("phase",         audioProcessor.phaseCorrelation.load (std::memory_order_relaxed));
     payload->setProperty ("peak",          audioProcessor.peakDb.load (std::memory_order_relaxed));
-    payload->setProperty ("lufs",          audioProcessor.lufsMomentary.load (std::memory_order_relaxed));
+    payload->setProperty ("lufs",          audioProcessor.loudness.momentary.load (std::memory_order_relaxed));
+    payload->setProperty ("lufsShort",     audioProcessor.loudness.shortTerm.load (std::memory_order_relaxed));
+    payload->setProperty ("lufsInt",       audioProcessor.loudness.integrated.load (std::memory_order_relaxed));
+    payload->setProperty ("truePeak",      audioProcessor.loudness.truePeakDb.load (std::memory_order_relaxed));
+    payload->setProperty ("limiterGr",     audioProcessor.limiterGainReductionDb.load (std::memory_order_relaxed));
     payload->setProperty ("rackLinks",     audioProcessor.getRackLinkCount());
     payload->setProperty ("capturing",     audioProcessor.isRoomCapturing());
     payload->setProperty ("capturedHz",    audioProcessor.getCapturedModeHz());

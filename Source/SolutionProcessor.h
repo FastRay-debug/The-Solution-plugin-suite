@@ -8,6 +8,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "ModuleEngines.h"
 #include "PresetManager.h"
+#include "Metering.h"
 #include <atomic>
 #include <array>
 
@@ -74,6 +75,8 @@ public:
     std::atomic<float> phaseCorrelation { 1.0f };
     std::atomic<float> peakDb { -60.0f };
     std::atomic<float> lufsMomentary { -60.0f };
+    SolutionDSP::LoudnessMeter loudness;                 // BS.1770 momentary / short-term / integrated + true peak
+    std::atomic<float> limiterGainReductionDb { 0.0f };
     std::atomic<int>   lastLearnedCc { -1 };
 
 private:
@@ -88,6 +91,8 @@ private:
     SolutionDSP::SuiteModuleEngine moduleEngine;
     juce::SharedResourcePointer<SolutionDSP::RackLinkBus> rackLinkBus;
     juce::AudioBuffer<float> dryCopy;
+    SolutionDSP::IntegerDelay dryDelay;                  // keeps dry aligned with the oversampled wet path
+    SolutionDSP::TruePeakLimiter ceilingLimiter;         // -0.5 dBTP ceiling guard
 
     std::atomic<int> learnArmedIndex { -1 };
     std::array<std::atomic<int>, 128> ccToParamIndex;

@@ -80,11 +80,17 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 };
     moduleEngine.prepare (spec);
     dryCopy.setSize (2, samplesPerBlock, false, true, true);
+    dryDelay.prepare (2, moduleEngine.getLatencySamples());
+    ceilingLimiter.prepare (sampleRate);
+    loudness.prepare (sampleRate);
+    setLatencySamples (moduleEngine.getLatencySamples() + ceilingLimiter.getLatency());
 }
 
 void SolutionAudioProcessor::releaseResources()
 {
     moduleEngine.reset();
+    dryDelay.reset();
+    ceilingLimiter.reset();
 }
 
 bool SolutionAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -129,6 +135,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     for (int ch = 0; ch < 2; ++ch)
         dryCopy.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+    dryDelay.process (dryCopy, numSamples);
 
     SolutionDSP::ProcessParams p;
     p.azimuthDeg      = apvts.getRawParameterValue ("stage_azimuth")->load();
@@ -154,30 +161,30 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
 
     const bool ceilingOn   = apvts.getRawParameterValue ("stage_ceiling_guard")->load() > 0.5f;
-    const float ceilingLin = juce::Decibels::decibelsToGain (-0.5f);
+    const float ceilingLin = juce::Decibels::decibelsToGain ((float) SOLUTION_CEILING_DBFS);
 
     auto* left  = buffer.getWritePointer (0);
     auto* right = buffer.getWritePointer (1);
     const auto* dryL = dryCopy.getReadPointer (0);
     const auto* dryR = dryCopy.getReadPointer (1);
 
-    double sumL2 = 0.0, sumR2 = 0.0, sumLR = 0.0;
-    float maxPeak = 0.0f;
-
-    for (int i = 0; i < numSamples; ++i)
-    {
-        float outL = p.tapeCalTone ? left[i]  : (dryL[i] * (1.0f - p.wetMix) + left[i]  * p.wetMix);
-        float outR = p.tapeCalTone ? right[i] : (dryR[i] * (1.0f - p.wetMix) + right[i] * p.wetMix);
-
-        if (ceilingOn)
+    if (! p.tapeCalTone)
+        for (int i = 0; i < numSamples; ++i)
         {
-            outL = std::clamp (outL, -ceilingLin, ceilingLin);
-            outR = std::clamp (outR, -ceilingLin, ceilingLin);
+            left[i]  = dryL[i] * (1.0f - p.wetMix) + left[i]  * p.wetMix;
+            right[i] = dryR[i] * (1.0f - p.wetMix) + right[i] * p.wetMix;
         }
 
-        left[i]  = outL;
-        right[i] = outR;
+    // True-peak ceiling guard (look-ahead limiter; always in the path so latency never changes).
+    ceilingLimiter.process (buffer, numSamples, ceilingLin, ceilingOn);
+    limiterGainReductionDb.store (ceilingLimiter.getGainReductionDb(), std::memory_order_relaxed);
+    loudness.process (left, right, numSamples);
 
+    double sumL2 = 0.0, sumR2 = 0.0, sumLR = 0.0;
+    float maxPeak = 0.0f;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float outL = left[i], outR = right[i];
         sumL2 += static_cast<double> (outL) * outL;
         sumR2 += static_cast<double> (outR) * outR;
         sumLR += static_cast<double> (outL) * outR;
@@ -189,7 +196,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const double denom = std::sqrt (sumL2 * sumR2) + 1e-12;
     const float corr = static_cast<float> (std::clamp (sumLR / denom, -1.0, 1.0));
     const float peakDbVal = juce::Decibels::gainToDecibels (maxPeak, -60.0f);
-    const float lufsVal = juce::Decibels::gainToDecibels (0.5f * (rmsL + rmsR), -60.0f) - 0.691f;
+    const float lufsVal = loudness.momentary.load (std::memory_order_relaxed);
 
     rmsLeft.store (rmsL, std::memory_order_relaxed);
     rmsRight.store (rmsR, std::memory_order_relaxed);
@@ -200,7 +207,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     rackLinkBus->masterSubRms.store (0.5f * (rmsL + rmsR), std::memory_order_relaxed);
     rackLinkBus->masterPhase.store (corr, std::memory_order_relaxed);
     rackLinkBus->lufsMomentary.store (lufsVal, std::memory_order_relaxed);
-    rackLinkBus->truePeakDb.store (peakDbVal, std::memory_order_relaxed);
+    rackLinkBus->truePeakDb.store (loudness.truePeakDb.load (std::memory_order_relaxed), std::memory_order_relaxed);
 }
 
 juce::AudioProcessorEditor* SolutionAudioProcessor::createEditor()

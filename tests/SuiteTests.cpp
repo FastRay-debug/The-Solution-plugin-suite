@@ -258,12 +258,130 @@ static void testPresets()
     std::printf ("  done\n");
 }
 
+// Independent true-peak measurement (16x oversampled) - deliberately not the plugin's own detector.
+static float measureTruePeakDb (const juce::AudioBuffer<float>& in, int skip)
+{
+    juce::dsp::Oversampling<float> os (2, 4, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true);
+    os.initProcessing ((size_t) in.getNumSamples());
+    juce::AudioBuffer<float> copy (in);
+    juce::dsp::AudioBlock<float> blk (copy);
+    auto up = os.processSamplesUp (blk);
+    float peak = 0.0f;
+    const auto osSkip = (size_t) (skip * 16 + 512);
+    for (size_t ch = 0; ch < up.getNumChannels(); ++ch)
+        for (size_t i = osSkip; i < up.getNumSamples(); ++i)
+            peak = std::max (peak, std::abs (up.getSample ((int) ch, (int) i)));
+    return juce::Decibels::gainToDecibels (peak, -100.0f);
+}
+
+static void fillSine (juce::AudioBuffer<float>& b, double fs, double freq, float amp, double phase = 0.0, int offset = 0)
+{
+    for (int ch = 0; ch < b.getNumChannels(); ++ch)
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            b.setSample (ch, i, amp * (float) std::sin (juce::MathConstants<double>::twoPi * freq * (i + offset) / fs + phase));
+}
+
+static void testMetering()
+{
+    std::printf ("== Loudness meter (ITU-R BS.1770) and true-peak limiter\n");
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+    {
+        SolutionDSP::LoudnessMeter m; m.prepare (fs);
+        juce::AudioBuffer<float> b (2, (int) fs * 5);
+        fillSine (b, fs, 997.0, 0.1f);                 // -20 dBFS sine in both channels = -20.0 LUFS
+        m.process (b.getReadPointer (0), b.getReadPointer (1), b.getNumSamples());
+        EXPECT (std::abs (m.momentary.load() + 20.0f) < 0.1f, "momentary %.2f LUFS at %.0f Hz (expected -20.0)", m.momentary.load(), fs);
+        EXPECT (std::abs (m.shortTerm.load() + 20.0f) < 0.1f, "short-term %.2f LUFS at %.0f Hz (expected -20.0)", m.shortTerm.load(), fs);
+        EXPECT (std::abs (m.integrated.load() + 20.0f) < 0.1f, "integrated %.2f LUFS at %.0f Hz (expected -20.0)", m.integrated.load(), fs);
+
+        // Relative gate: a long quiet section (-50) must not drag the integrated reading down.
+        fillSine (b, fs, 997.0, 0.00316f);
+        m.process (b.getReadPointer (0), b.getReadPointer (1), b.getNumSamples());
+        EXPECT (std::abs (m.integrated.load() + 20.0f) < 0.2f, "gating: integrated %.2f LUFS (expected about -20.0)", m.integrated.load());
+
+        m.requestReset();
+        juce::AudioBuffer<float> silence (2, (int) fs); silence.clear();
+        m.process (silence.getReadPointer (0), silence.getReadPointer (1), silence.getNumSamples());
+        EXPECT (m.integrated.load() <= -69.9f, "after reset + silence, integrated should be -70 (got %.1f)", m.integrated.load());
+    }
+
+    // Limiter: +6 dBFS signal whose real peaks fall *between* samples.
+    for (double fs : { 44100.0, 48000.0, 192000.0 })
+    {
+        SolutionDSP::TruePeakLimiter lim; lim.prepare (fs);
+        const float ceiling = juce::Decibels::decibelsToGain (-0.5f);
+        juce::AudioBuffer<float> b (2, (int) fs * 2);
+        fillSine (b, fs, fs / 4.0 + 37.0, 2.0f, juce::MathConstants<double>::pi / 4.0);
+        lim.process (b, b.getNumSamples(), ceiling, true);
+        const float tp = measureTruePeakDb (b, lim.getLatency() + (int) (fs * 0.1));
+        EXPECT (tp <= -0.4f, "limiter let a true peak of %.2f dBTP through at %.0f Hz (ceiling -0.5)", tp, fs);
+        EXPECT (tp > -3.0f, "limiter over-reduced: %.2f dBTP at %.0f Hz", tp, fs);
+
+        // Disengaged: bit-exact pass-through, delayed by exactly its latency.
+        SolutionDSP::TruePeakLimiter off; off.prepare (fs);
+        juce::AudioBuffer<float> x (2, 4096), y (2, 4096);
+        juce::Random rnd (3);
+        for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < 4096; ++i) x.setSample (ch, i, rnd.nextFloat() * 2.0f - 1.0f);
+        y.makeCopyOf (x);
+        off.process (y, 4096, ceiling, false);
+        bool exact = true;
+        for (int i = off.getLatency(); i < 4096; ++i)
+            exact &= y.getSample (0, i) == x.getSample (0, i - off.getLatency());
+        EXPECT (exact, "bypassed limiter is not a clean delay of %d samples at %.0f Hz", off.getLatency(), fs);
+    }
+    std::printf ("  done\n");
+}
+
+static void testLatencyAndCeiling()
+{
+    std::printf ("== Plugin latency report and ceiling guard\n");
+    for (double fs : { 44100.0, 96000.0 })
+    {
+        // Dry-only + guard off: an impulse must come out exactly getLatencySamples() later.
+        SolutionAudioProcessor proc;
+        proc.apvts.getParameter ("global_mix")->setValueNotifyingHost (0.0f);
+        proc.apvts.getParameter ("stage_ceiling_guard")->setValueNotifyingHost (0.0f);
+        proc.prepareToPlay (fs, 512);
+        const int latency = proc.getLatencySamples();
+        juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer midi;
+        int found = -1;
+        for (int blockIdx = 0; blockIdx < 4 && found < 0; ++blockIdx)
+        {
+            b.clear();
+            if (blockIdx == 0) { b.setSample (0, 0, 0.5f); b.setSample (1, 0, 0.5f); }
+            proc.processBlock (b, midi);
+            for (int i = 0; i < 512; ++i) if (std::abs (b.getSample (0, i)) > 0.25f) { found = blockIdx * 512 + i; break; }
+        }
+        EXPECT (latency > 0, "plugin reports no latency at %.0f Hz", fs);
+        EXPECT (found == latency, "reported latency %d but audio arrived after %d samples at %.0f Hz", latency, found, fs);
+
+        // Hot wet signal with the guard on: true peak stays under -0.5 dBTP.
+        SolutionAudioProcessor hot;
+        hot.apvts.getParameter ("stage_width")->setValueNotifyingHost (1.0f);   // max width
+        hot.prepareToPlay (fs, 512);
+        juce::AudioBuffer<float> all (2, (int) fs);
+        for (int start = 0; start < all.getNumSamples(); start += 512)
+        {
+            const int len = std::min (512, all.getNumSamples() - start);
+            juce::AudioBuffer<float> blk (2, len);
+            fillSine (blk, fs, 3000.0, 1.6f, 0.3, start);
+            hot.processBlock (blk, midi);
+            for (int ch = 0; ch < 2; ++ch) all.copyFrom (ch, start, blk, ch, 0, len);
+        }
+        const float tp = measureTruePeakDb (all, (int) (fs * 0.2));
+        EXPECT (tp <= -0.4f, "ceiling guard: output true peak %.2f dBTP at %.0f Hz", tp, fs);
+    }
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
     testEngines();
     testProcessorState();
     testPresets();
+    testMetering();
+    testLatencyAndCeiling();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

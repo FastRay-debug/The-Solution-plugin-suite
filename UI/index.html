@@ -330,7 +330,7 @@
     </div>
     <div class="meter-pill" id="ribbonMeter" onclick="openMeterMenu(event)" ondblclick="toggleMeterPop()" onwheel="wheelZoomMeter(event)" title="Click: Meter Menu · Wheel: Zoom · Double-Click: Expand">
       <span>PH <b id="m-phase" style="color:var(--accent2)">+1.00</b></span>
-      <span>PK <b id="m-peak" style="color:var(--accent)">-60.0</b></span>
+      <span data-tip="True peak (dBTP) - what streaming services measure">TP <b id="m-peak" style="color:var(--accent)">-60.0</b></span>
       <span>LUFS <b id="m-lufs" style="color:#10B981">-60.0</b></span>
       <span>LK <b id="m-links" style="color:var(--accent2)">1</b></span>
     </div>
@@ -516,6 +516,13 @@
         <span>SCALE: <b id="popScaleTxt" style="color:var(--accent)">-60 to 0 dB</b></span>
         <span>PEAK HOLD: <b id="popHoldTxt" style="color:#EF4444">-60.0 dB</b></span>
         <span>LUFS: <b id="popLufsTxt" style="color:#10B981">-60.0</b></span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-family:monospace;font-size:11px;">
+        <span>SHORT-TERM: <b id="popLufsShort" style="color:#10B981">-70.0</b></span>
+        <span>INTEGRATED: <b id="popLufsInt" style="color:#10B981">-70.0</b> LUFS</span>
+        <span>TRUE PEAK: <b id="popTruePeak" style="color:#EF4444">-70.0</b> dBTP</span>
+        <span>CEILING GR: <b id="popGr" style="color:var(--gold)">0.0</b> dB</span>
+        <button onclick="if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('resetLoudness', {})" data-tip="Restart integrated loudness and true-peak hold">RESET</button>
       </div>
       <div class="bar-track" style="height:22px;"><div class="bar-fill" id="popBarL"></div><div class="bar-ceil" id="popCeilL"></div></div>
       <div class="bar-track" style="height:22px;"><div class="bar-fill" id="popBarR"></div><div class="bar-ceil" id="popCeilR"></div></div>
@@ -1155,7 +1162,13 @@
         if (t.module) setModuleTitle(t.module);
         if (t.skinsEnabled !== undefined && t.skinsEnabled !== skinsEnabled) { skinsEnabled = !!t.skinsEnabled; updateSkinVisibility(); }
         document.getElementById('m-phase').textContent = (t.phase >= 0 ? '+' : '') + t.phase.toFixed(2);
-        document.getElementById('m-peak').textContent = t.peak.toFixed(1);
+        document.getElementById('m-peak').textContent = (t.truePeak !== undefined ? t.truePeak : t.peak).toFixed(1);
+        if (t.lufsShort !== undefined) {
+          document.getElementById('popLufsShort').textContent = t.lufsShort.toFixed(1);
+          document.getElementById('popLufsInt').textContent = t.lufsInt.toFixed(1);
+          document.getElementById('popTruePeak').textContent = t.truePeak.toFixed(1);
+          document.getElementById('popGr').textContent = t.limiterGr.toFixed(1);
+        }
         if (t.lufs !== undefined) {
           document.getElementById('m-lufs').textContent = t.lufs.toFixed(1);
           document.getElementById('popLufsTxt').textContent = t.lufs.toFixed(1);

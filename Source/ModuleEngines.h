@@ -279,6 +279,8 @@ namespace SolutionDSP
             for (auto* f : { &airShelf, &depthLowPass, &deRumbleHPF })
                 preallocateBiquad (*f, sampleRate);
             roomMatcher.prepare (spec);
+            oversampler.initProcessing (static_cast<size_t> (spec.maximumBlockSize));
+            oversampler.reset();
             calPhase = 0.0;
             lfoPhase = 0.0;
         }
@@ -293,7 +295,11 @@ namespace SolutionDSP
             depthLowPass.reset();
             deRumbleHPF.reset();
             roomMatcher.reset();
+            oversampler.reset();
         }
+
+        // Fixed processing delay (from the oversampling filters) - reported to the DAW.
+        int getLatencySamples() const { return static_cast<int> (std::lround (oversampler.getLatencyInSamples())); }
 
         RoomMatcherEngine& getRoomMatcher() { return roomMatcher; }
         const RoomMatcherEngine& getRoomMatcher() const { return roomMatcher; }
@@ -368,6 +374,7 @@ namespace SolutionDSP
                 return std::tanh (x * drive) / std::max (1.0f, std::tanh (drive)); // Soft Knee
             };
 
+            // Linear, per-module tone shaping runs at the normal sample rate.
             if (moduleId == ModuleId::Bunker)
             {
                 if (lowBandBuffer.getNumSamples() < numSamples)
@@ -388,6 +395,7 @@ namespace SolutionDSP
                 highCross.process (hctx);
                 deRumbleHPF.process (lctx);
 
+                // Sub-band saturation: only low frequencies, so no oversampling needed.
                 const float drive = 1.0f + effectiveDepth * 3.5f;
                 for (int i = 0; i < numSamples; ++i)
                 {
@@ -397,80 +405,59 @@ namespace SolutionDSP
                     buffer.setSample (1, i, satSub + highBandBuffer.getSample (1, i));
                 }
             }
-            else if (moduleId == ModuleId::Loft || moduleId == ModuleId::Aether)
+            else if (moduleId == ModuleId::Loft || moduleId == ModuleId::Aether || moduleId == ModuleId::Mosaic
+                     || moduleId == ModuleId::Stage || moduleId == ModuleId::Land || moduleId == ModuleId::Orbit || moduleId == ModuleId::Void)
             {
-                juce::dsp::AudioBlock<float> blk (buffer);
+                auto blk = juce::dsp::AudioBlock<float> (buffer).getSubsetChannelBlock (0, 2);
                 juce::dsp::ProcessContextReplacing<float> ctx (blk);
                 airShelf.process (ctx);
-                const float airDrive = 1.0f + effectiveDepth * (moduleId == ModuleId::Aether ? 2.1f : 1.6f);
-                for (int ch = 0; ch < 2; ++ch)
-                {
-                    auto* data = buffer.getWritePointer (ch);
-                    for (int i = 0; i < numSamples; ++i)
-                        data[i] = 0.7f * data[i] + 0.3f * std::tanh (data[i] * airDrive);
-                }
-            }
-            else if (moduleId == ModuleId::Anchor || moduleId == ModuleId::Bridge)
-            {
-                const float drive = 1.0f + (effectiveDepth + p.regenThrottle * 0.4f) * (moduleId == ModuleId::Anchor ? 2.5f : 1.4f);
-                for (int ch = 0; ch < 2; ++ch)
-                {
-                    auto* data = buffer.getWritePointer (ch);
-                    for (int i = 0; i < numSamples; ++i)
-                        data[i] = applyClipper (data[i], drive);
-                }
-            }
-            else if (moduleId == ModuleId::Mosaic)
-            {
-                juce::dsp::AudioBlock<float> blk (buffer);
-                juce::dsp::ProcessContextReplacing<float> ctx (blk);
-                airShelf.process (ctx);
-                const float morphDrive = 1.0f + effectiveDepth * 2.0f;
-                for (int ch = 0; ch < 2; ++ch)
-                {
-                    auto* data = buffer.getWritePointer (ch);
-                    for (int i = 0; i < numSamples; ++i)
-                        data[i] = 0.6f * data[i] + 0.4f * applyClipper (data[i], morphDrive);
-                }
-            }
-            else if (moduleId == ModuleId::Stage || moduleId == ModuleId::Land || moduleId == ModuleId::Orbit || moduleId == ModuleId::Void)
-            {
-                juce::dsp::AudioBlock<float> blk (buffer);
-                juce::dsp::ProcessContextReplacing<float> ctx (blk);
-                airShelf.process (ctx);
-                depthLowPass.process (ctx);
+                if (moduleId == ModuleId::Stage || moduleId == ModuleId::Land || moduleId == ModuleId::Orbit || moduleId == ModuleId::Void)
+                    depthLowPass.process (ctx);
             }
             else if (moduleId == ModuleId::Innerspace)
             {
-                juce::dsp::AudioBlock<float> blk (buffer);
+                auto blk = juce::dsp::AudioBlock<float> (buffer).getSubsetChannelBlock (0, 2);
                 juce::dsp::ProcessContextReplacing<float> ctx (blk);
                 depthLowPass.process (ctx);
             }
 
-            // Automated Dialogue Ducking (gentle mid-band duck when enabled)
-            if (p.dialogueDuck)
+            // Non-linear stages (saturation, clipping, transient sculpting) run 4x oversampled
+            // so they don't fold harsh aliasing back into the audible range. Every module goes
+            // through the oversampler so the latency reported to the DAW is always the same.
             {
-                for (int ch = 0; ch < 2; ++ch)
-                {
-                    auto* data = buffer.getWritePointer (ch);
-                    for (int i = 0; i < numSamples; ++i)
-                        data[i] *= 0.82f;
-                }
-            }
+                const float duckGain = p.dialogueDuck ? 0.82f : 1.0f;    // gentle mid-band duck when enabled
+                const float airDrive = 1.0f + effectiveDepth * (moduleId == ModuleId::Aether ? 2.1f : 1.6f);
+                const float clipDrive = 1.0f + (effectiveDepth + p.regenThrottle * 0.4f) * (moduleId == ModuleId::Anchor ? 2.5f : 1.4f);
+                const float morphDrive = 1.0f + effectiveDepth * 2.0f;
 
-            // Predictive Transient Sculpting (Scope / global peak tamer)
-            if (p.transientSculpt)
-            {
-                for (int ch = 0; ch < 2; ++ch)
+                auto base = juce::dsp::AudioBlock<float> (buffer).getSubsetChannelBlock (0, 2);
+                auto up = oversampler.processSamplesUp (base);
+                for (size_t ch = 0; ch < 2; ++ch)
                 {
-                    auto* data = buffer.getWritePointer (ch);
-                    for (int i = 0; i < numSamples; ++i)
+                    auto* data = up.getChannelPointer (ch);
+                    for (size_t i = 0; i < up.getNumSamples(); ++i)
                     {
-                        const float ax = std::abs (data[i]);
-                        if (ax > 0.72f)
-                            data[i] = std::copysign (0.72f + 0.28f * std::tanh ((ax - 0.72f) * 2.5f), data[i]);
+                        float x = data[i];
+                        switch (moduleId)
+                        {
+                            case ModuleId::Loft:
+                            case ModuleId::Aether:  x = 0.7f * x + 0.3f * std::tanh (x * airDrive); break;
+                            case ModuleId::Anchor:
+                            case ModuleId::Bridge:  x = applyClipper (x, clipDrive); break;
+                            case ModuleId::Mosaic:  x = 0.6f * x + 0.4f * applyClipper (x, morphDrive); break;
+                            default: break;
+                        }
+                        x *= duckGain;
+                        if (p.transientSculpt)   // Predictive Transient Sculpting (peak tamer)
+                        {
+                            const float ax = std::abs (x);
+                            if (ax > 0.72f)
+                                x = std::copysign (0.72f + 0.28f * std::tanh ((ax - 0.72f) * 2.5f), x);
+                        }
+                        data[i] = x;
                     }
                 }
+                oversampler.processSamplesDown (base);
             }
 
             const float midGain  = juce::Decibels::decibelsToGain (p.midDb);
@@ -536,5 +523,6 @@ namespace SolutionDSP
         juce::dsp::LinkwitzRileyFilter<float> lowCross, highCross;
         juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> airShelf, depthLowPass, deRumbleHPF;
         RoomMatcherEngine roomMatcher;
+        juce::dsp::Oversampling<float> oversampler { 2, 2, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
     };
 }
