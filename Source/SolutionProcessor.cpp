@@ -77,7 +77,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "patch_order", 1 },          "Rear Patch Order",   0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "global_mix", 1 },           "Global Wet/Dry",     juce::NormalisableRange<float> (0.0f,    1.0f,   0.01f), 1.0f));
     params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "stage_ceiling_guard", 1 },  "Sub-Ceiling Guard (-0.5 dBFS)", true));
-    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "transient_sculpt", 1 },     "Predictive Transient Sculpting", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "transient_sculpt", 1 },     "Transient Shaper", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "ultra_wide", 1 },           "Ultra Wide (Haas-Kempf)", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "tape_cal_tone", 1 },        "Tape Calibration Tone", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
@@ -87,6 +87,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "dqs_mode", 14 }, "Quality (DQS)",
                           juce::StringArray { "Auto", "Locked 4x (best)", "Eco (lightest)" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
+    // --- v18: real voice-activated dialogue ducking + transient shaper amounts
+    params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "dialogue_duck_db", 18 }, "Dialogue Duck Depth (dB)",
+                          juce::NormalisableRange<float> (-12.0f, 0.0f, 0.1f), -6.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "transient_attack", 18 }, "Transient Attack (%)",
+                          juce::NormalisableRange<float> (-100.0f, 100.0f, 1.0f), 40.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "transient_sustain", 18 }, "Transient Sustain (%)",
+                          juce::NormalisableRange<float> (-100.0f, 100.0f, 1.0f), 0.0f));
     // --- v17: DC Guard (on by default): ~1 Hz DC blocker on the input and right before the limiter
     params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "dc_guard", 17 }, "DC Guard", true));
     // --- v17: Lookahead limiter (5 ms instead of 1.5 ms: smoother on fast transients, +3.5 ms latency)
@@ -162,7 +170,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "link_duck_depth", 2 },   "Link Duck Depth (dB)", juce::NormalisableRange<float> (0.0f, 18.0f, 0.1f), 6.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "glue_amount", 2 },       "Glue", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "glue_follow_suite", 2 }, "Follow Suite Glue", false));
-    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "dialogue_duck", 1 },        "Dialogue Ducking", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "dialogue_duck", 1 },        "Duck Under Dialogue", false));
 
     return { params.begin(), params.end() };
 }
@@ -194,6 +202,9 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     preparedBlockSize = samplesPerBlock;
     infraLift.prepare (sampleRate);
     dcGuardIn.prepare (sampleRate);
+    voiceDetector.prepare (sampleRate);
+    dialogueDucker.prepare (sampleRate);
+    transientShaper.prepare (sampleRate);
     dcGuardOut.prepare (sampleRate);
    #if ! SOLUTION_HEADLESS
     diagBridge->sampleRate = sampleRate;
@@ -401,6 +412,20 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             buffer.getWritePointer (0)[i] *= g; buffer.getWritePointer (1)[i] *= g;
         }
 
+    // Dialogue source: detect speech on this track and tell the music tracks (Rack Link).
+    {
+        const bool isDialogue = apvts.getRawParameterValue ("dialogue_source")->load() > 0.5f;
+        if (isDialogue) voiceDetector.process (buffer.getReadPointer (0), buffer.getReadPointer (1), numSamples);
+        else            voiceDetector.reset();
+        voiceConfidence.store (isDialogue ? voiceDetector.getConfidence() : 0.0f, std::memory_order_relaxed);
+        if (rackSlot >= 0)
+        {
+            auto& me = rackLinkBus->slots[(size_t) rackSlot];
+            me.dialogueSource.store (isDialogue, std::memory_order_relaxed);
+            me.voice.store (voiceConfidence.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+    }
+
     for (int ch = 0; ch < 2; ++ch)
         dryCopy.copyFrom (ch, 0, buffer, ch, 0, numSamples);
 
@@ -477,13 +502,11 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     p.roomProfile     = static_cast<int> (apvts.getRawParameterValue ("room_profile")->load());
     p.patchOrder      = static_cast<int> (apvts.getRawParameterValue ("patch_order")->load());
     p.wetMix          = apvts.getRawParameterValue ("global_mix")->load();
-    p.transientSculpt = apvts.getRawParameterValue ("transient_sculpt")->load() > 0.5f;
     p.ultraWide       = apvts.getRawParameterValue ("ultra_wide")->load();
     p.tapeCalTone     = monitorOn ("tape_cal_tone") && ! bouncing;
     p.cvModDepth      = apvts.getRawParameterValue ("cv_mod_depth")->load();
     p.clipperShape    = static_cast<int> (apvts.getRawParameterValue ("clipper_shape")->load());
     p.regenThrottle   = apvts.getRawParameterValue ("regen_throttle")->load();
-    p.dialogueDuck    = apvts.getRawParameterValue ("dialogue_duck")->load() > 0.5f;
     p.modeNotch       = static_cast<int> (apvts.getRawParameterValue ("mode_notch")->load());
     const bool infraOn = moduleId == SolutionDSP::ModuleId::Bunker && apvts.getRawParameterValue ("infra_lift")->load() > 0.5f;
     p.infraLift       = infraOn;
@@ -529,6 +552,12 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         p.wetMix = 1.0f;         // listen mode: hear exactly what's being targeted, unprocessed
     else
     {
+        if (apvts.getRawParameterValue ("transient_sculpt")->load() > 0.5f)      // before the saturators, so they see the shaped hits
+            transientShaper.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples,
+                                     apvts.getRawParameterValue ("transient_attack")->load() / 100.0f,
+                                     apvts.getRawParameterValue ("transient_sustain")->load() / 100.0f);
+        else
+            transientShaper.reset();
         moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
         if (! p.tapeCalTone)      // neural Character (only does anything once a model is chosen)
         {
@@ -586,6 +615,22 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         const float key = (linkGroup > 0 && ! duckSender) ? rackLinkBus->groupKey (linkGroup, rackSlot) : 0.0f;
         ducker.process (left, right, numSamples, key, apvts.getRawParameterValue ("link_duck_depth")->load());
         duckGainReductionDb.store (ducker.getGainReductionDb(), std::memory_order_relaxed);
+
+        // Duck under dialogue: follow the loudest voice among the session's dialogue tracks.
+        if (apvts.getRawParameterValue ("dialogue_duck")->load() > 0.5f)
+        {
+            float voice = 0.0f; int sources = 0;
+            for (size_t i = 0; i < rackLinkBus->slots.size(); ++i)
+            {
+                const auto& sl = rackLinkBus->slots[i];
+                if ((int) i == rackSlot || ! sl.active.load (std::memory_order_relaxed) || ! sl.dialogueSource.load (std::memory_order_relaxed)) continue;
+                voice = std::max (voice, sl.voice.load (std::memory_order_relaxed)); ++sources;
+            }
+            dialogueSources.store (sources, std::memory_order_relaxed);
+            dialogueDucker.process (left, right, numSamples, voice, apvts.getRawParameterValue ("dialogue_duck_db")->load());
+            dialogueDuckDb.store (dialogueDucker.getReductionDb(), std::memory_order_relaxed);
+        }
+        else { dialogueDucker.reset(); dialogueDuckDb.store (0.0f, std::memory_order_relaxed); }
 
         // Glue: The Scope sets the suite-wide amount; other modules can follow it.
         const float localGlue = apvts.getRawParameterValue ("glue_amount")->load();

@@ -89,6 +89,20 @@ void RemoteServer::respond (juce::StreamingSocket& s, int status, const juce::St
     if (len > 0) s.write (bytes, len);
 }
 
+// "Lingering close": after refusing a request, swallow what the client is still sending (bounded:
+// 64 KB / 300 ms) so closing doesn't reset the connection and throw away our error reply.
+static void drainBriefly (juce::StreamingSocket& s)
+{
+    char buf[4096]; int total = 0;
+    const auto until = juce::Time::getMillisecondCounter() + 300;
+    while (total < 65536 && juce::Time::getMillisecondCounter() < until && s.waitUntilReady (true, 50) > 0)
+    {
+        const int n = s.read (buf, sizeof (buf), false);
+        if (n <= 0) break;
+        total += n;
+    }
+}
+
 void RemoteServer::handle (juce::StreamingSocket& s)
 {
     // Read the request (headers + small body), at most 16 KB, with a short timeout.
@@ -107,11 +121,11 @@ void RemoteServer::handle (juce::StreamingSocket& s)
             const auto lower = text.substring (0, headerEnd).toLowerCase();
             const int cl = lower.indexOf ("content-length:");
             contentLength = cl >= 0 ? lower.substring (cl + 15).upToFirstOccurrenceOf ("\r\n", false, false).trim().getIntValue() : 0;
-            if (contentLength > 8192) { respond (s, 413, "text/plain", "too large"); return; }
+            if (contentLength > 8192) { respond (s, 413, "text/plain", "too large"); drainBriefly (s); return; }
         }
         if (headerEnd >= 0 && (int) data.getSize() >= headerEnd + 4 + contentLength) break;
     }
-    if (data.getSize() >= 16384) { respond (s, 413, "text/plain", "too large"); return; }
+    if (data.getSize() >= 16384) { respond (s, 413, "text/plain", "too large"); drainBriefly (s); return; }
     const auto text = data.toString();
     if (headerEnd < 0) { respond (s, 400, "text/plain", "bad request"); return; }
 

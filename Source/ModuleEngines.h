@@ -85,6 +85,8 @@ namespace SolutionDSP
         // 3D stage: where this track sits and what it sounds like.
         std::atomic<float> posAz { 0.0f }, posEl { 0.0f }, posDist { 2.0f }, posWidth { 1.0f }, toneHz { 1000.0f };
         std::atomic<int> creature { 0 };      // 0 = auto, 1..6 = the creature picked for this track
+        std::atomic<bool>  dialogueSource { false };   // this track is dialogue (its voice detector feeds the duckers)
+        std::atomic<float> voice { 0.0f };             // its live voice-activity confidence 0..1
         // Parameter change requests from another instance's stage (index into getParameters(), real value).
         static constexpr int maxRequests = 8;
         std::array<std::atomic<int>, maxRequests> reqParam;
@@ -132,7 +134,7 @@ namespace SolutionDSP
                     for (auto& b : s.bandDb) b = -100.0f;
                     s.alignRole = 0; s.alignRingEnd = -1; s.alignRequest = false;
                     s.monitorMask = 0; s.monitorOffRequest = false;
-                    s.posAz = 0.0f; s.posEl = 0.0f; s.posDist = 2.0f; s.posWidth = 1.0f; s.toneHz = 1000.0f; s.creature = 0; s.panicRequest = false; s.overloads = 0; s.errors = 0; s.latency = 0; s.dqsLevel = 0;
+                    s.posAz = 0.0f; s.posEl = 0.0f; s.posDist = 2.0f; s.posWidth = 1.0f; s.toneHz = 1000.0f; s.creature = 0; s.dialogueSource = false; s.voice = 0.0f; s.panicRequest = false; s.overloads = 0; s.errors = 0; s.latency = 0; s.dqsLevel = 0;
                     for (auto& q : s.reqParam) q = -1;
                     return i;
                 }
@@ -682,7 +684,6 @@ namespace SolutionDSP
             // so they don't fold harsh aliasing back into the audible range. Every module goes
             // through the oversampler so the latency reported to the DAW is always the same.
             {
-                const float duckGain = p.dialogueDuck ? 0.82f : 1.0f;    // gentle mid-band duck when enabled
                 const float airDrive = 1.0f + effectiveDepth * (moduleId == ModuleId::Aether ? 2.1f : 1.6f);
                 const float clipDrive = 1.0f + (effectiveDepth + p.regenThrottle * 0.4f)
                                         * (moduleId == ModuleId::Anchor ? 2.5f : (moduleId == ModuleId::Crown ? 1.8f : 1.4f));
@@ -700,13 +701,6 @@ namespace SolutionDSP
                         case ModuleId::Mosaic:
                         case ModuleId::Chimera: x = 0.6f * x + 0.4f * applyClipper (x, morphDrive); break;
                         default: break;
-                    }
-                    x *= duckGain;
-                    if (p.transientSculpt)   // Transient Sculpting (peak tamer)
-                    {
-                        const float ax = std::abs (x);
-                        if (ax > 0.72f)
-                            x = std::copysign (0.72f + 0.28f * std::tanh ((ax - 0.72f) * 2.5f), x);
                     }
                     return x;
                 };

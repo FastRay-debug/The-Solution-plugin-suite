@@ -730,6 +730,9 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("diagPhase",     (int) audioProcessor.diag.phaseEvents.load());
     payload->setProperty ("diagOverloads", (int) audioProcessor.diag.overloads.load());
     payload->setProperty ("diagDc",        (int) audioProcessor.diag.dcEvents.load());
+    payload->setProperty ("voice",         audioProcessor.voiceConfidence.load());
+    payload->setProperty ("dialogueDuckDb", audioProcessor.dialogueDuckDb.load());
+    payload->setProperty ("dialogueSources", audioProcessor.dialogueSources.load());
     payload->setProperty ("latency",       audioProcessor.getLatencySamples());
     payload->setProperty ("dqsLevel",      audioProcessor.dqsLevel.load());
     payload->setProperty ("dqsSuiteLoad",  audioProcessor.dqsSuiteLoad.load());

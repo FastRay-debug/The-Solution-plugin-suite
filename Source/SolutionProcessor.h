@@ -10,6 +10,7 @@
 #endif
 #include <juce_dsp/juce_dsp.h>
 #include "ModuleEngines.h"
+#include "Dialogue.h"
 #include "PresetManager.h"
 #include "Metering.h"
 #include "Dynamics.h"
@@ -153,6 +154,8 @@ public:
     SolutionDSP::AudioTap scopeTap;                                            // real-audio scopes in the UI
     std::atomic<int> dqsLevel { 0 };                                           // 0 = 4x, 1 = 2x, 2 = 1x oversampling
     std::atomic<float> dqsSuiteLoad { 0.0f }, dqsOwnLoad { 0.0f };
+    std::atomic<float> voiceConfidence { 0.0f }, dialogueDuckDb { 0.0f };    // dialogue source / music ducking readouts
+    std::atomic<int>   dialogueSources { 0 };
 
     // Diagnostics: real events counted on the audio thread (the utility turns them into a log).
     struct DiagCounters
@@ -167,6 +170,9 @@ public:
     float phaseBadSeconds = 0.0f;
     SolutionDSP::InfraLift infraLift;
     SolutionDSP::DcGuard dcGuardIn, dcGuardOut;
+    SolutionDSP::VoiceDetector voiceDetector;
+    SolutionDSP::DialogueDucker dialogueDucker;
+    SolutionDSP::TransientShaper transientShaper;
     bool inputDcFlag = false;       // The Bunker: infrasonic lift, just before the limiter
    #if ! SOLUTION_HEADLESS
     juce::SharedResourcePointer<SolutionDiag::DiagBridge> diagBridge;   // feeds the standalone Solution Utility
@@ -200,7 +206,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 17;  // v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 18;  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }

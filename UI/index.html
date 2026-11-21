@@ -637,7 +637,11 @@
           <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
           <label style="display:flex;gap:2px;align-items:center;" data-tip="WIDE: let the lift's skirt also fill 15-30 Hz. Off = true infrasonics only (the original trick). Shift+I"><input type="checkbox" data-sync="infra_lift_wide" onchange="bind('infra_lift_wide', this.checked ? 1 : 0, '', 1)">WIDE</label>
         </div>
-        <button id="sculptBtn" onclick="toggleSculpt()" data-tip="Predictive Transient Sculpting">⚡ TRANSIENT SCULPT: OFF</button>
+        <button id="sculptBtn" onclick="toggleSculpt()" data-tip="Transient Shaper: Attack makes hits punchier (+) or softer (-); Sustain lengthens (+) or tightens (-) the tails. Runs before the saturation. Shift+S">⚡ TRANSIENT SHAPER: OFF</button>
+        <div id="sculptRow" style="display:none;gap:4px;align-items:center;font-size:9px;">
+          ATK <input type="range" data-sync="transient_attack" min="-100" max="100" step="1" value="40" style="flex:1;min-width:30px;" oninput="bind('transient_attack', +this.value, '', 1); document.getElementById('v-transient_attack').textContent = (this.value > 0 ? '+' : '') + this.value + '%'"><span id="v-transient_attack" style="min-width:30px;color:var(--gold);">+40%</span>
+          SUS <input type="range" data-sync="transient_sustain" min="-100" max="100" step="1" value="0" style="flex:1;min-width:30px;" oninput="bind('transient_sustain', +this.value, '', 1); document.getElementById('v-transient_sustain').textContent = (this.value > 0 ? '+' : '') + this.value + '%'"><span id="v-transient_sustain" style="min-width:30px;color:var(--gold);">0%</span>
+        </div>
         <button id="binauralBtn" onclick="toggleBinaural()" data-tip="Headphones: hear the mix on virtual speakers around your head. Azimuth rotates, Elevation raises, Width spreads.">🎧 BINAURAL: OFF</button>
         <div style="display:flex;gap:3px;align-items:center;" data-tip="Stem Focus: this module processes only the chosen part of the mix; the rest passes through untouched (adds ~43 ms latency while on)">
           <select data-sync="stem_focus" onchange="bind('stem_focus', this.value, '', 1)" style="flex:1;font-size:10px;">
@@ -1071,7 +1075,14 @@
         <label>REGEN THROTTLE (ORBIT FEEDBACK) <span id="v-regen_throttle">0%</span></label>
         <input data-sync="regen_throttle" type="range" min="0" max="1" step="0.01" value="0" oninput="bind('regen_throttle', this.value, '%', 100)">
       </div>
-      <button id="duckBtn" onclick="toggleDuck()">🎙 AI DIALOGUE DUCKING: OFF</button>
+      <div class="ctrl" data-tip="Voice-activated dialogue ducking. On a voice track tick DIALOGUE; on music tracks turn on DUCK UNDER DIALOGUE. The music dips (mostly 1-4 kHz, where words live) only while someone is actually talking. N / Shift+N">
+        <label>DIALOGUE DUCKING <span id="v-dialogue_duck_db">-6.0 dB</span> <span id="voiceLed" style="color:var(--mute);">○ no voice</span></label>
+        <div style="display:flex;gap:6px;align-items:center;font-size:10px;">
+          <label style="display:flex;gap:3px;align-items:center;"><input type="checkbox" data-sync="dialogue_source" onchange="bind('dialogue_source', this.checked ? 1 : 0, '', 1)">THIS TRACK IS DIALOGUE</label>
+          <button id="duckBtn" onclick="toggleDuck()" style="flex:1;">🎙 DUCK UNDER DIALOGUE: OFF</button>
+        </div>
+        <input data-sync="dialogue_duck_db" type="range" min="-12" max="0" step="0.1" value="-6" oninput="bind('dialogue_duck_db', +this.value, '', 1); document.getElementById('v-dialogue_duck_db').textContent = (+this.value).toFixed(1) + ' dB'">
+      </div>
       <div class="ctrl">
         <label>MULTIBAND CLIPPER SHAPE</label>
         <select data-sync="clipper_shape" onchange="bind('clipper_shape', this.value, '', 1)">
@@ -1190,6 +1201,7 @@
           <p><kbd>`</kbd> Maximise the panel under the mouse (again = restore), like Premiere</p>
           <p><kbd>Ctrl</kbd>+<kbd>`</kbd> Send that panel fullscreen to your other display (<kbd>Esc</kbd> brings it back)</p>
           <p><kbd>K</kbd> MIDI-learn the control under the mouse (or right-click any control)</p>
+          <p><kbd>N</kbd> Duck under dialogue · <kbd>Shift</kbd>+<kbd>N</kbd> mark this track as dialogue · <kbd>Shift</kbd>+<kbd>S</kbd> Transient Shaper</p>
           <p><kbd>U</kbd> Beginner Mode (essentials only) · <kbd>E</kbd> Pre-Render check · <kbd>J</kbd> Diagnostics · <kbd>Q</kbd> Billet Audio command hub</p>
           <p><kbd>I</kbd> Infrasonic Lift on/off (The Bunker) · <kbd>Shift</kbd>+<kbd>I</kbd> WIDE (15-30 Hz)</p>
           <p><kbd>Ctrl</kbd>+<kbd>.</kbd> Panic Reset this track · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> whole session</p>
@@ -1524,8 +1536,9 @@
         x: () => openPro(),
         v: () => openVault(),
         o: () => toggleClassicOS(),
-        s: () => toggleSafeZone(),
+        s: () => shift ? toggleSculpt() : toggleSafeZone(),
         k: () => learnHovered(),
+        n: () => shift ? flipToggle('dialogue_source') : toggleDuck(),
         u: () => toggleBeginner(),
         e: () => openPreRender(),
         j: () => openDiagnostics(),
@@ -1605,7 +1618,7 @@
     function toggleDuck() {
       duckOn = !duckOn;
       document.getElementById('duckBtn').classList.toggle('active', duckOn);
-      document.getElementById('duckBtn').textContent = duckOn ? '🎙 AI DIALOGUE DUCKING: ON' : '🎙 AI DIALOGUE DUCKING: OFF';
+      document.getElementById('duckBtn').textContent = duckOn ? '🎙 DUCK UNDER DIALOGUE: ON' : '🎙 DUCK UNDER DIALOGUE: OFF';
       bind('dialogue_duck', duckOn ? 1 : 0, '', 1);
     }
     function doUndo() { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('undoAction', {}); }
@@ -1623,7 +1636,8 @@
       sculptOn = !sculptOn;
       const b = document.getElementById('sculptBtn');
       b.classList.toggle('active', sculptOn);
-      b.textContent = sculptOn ? '⚡ TRANSIENT SCULPT: ON' : '⚡ TRANSIENT SCULPT: OFF';
+      b.textContent = sculptOn ? '⚡ TRANSIENT SHAPER: ON' : '⚡ TRANSIENT SHAPER: OFF';
+      document.getElementById('sculptRow').style.display = sculptOn ? 'flex' : 'none';
       bind('transient_sculpt', sculptOn ? 1 : 0, '', 1);
     }
     function openSecretMenu(e) {
@@ -1966,6 +1980,8 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
+        if (id === 'transient_attack' || id === 'transient_sustain') document.getElementById('v-' + id).textContent = (v > 0 ? '+' : '') + Math.round(v) + '%';
+        if (id === 'dialogue_duck_db') document.getElementById('v-dialogue_duck_db').textContent = (+v).toFixed(1) + ' dB';
         if (id === 'infra_lift_db') document.getElementById('v-infra_lift_db').textContent = '+' + (+v).toFixed(1) + ' dB';
         if (id === 'dqs_threshold') document.getElementById('v-dqs_threshold').textContent = Math.round(v) + '%';
         if (id === 'align_delay_ms') document.getElementById('v-align_delay_ms').textContent = (+v).toFixed(2) + ' ms';
@@ -2034,6 +2050,12 @@
       window.__JUCE__.backend.emitEvent('uiReady', {});
       window.__JUCE__.backend.addEventListener('telemetry', (t) => {
         window._tele = t;
+        if (t.voice !== undefined) {
+          const led = document.getElementById('voiceLed');
+          if (state.dialogue_source > 0.5) { led.textContent = t.voice > 0.5 ? '● VOICE' : '○ listening'; led.style.color = t.voice > 0.5 ? '#4ade80' : 'var(--mute)'; }
+          else if (state.dialogue_duck > 0.5) { led.textContent = !t.dialogueSources ? '○ no dialogue track' : t.dialogueDuckDb < -0.5 ? '● ducking ' + t.dialogueDuckDb.toFixed(1) + ' dB' : '○ waiting for voice'; led.style.color = t.dialogueDuckDb < -0.5 ? 'var(--gold)' : 'var(--mute)'; }
+          else { led.textContent = '○ off'; led.style.color = 'var(--mute)'; }
+        }
         if (t.lufs > -60 && t.phase !== undefined) { const ps = window._phaseStats = window._phaseStats || { sum: 0, n: 0, min: 1 }; ps.sum += t.phase; ps.n++; ps.min = Math.min(ps.min, t.phase); }
         if (t.module) setModuleTitle(t.module);
         if (t.skinsEnabled !== undefined && t.skinsEnabled !== skinsEnabled) { skinsEnabled = !!t.skinsEnabled; updateSkinVisibility(); }

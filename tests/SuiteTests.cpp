@@ -1512,6 +1512,85 @@ static void testDcGuard()
     std::printf ("  done\n");
 }
 
+// Speech-like test signal: a 130 Hz voiced buzz with vowel-ish peaks; gated at syllable rate (4/s) or held.
+static float speechLike (int i, double fs, bool syllables, float level = 0.3f)
+{
+    const double t = i / fs;
+    double v = 0;
+    for (int h = 1; h <= 25; ++h)
+    {
+        const double f = 130.0 * h, form = std::exp (-std::pow ((f - 700) / 250, 2)) + 0.7 * std::exp (-std::pow ((f - 1200) / 300, 2)) + 0.4 * std::exp (-std::pow ((f - 2500) / 400, 2));
+        v += (0.05 + form) / h * std::sin (2 * juce::MathConstants<double>::pi * f * t);
+    }
+    double env = 1.0;
+    if (syllables) { const double ph = std::fmod (t * 4.0, 1.0); env = ph < 0.6 ? std::pow (std::sin (juce::MathConstants<double>::pi * ph / 0.6), 2) : 0.0; }
+    return (float) (level * env * v);
+}
+
+static void testDialogueAndTransients()
+{
+    std::printf ("Voice-activated dialogue ducking + transient shaper\n");
+    const double fs = 48000.0;
+    auto detect = [&] (int kind) {   // 0 speech, 1 held vowel/pad, 2 noise, 3 silence
+        VoiceDetector vd; vd.prepare (fs); std::mt19937 rng (7); std::normal_distribution<float> nd (0.0f, 0.1f);
+        std::vector<float> x (512); float maxConf = 0, endConf = 0;
+        for (int b = 0; b < (int) (3 * fs / 512); ++b)
+        {
+            for (int i = 0; i < 512; ++i) { const int n = b * 512 + i; x[(size_t) i] = kind == 0 ? speechLike (n, fs, true) : kind == 1 ? speechLike (n, fs, false) : kind == 2 ? nd (rng) : 0.0f; }
+            vd.process (x.data(), x.data(), 512);
+            if (b * 512 > fs) maxConf = std::max (maxConf, vd.getConfidence());
+            endConf = vd.getConfidence();
+        }
+        return std::make_pair (maxConf, endConf);
+    };
+    const auto sp = detect (0), held = detect (1), noise = detect (2), quiet = detect (3);
+    std::printf ("  voice confidence: speech %.2f, held vowel %.2f, noise %.2f, silence %.2f\n", sp.second, held.first, noise.first, quiet.first);
+    EXPECT (sp.second > 0.8f, "speech must be detected (%.2f)", sp.second);
+    EXPECT (held.first < 0.2f && noise.first < 0.2f && quiet.first < 0.05f, "held tones, noise and silence must not count as speech");
+
+    // Session: track A is dialogue, track B ducks under it.
+    {
+        auto a = std::make_unique<SolutionAudioProcessor>(), b = std::make_unique<SolutionAudioProcessor>();
+        a->prepareToPlay (fs, 512); b->prepareToPlay (fs, 512);
+        setParam (*a, "dialogue_source", 1.0f); setParam (*b, "dialogue_duck", 1.0f); setParam (*b, "dialogue_duck_db", -6.0f);
+        juce::MidiBuffer midi; juce::AudioBuffer<float> ba (2, 512), bb (2, 512);
+        auto runFor = [&] (double secs, bool talking) {
+            double e = 0; int n = 0;
+            for (int k = 0; k < (int) (secs * fs / 512); ++k)
+            {
+                for (int i = 0; i < 512; ++i) { const float v = talking ? speechLike (k * 512 + i, fs, true) : 0.0f; ba.setSample (0, i, v); ba.setSample (1, i, v); }
+                fillSine (bb, fs, 2200.0, 0.2f, 0.0, k * 512);
+                a->processBlock (ba, midi); b->processBlock (bb, midi);
+                if (k * 512 > (secs - 0.5) * fs) { for (int i = 0; i < 512; ++i) e += bb.getSample (0, i) * bb.getSample (0, i); ++n; }
+            }
+            return 10 * std::log10 (e / (n * 512.0) + 1e-12);
+        };
+        const double quietDb = runFor (1.5, false), talkDb = runFor (2.0, true), afterDb = runFor (2.0, false);
+        std::printf ("  music at 2.2 kHz: %.1f dB before, %.1f dB while talking, %.1f dB after\n", quietDb, talkDb, afterDb);
+        EXPECT (quietDb - talkDb > 4.5 && quietDb - talkDb < 9.5, "music ducks ~6-8 dB in the speech band while someone talks (%.1f dB)", quietDb - talkDb);
+        EXPECT (std::abs (afterDb - quietDb) < 0.5, "music comes back when the talking stops (%.1f vs %.1f)", afterDb, quietDb);
+    }
+
+    // Transient shaper: +attack makes hits stand out, -attack softens them, sustain lengthens tails.
+    {
+        auto hitRatio = [&] (float atk, float sus) {
+            TransientShaper ts; ts.prepare (fs);
+            std::vector<float> l ((size_t) fs), r ((size_t) fs);
+            for (size_t i = 0; i < l.size(); ++i) { const double t = std::fmod ((double) i / fs, 0.25); l[i] = r[i] = (float) (0.5 * std::exp (-t * 30.0) * std::sin (2 * juce::MathConstants<double>::pi * 180.0 * (double) i / fs)); }
+            ts.process (l.data(), r.data(), (int) l.size(), atk, sus);
+            double head = 0, tail = 0;     // last hit: first 10 ms vs 80-200 ms
+            const size_t s0 = (size_t) (0.75 * fs);
+            for (size_t i = s0; i < s0 + (size_t) (0.010 * fs); ++i) head = std::max (head, (double) std::abs (l[i]));
+            for (size_t i = s0 + (size_t) (0.080 * fs); i < s0 + (size_t) (0.200 * fs); ++i) tail = std::max (tail, (double) std::abs (l[i]));
+            return 20 * std::log10 (head / tail);
+        };
+        const double flat = hitRatio (0, 0), punch = hitRatio (1, 0), soft = hitRatio (-1, 0), longer = hitRatio (0, 1);
+        std::printf ("  hit-to-tail: flat %.1f dB, +attack %.1f dB, -attack %.1f dB, +sustain %.1f dB\n", flat, punch, soft, longer);
+        EXPECT (std::abs (flat - hitRatio (0, 0)) < 1e-9 && punch > flat + 3 && soft < flat - 3 && longer < flat - 3, "attack and sustain must reshape the hits");
+    }
+    std::printf ("  done\n");
+}
+
 static void testDiagnostics()
 {
     std::printf ("Diagnostics: real counters + real system readings\n");
@@ -1583,6 +1662,7 @@ int main()
     testInfraLift();
     testLookaheadAndLearn();
     testDcGuard();
+    testDialogueAndTransients();
     testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
