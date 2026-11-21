@@ -1245,6 +1245,17 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
 {
     if (data == nullptr || sizeInBytes <= 0)
         return;
+   #if ! SOLUTION_HEADLESS
+    // Safe / Vanilla Load: Ctrl+Shift held while the session loads -> start from defaults, but keep the
+    // saved settings so one click restores them (nothing is lost unless you save the session).
+    const auto mods = juce::ModifierKeys::getCurrentModifiersRealtime();
+    if (! restoringSkipped && mods.isCtrlDown() && mods.isShiftDown())
+    {
+        skippedState.replaceAll (data, (size_t) sizeInBytes);
+        vanillaLoaded = true;
+        return;
+    }
+   #endif
     std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
     if (xmlState == nullptr || ! xmlState->hasTagName (apvts.state.getType()))
         return;

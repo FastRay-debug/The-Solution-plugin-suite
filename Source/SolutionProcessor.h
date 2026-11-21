@@ -118,7 +118,18 @@ public:
     int getSessionMonitorCount() const;                          // other instances with monitoring tools on
     void turnOffMonitoring();                                    // message thread
     void turnOffMonitoringEverywhere();                          // every instance in the session
-    void applyPendingChanges() { handleUpdateNowIfNeeded(); }  // run queued message-thread work now (tests, offline hosts)
+    void applyPendingChanges() { handleUpdateNowIfNeeded(); }
+    // Safe / Vanilla Load (Ctrl+Shift while loading): the saved settings wait here until restored.
+    std::atomic<bool> vanillaLoaded { false };
+    bool restoreSkippedState()
+    {
+        if (skippedState.getSize() == 0) return false;
+        restoringSkipped = true;
+        setStateInformation (skippedState.getData(), (int) skippedState.getSize());
+        restoringSkipped = false;
+        skippedState.reset(); vanillaLoaded = false;
+        return true;
+    }  // run queued message-thread work now (tests, offline hosts)
     // Billet Audio hub - Emergency Panic Reset: flush every tail/delay/filter/limiter, then fade back in.
     void panicReset();                                           // message thread
     void panicResetEverywhere();                                 // every Solution instance in the session
@@ -307,6 +318,8 @@ private:
     std::shared_ptr<bool> aliveFlag = std::make_shared<bool> (true);   // lets async callbacks check we still exist
     juce::ThreadPool analysisPool { 1 };                         // declared last: joins first on destruction
     int rackSlot = -1;
+    juce::MemoryBlock skippedState;
+    bool restoringSkipped = false;
     double preparedSampleRate = 0.0;
     int preparedBlockSize = 0;
 

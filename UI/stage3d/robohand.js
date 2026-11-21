@@ -5,7 +5,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const cv = document.getElementById('roboHandCanvas');
 let api = { show() {}, grab() {}, release() {} };
-if (cv) { try { api = setup(); } catch (e) { /* no WebGL: the panel works without the hand */ } }
+if (cv && ! window.SAFE_MODE) { try { api = setup(); } catch (e) { /* no WebGL: the panel works without the hand */ } }
 window.roboHand = api;
 
 function setup() {

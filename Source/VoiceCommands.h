@@ -153,7 +153,7 @@ namespace SolutionVoice
             { c.kind = Command::Panic; c.everywhere = has ("everything") || has ("all") || has ("session"); c.describe = c.everywhere ? "Panic reset: whole session" : "Panic reset: this track"; return c; }
             if ((has ("monitoring") || has ("monitors")) && has ("off")) return ui (c, "monitorsOff", "Monitoring tools off everywhere");
             // macros / snapshots
-            if ((has ("snapshot") || has ("store") || has ("save") || has ("recall") || has ("macro")) && firstNumber (words) >= 1 && firstNumber (words) <= 5)
+            if ((has ("snapshot") || has ("store") || has ("save") || has ("recall") || has ("macro")) && firstNumber (words) >= 1 && firstNumber (words) <= 20)
             {
                 c.kind = Command::Macro; c.value = (float) firstNumber (words);
                 c.action = (has ("store") || has ("save") || has ("snapshot")) && ! has ("recall") ? "store" : "recall";

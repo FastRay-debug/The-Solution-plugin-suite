@@ -13,7 +13,7 @@ const glCanvas = document.getElementById('glCanvas');
 const gl3d = window.gl3d = { active: false, flying: false, clashHits: [], gpuInfo: null, fps: 0, quality: 'auto', lowQuality: false };
 
 let renderer;
-try {
+if (window.SAFE_MODE) renderer = null; else try {
   renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
 } catch (e) { renderer = null; }
 if (renderer && renderer.getContext()) {

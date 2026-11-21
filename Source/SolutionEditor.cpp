@@ -186,6 +186,7 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("restoreSkipped", [this] (const juce::var&) { audioProcessor.restoreSkippedState(); sendParamState(); sendPresetList(); })
            .withEventListener ("panic", [this] (const juce::var& data)
            {
                if ((bool) data.getProperty ("all", false)) audioProcessor.panicResetEverywhere();
@@ -284,7 +285,10 @@ void SolutionAudioProcessorEditor::handleFullscreen (const juce::var& data)
 juce::String SolutionAudioProcessorEditor::baseUrl() const
 {
     const auto escapedName = juce::URL::addEscapeChars (juce::String (SOLUTION_MODULE_NAME), true);
-    return juce::WebBrowserComponent::getResourceProviderRoot() + "?module=" + escapedName + "&skins=" + juce::String (skinsAvailable ? "1" : "0");
+    const auto mods = juce::ModifierKeys::getCurrentModifiersRealtime();
+    const bool safe = mods.isCtrlDown() && mods.isShiftDown();          // Safe Load: no 3D/GPU, plain drawing
+    return juce::WebBrowserComponent::getResourceProviderRoot() + "?module=" + escapedName + "&skins=" + juce::String (skinsAvailable ? "1" : "0")
+           + (safe ? "&safe=1" : "");
 }
 
 SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcessor& p)
@@ -734,6 +738,7 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("diagPhase",     (int) audioProcessor.diag.phaseEvents.load());
     payload->setProperty ("diagOverloads", (int) audioProcessor.diag.overloads.load());
     payload->setProperty ("diagDc",        (int) audioProcessor.diag.dcEvents.load());
+    payload->setProperty ("vanilla",       audioProcessor.vanillaLoaded.load());
     payload->setProperty ("voice",         audioProcessor.voiceConfidence.load());
     payload->setProperty ("dialogueDuckDb", audioProcessor.dialogueDuckDb.load());
     payload->setProperty ("dialogueSources", audioProcessor.dialogueSources.load());

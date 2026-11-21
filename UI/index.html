@@ -88,6 +88,28 @@
     .dg-tog { font: inherit; font-size: 10px; letter-spacing: 1px; color: #93a4c3; background: transparent; border: 1px solid rgba(147,164,195,0.35); border-radius: 4px; padding: 2px 7px; margin-left: 4px; cursor: pointer; }
     .dg-tog.active { color: #ffb35c; border-color: #ff9d2e; box-shadow: 0 0 6px rgba(255,140,30,0.4); }
     .dg-macros { display: flex; gap: 8px; }
+    .dg-macros.bank { display: grid; grid-template-columns: repeat(5, 1fr) 54px; gap: 5px; position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 7;
+                      padding: 8px; border-radius: 9px; background: linear-gradient(180deg, rgba(30,36,50,0.98), rgba(10,13,20,0.98)); border: 1px solid rgba(255,157,46,0.5);
+                      box-shadow: 0 -10px 30px rgba(0,0,0,0.75), 0 0 16px rgba(255,140,30,0.2); }
+    /* Compact diagnostics for the plugin's default (short) window */
+    @media (max-height: 760px) {
+      .dg-grid { gap: 6px; padding: 6px 8px; grid-template-rows: minmax(0, 1fr) minmax(110px, 0.36fr); }
+      .dg-left { gap: 5px; overflow: hidden; }
+      .dg-bezel { padding: 5px 7px; }
+      .dg-dialbox canvas { max-width: 160px; }
+      .dg-left .dg-row canvas { width: 46%; max-height: 70px; object-fit: contain; }
+      #dgHeat { max-height: 64px; object-fit: contain; }
+      #dgHist { max-height: 96px; }
+      .dg-ledbox { width: 62px; }
+      .dg-stat { padding: 3px 9px; } .dg-stat b { font-size: 18px; }
+      .dg-status b { font-size: 18px; }
+      .dg-title { font-size: 14px; }
+    }
+    .dg-macros.bank button { font-size: 15px; padding: 3px 0; }
+    .dg-macros .bank-btn { flex: 0 0 54px; font-size: 12px !important; }
+    .km-row { display: grid; grid-template-columns: 1fr 140px 26px; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; }
+    .km-key { font-family: monospace; font-size: 11.5px; } .km-key.custom { border-color: var(--gold); color: var(--gold); }
+    .km-key.clash { border-color: #ef4444; color: #fca5a5; } .km-key.capturing { border-color: #38bdf8; color: #38bdf8; }
     .dg-macros button { flex: 1; font: inherit; font-size: 22px; color: #ffad55; padding: 6px 0; border-radius: 7px; cursor: pointer; text-shadow: 0 0 8px rgba(255,140,30,0.7);
                         background: linear-gradient(180deg, #3a4152, #151a24 55%, #0d1017); border: 1px solid rgba(255,157,46,0.4); box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 3px 8px rgba(0,0,0,0.6); }
     .dg-macros button.stored { border-color: #ff9d2e; box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 0 10px rgba(255,140,30,0.45); }
@@ -421,6 +443,10 @@
 <body>
   <div id="fsBadge"></div>
   <div id="voiceCaption"></div>
+  <div id="vanillaBanner" style="display:none;position:fixed;top:54px;right:12px;z-index:955;padding:8px 12px;border-radius:8px;background:rgba(30,20,5,0.95);border:1px solid #f59e0b;color:#fde68a;font-size:12px;">
+    🛟 SAFE LOAD: started from defaults (Ctrl+Shift was held). Your saved settings are kept.
+    <button onclick="emit('restoreSkipped', {}); document.getElementById('vanillaBanner').style.display='none'; flashHint('Your saved settings are back')">RESTORE MY SETTINGS</button>
+  </div>
   <div id="diagOverlay" class="diag" data-panel="diag">
     <div class="dg-head">
       <button class="fastray-btn dg-badge" onclick="toggleFastRayHub(event)" data-tip="Billet Audio command hub"></button>
@@ -471,7 +497,7 @@
           <canvas id="dgHist" width="560" height="125"></canvas>
         </div>
         <div class="dg-bezel" data-teach="MACRO STRIP: five instant snapshots of this plugin. Click to recall, Shift+click to store the current settings. They save with your session.">
-          <div class="dg-lbl dg-split"><span>MACRO STRIP</span><span class="dg-hint">click = recall · shift+click = store</span></div>
+          <div class="dg-lbl dg-split"><span>MACRO STRIP</span><span class="dg-hint">click = recall · shift+click = store · ▾ opens the 20-slot bank</span></div>
           <div class="dg-macros" id="dgMacros"></div>
         </div>
       </div>
@@ -1216,6 +1242,15 @@
     </div>
   </div>
 
+  <div class="modal" id="keysModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:560px;max-height:620px;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;"><strong style="color:var(--gold);letter-spacing:0.1em;">⌨ SHORTCUT MANAGER</strong>
+        <span><button onclick="resetAllKeys()">RESET ALL</button> <button onclick="document.getElementById('keysModal').classList.remove('open')">CLOSE</button></span></div>
+      <div class="dg-hint" style="font-size:11px;margin:6px 0 8px;">Click a key, then press the new combination (Esc cancels). Gold = changed by you, red = two actions share a key. Saved with your session.</div>
+      <div id="keysList"></div>
+    </div>
+  </div>
+
   <div class="modal" id="manualModal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box" style="width:720px;max-height:560px;overflow-y:auto;">
       <strong style="color:var(--gold);letter-spacing:0.1em;">THE SOLUTION · KEYBOARD SHORTCUTS</strong>
@@ -1254,7 +1289,7 @@
         <div><h4>LISTEN &amp; COMPARE</h4>
           <p><kbd>B</kbd> A/B (loudness-matched original)</p>
           <p><kbd>D</kbd> Delta (hear only what changed)</p>
-          <p><kbd>H</kbd> Headphones (binaural)</p>
+          <p><kbd>H</kbd> Hand pointer style · <kbd>Shift</kbd>+<kbd>H</kbd> back to normal pointer · <kbd>Shift</kbd>+<kbd>B</kbd> Headphones (binaural)</p>
           <p><kbd>R</kbd> Rooms · <kbd>&lt;</kbd> <kbd>&gt;</kbd> Previous / next room</p>
           <p><kbd>Shift</kbd>+<kbd>M</kbd> Mono check</p>
           <p><kbd>Shift</kbd>+<kbd>T</kbd> Translation Tour</p></div>
@@ -1263,9 +1298,10 @@
           <p><kbd>X</kbd> Pro Tricks · <kbd>L</kbd> Rack Link · <kbd>M</kbd> Matrix</p>
           <p><kbd>Shift</kbd>+<kbd>L</kbd> Loudness meter pop-up</p>
           <p><kbd>S</kbd> Sub safe-zone · <kbd>T</kbd> Tooltips · <kbd>O</kbd> Classic display</p>
-          <p><kbd>Shift</kbd>+<kbd>R</kbd> Rear patch bay · <kbd>Shift</kbd>+<kbd>H</kbd> Pointer style</p>
+          <p><kbd>Shift</kbd>+<kbd>R</kbd> Rear patch bay</p>
           <p><kbd>Shift</kbd>+<kbd>A</kbd> Demo player (plays outside your DAW)</p>
-          <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd> Secret menu</p></div>
+          <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd> Display / VR cycle · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> Secret menu · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> Shortcut Manager (remap anything)</p>
+          <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> 20-slot macro bank · hold <kbd>Ctrl</kbd>+<kbd>Shift</kbd> while a plugin loads = Safe / Vanilla Load</p></div>
       </div>
       <textarea placeholder="Session engineer notes..." style="width:100%;height:50px;background:#0B0E13;color:var(--text);border:1px solid var(--bezel);padding:6px;font-size:11px;"></textarea>
       <button onclick="document.getElementById('manualModal').classList.remove('open')">CLOSE</button>
@@ -1394,6 +1430,7 @@
     initKnobs();
 
     const params = new URLSearchParams(window.location.search);
+    window.SAFE_MODE = params.get('safe') === '1';      // Safe Load: no WebGL / 3D, plain drawing (set before the 3D bundle loads)
     function setModuleTitle(name) { const full = name + ' · THE SOLUTION'; document.getElementById('secretTrigger').textContent = full.charAt(0); document.getElementById('moduleTitleRest').textContent = full.slice(1); }
     if (params.get('module')) setModuleTitle(params.get('module'));
     let skinsEnabled = params.get('skins') !== '0';
@@ -1525,15 +1562,19 @@
       }
       if (e.code === 'Backquote' && !typing) { e.preventDefault(); if (mod) popOutPanel(); else toggleMaxPanel(); return; }
       if (typing) return;
+      if (customShortcut(e)) return;
       const k = e.key.toLowerCase();
       if (e.shiftKey && !mod && k === 'f') { e.preventDefault(); toggleFly(); return; }
       if (e.shiftKey && !mod && k === 'v') { e.preventDefault(); toggleVoice(); return; }
       // --- universal (every app) ---
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
       if (mod && k === 'y') { e.preventDefault(); doRedo(); return; }
-      if (mod && k === 's') { e.preventDefault(); openVault(); setTimeout(() => document.getElementById('presetName').focus(), 50); return; }
+      if (mod && !e.altKey && k === 's') { e.preventDefault(); openVault(); setTimeout(() => document.getElementById('presetName').focus(), 50); return; }
       if (mod && k === '0') { e.preventDefault(); cam.yaw = 0; cam.pitch = 0.48; cam.zoom = 1; return; }
-      if (mod && e.altKey && k === 'v') { e.preventDefault(); document.getElementById('secretModal').classList.add('open'); return; }
+      if (mod && e.altKey && k === 'v') { e.preventDefault(); cycleDisplay(); return; }
+      if (mod && e.altKey && k === 's') { e.preventDefault(); document.getElementById('secretModal').classList.add('open'); return; }
+      if (mod && e.shiftKey && k === 'k') { e.preventDefault(); openShortcutManager(); return; }
+      if (mod && e.shiftKey && k === 'm') { e.preventDefault(); openDiagnostics(); toggleMacroBank(true); return; }
       if (mod && e.altKey && k === 'l') { e.preventDefault(); flipToggle('limiter_lookahead'); return; }
       if (mod && e.altKey && k === 'd') { e.preventDefault(); flipToggle('dc_guard'); return; }
       if (mod && e.altKey && k === 'f') { e.preventDefault(); toggleModFocus(); return; }
@@ -1561,9 +1602,9 @@
         g: () => startGrab(),
         f: () => { cam.yaw = 0; cam.pitch = 0.48; cam.zoom = 1; },
         p: () => shift ? toggleMotion() : togglePathDraw(),
-        b: () => toggleParamBtn('ab_bypass'),
+        b: () => shift ? toggleBinaural() : toggleParamBtn('ab_bypass'),
         d: () => toggleParamBtn('delta_listen'),
-        h: () => shift ? cycleCursor() : toggleBinaural(),
+        h: () => shift ? cycleCursor(true) : cycleCursor(),
         r: () => shift ? toggleRear() : openRooms(),
         m: () => shift ? toggleMonoCheck() : openMatrix(),
         t: () => shift ? (openRooms(), toggleTour()) : toggleTooltips(),
@@ -2052,6 +2093,7 @@
         if (m.values) { syncFromPlugin(m.values); window._paramValues = Object.assign(window._paramValues || {}, m.values); }
         if (m.ui) { window._uiProps = Object.assign(window._uiProps || {}, m.ui);
           if (m.ui.beginner !== undefined) setBeginner(m.ui.beginner === '1', true);
+          if (m.ui.keymap) { try { customKeys = JSON.parse(m.ui.keymap) || {}; } catch (e) {} }
           if (m.ui.modFocus !== undefined) setModFocus(m.ui.modFocus !== '0', true); if (typeof renderMacros === 'function' && diagOpen) renderMacros(); }
         if (m.ui && m.ui.skin && SKINS[m.ui.skin]) {
           const sel = document.getElementById('skinSelect');
@@ -2087,6 +2129,7 @@
       window.__JUCE__.backend.emitEvent('uiReady', {});
       window.__JUCE__.backend.addEventListener('telemetry', (t) => {
         window._tele = t;
+        if (t.vanilla !== undefined) document.getElementById('vanillaBanner').style.display = t.vanilla ? 'block' : 'none';
         if (t.voice !== undefined) {
           const led = document.getElementById('voiceLed');
           if (state.dialogue_source > 0.5) { led.textContent = t.voice > 0.5 ? '● VOICE' : '○ listening'; led.style.color = t.voice > 0.5 ? '#4ade80' : 'var(--mute)'; }
@@ -2880,9 +2923,12 @@
     }
     function renderMacros() {
       const ui = window._uiProps || {}, host = document.getElementById('dgMacros');
-      host.innerHTML = [1, 2, 3, 4, 5].map(i => { const m = ui['macro' + i]; let when = ''; try { when = m ? JSON.parse(m).when : ''; } catch (e) {}
-        return `<button class="${m ? 'stored' : ''}" data-i="${i}">${i}<small>${m ? when : 'empty'}</small></button>`; }).join('');
-      host.querySelectorAll('button').forEach(b => b.onclick = (e) => macro(+b.dataset.i, e.shiftKey));
+      const n = macroBankOpen ? 20 : 5;
+      host.classList.toggle('bank', macroBankOpen);
+      host.innerHTML = Array.from({ length: n }, (_, k) => k + 1).map(i => { const m = ui['macro' + i]; let when = ''; try { when = m ? JSON.parse(m).when : ''; } catch (e) {}
+        return `<button class="${m ? 'stored' : ''}" data-i="${i}">${i}<small>${m ? when : 'empty'}</small></button>`; }).join('')
+        + `<button class="bank-btn" onclick="toggleMacroBank()" title="Ctrl+Shift+M">${macroBankOpen ? '▴ 5' : '▾ 20'}</button>`;
+      host.querySelectorAll('button[data-i]').forEach(b => b.onclick = (e) => macro(+b.dataset.i, e.shiftKey));
     }
     function macro(i, store) {
       window._uiProps = window._uiProps || {};
@@ -2992,6 +3038,111 @@
       emit('voice', { cmd: 'keys', value: v }); flashHint('Voice transport keys saved');
     }
 
+    // ===================== SHORTCUT MANAGER (Ctrl+Shift+K) =====================
+    // Every shortcut lives here; users can remap any of them (saved with the session, shared look per plugin).
+    const ACTIONS = [
+      ['fullscreen', '`', 'Maximise panel under the mouse', () => toggleMaxPanel()],
+      ['popout', 'Ctrl+`', 'Panel fullscreen on other display', () => popOutPanel()],
+      ['precision', 'Shift+Space', 'Surgical Precision Mode (oscilloscope)', () => togglePrecision()],
+      ['displayCycle', 'Ctrl+Alt+V', 'Display / VR cycle (3D, Top, Vector, Spectrum, Fly)', () => cycleDisplay()],
+      ['secret', 'Ctrl+Alt+S', 'Secret menu', () => document.getElementById('secretModal').classList.add('open')],
+      ['shortcutMgr', 'Ctrl+Shift+K', 'Shortcut Manager', () => openShortcutManager()],
+      ['handNext', 'H', 'Hand pointer: next style', () => cycleCursor()],
+      ['handPrev', 'Shift+H', 'Hand pointer: back to normal', () => cycleCursor(true)],
+      ['binaural', 'Shift+B', 'Headphones (binaural)', () => toggleBinaural()],
+      ['ab', 'B', 'A/B (loudness-matched original)', () => toggleParamBtn('ab_bypass')],
+      ['delta', 'D', 'Delta: hear what changed', () => toggleParamBtn('delta_listen')],
+      ['voice', 'Shift+V', 'Voice control on/off', () => toggleVoice()],
+      ['fly', 'Shift+F', 'Fly through the mix', () => toggleFly()],
+      ['vault', 'V', 'Preset vault', () => openVault()],
+      ['save', 'Ctrl+S', 'Save preset', () => { openVault(); setTimeout(() => document.getElementById('presetName').focus(), 50); }],
+      ['undo', 'Ctrl+Z', 'Undo', () => doUndo()],
+      ['redo', 'Ctrl+Y', 'Redo', () => doRedo()],
+      ['help', 'F1', 'Shortcuts & manual', () => openShortcuts()],
+      ['hub', 'Q', 'Billet Audio command hub', () => toggleFastRayHub()],
+      ['diag', 'J', 'Diagnostics', () => openDiagnostics()],
+      ['prerender', 'E', 'Pre-render check', () => openPreRender()],
+      ['beginner', 'U', 'Beginner mode', () => toggleBeginner()],
+      ['learn', 'K', 'MIDI-learn the control under the mouse', () => learnHovered()],
+      ['rack', 'L', 'Rack Link', () => openRack()],
+      ['rooms', 'R', 'Listening rooms', () => openRooms()],
+      ['rear', 'Shift+R', 'Rear patch bay', () => toggleRear()],
+      ['matrix', 'M', 'Matrix', () => openMatrix()],
+      ['mono', 'Shift+M', 'Mono check', () => toggleMonoCheck()],
+      ['assistant', 'A', 'Mix assistant', () => openAssistant()],
+      ['character', 'C', 'Character', () => openCharacter()],
+      ['pro', 'X', 'Pro tricks', () => openPro()],
+      ['tips', 'T', 'Tooltips on/off', () => toggleTooltips()],
+      ['classic', 'O', 'Classic high-contrast mode', () => toggleClassicOS()],
+      ['safezone', 'S', 'Sub safe-zone overlay', () => toggleSafeZone()],
+      ['transient', 'Shift+S', 'Transient shaper', () => toggleSculpt()],
+      ['duck', 'N', 'Duck under dialogue', () => toggleDuck()],
+      ['dialogue', 'Shift+N', 'This track is dialogue', () => flipToggle('dialogue_source')],
+      ['infra', 'I', 'Infrasonic Lift (The Bunker)', () => flipToggle('infra_lift')],
+      ['infraWide', 'Shift+I', 'Infrasonic Lift WIDE', () => flipToggle('infra_lift_wide')],
+      ['lookahead', 'Ctrl+Alt+L', 'Lookahead limiter', () => flipToggle('limiter_lookahead')],
+      ['dcguard', 'Ctrl+Alt+D', 'DC Guard', () => flipToggle('dc_guard')],
+      ['modfocus', 'Ctrl+Alt+F', 'Modifier-linked focus', () => toggleModFocus()],
+      ['panic', 'Ctrl+.', 'Panic reset this track', () => emit('panic', { all: false })],
+      ['panicAll', 'Ctrl+Shift+.', 'Panic reset whole session', () => emit('panic', { all: true })],
+      ['grab', 'G', 'Grab selected sound', () => startGrab()],
+      ['path', 'P', 'Draw a motion path', () => togglePathDraw()],
+      ['motion', 'Shift+P', 'Motion on/off', () => toggleMotion()],
+      ['macroBank', 'Ctrl+Shift+M', 'Macro bank (20 slots)', () => { openDiagnostics(); toggleMacroBank(true); }],
+    ];
+    let customKeys = {};                                   // action id -> combo (only the ones the user changed)
+    function comboOf(e) {
+      let k = e.key;
+      if (e.code === 'Backquote') k = '`'; else if (k === ' ') k = 'Space'; else if (k.length === 1) k = k.toUpperCase();
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(k)) return '';
+      if (e.shiftKey && (k === '>' )) k = '.';
+      return (e.ctrlKey || e.metaKey ? 'Ctrl+' : '') + (e.altKey ? 'Alt+' : '') + (e.shiftKey ? 'Shift+' : '') + k;
+    }
+    const keyOf = (a) => customKeys[a[0]] || a[1];
+    // Returns true if a remapped shortcut handled (or swallowed) this key.
+    function customShortcut(e) {
+      const combo = comboOf(e); if (!combo) return false;
+      const hit = ACTIONS.find(a => customKeys[a[0]] && customKeys[a[0]] === combo);
+      if (hit) { e.preventDefault(); hit[3](); return true; }
+      // a default combo the user moved elsewhere (and didn't give to anything else) does nothing
+      if (ACTIONS.some(a => customKeys[a[0]] && a[1] === combo)) { e.preventDefault(); return true; }
+      return false;
+    }
+    function openShortcutManager() { renderShortcutManager(); document.getElementById('keysModal').classList.add('open'); }
+    function renderShortcutManager() {
+      const list = document.getElementById('keysList');
+      const used = {}; ACTIONS.forEach(a => { const k = keyOf(a); (used[k] = used[k] || []).push(a[0]); });
+      list.innerHTML = ACTIONS.map(a => {
+        const k = keyOf(a), clash = used[k].length > 1;
+        return `<div class="km-row"><span>${a[2]}</span><button class="km-key ${customKeys[a[0]] ? 'custom' : ''} ${clash ? 'clash' : ''}" data-act="${a[0]}">${k}</button>${customKeys[a[0]] ? `<button class="km-reset" data-reset="${a[0]}" title="Back to ${a[1]}">↺</button>` : '<span></span>'}</div>`;
+      }).join('');
+      list.querySelectorAll('[data-act]').forEach(b => b.onclick = () => captureKey(b));
+      list.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => { delete customKeys[b.dataset.reset]; saveKeys(); renderShortcutManager(); });
+    }
+    function captureKey(btn) {
+      btn.textContent = 'press keys…'; btn.classList.add('capturing');
+      const onKey = (e) => {
+        const c = comboOf(e); if (!c) return;
+        e.preventDefault(); e.stopImmediatePropagation(); window.removeEventListener('keydown', onKey, true);
+        if (c !== 'Escape') { const a = ACTIONS.find(x => x[0] === btn.dataset.act); if (c === a[1]) delete customKeys[a[0]]; else customKeys[a[0]] = c; saveKeys(); }
+        renderShortcutManager();
+      };
+      window.addEventListener('keydown', onKey, true);
+    }
+    function saveKeys() { emit('setUiProp', { key: 'keymap', value: JSON.stringify(customKeys) }); }
+    function resetAllKeys() { customKeys = {}; saveKeys(); renderShortcutManager(); flashHint('All shortcuts back to defaults'); }
+
+    // ===================== DISPLAY / VR CYCLE (Ctrl+Alt+V) =====================
+    function cycleDisplay() {
+      if (window.gl3d && window.gl3d.flying) { toggleFly(); setVizMode(0); flashHint('Display: 3D stage'); return; }
+      if (vizMode === 3 && window.gl3d && window.gl3d.active) { setVizMode(0); toggleFly(); flashHint('Display: Fly-through (VR headsets: coming)'); return; }
+      setVizMode((vizMode + 1) % 4); flashHint('Display: ' + VIZ_MODES[vizMode]);
+    }
+
+    // ===================== MACRO BANK (1-5 strip, expands to 20) =====================
+    let macroBankOpen = false;
+    function toggleMacroBank(force) { macroBankOpen = force !== undefined ? force : !macroBankOpen; renderMacros(); }
+
     // ---------- parameter toggle buttons (secret menu) ----------
     function refreshToggles() {
       document.querySelectorAll('[data-ptoggle]').forEach(b => {
@@ -3099,6 +3250,7 @@
       nudgeWidth: (o, d) => moveObject(o, { width: Math.max(0, Math.min(2, (o.width || 1) + d)) }),
     };
     setVizMode(0);
+    if (window.SAFE_MODE) { setTimeout(() => { if (!document.body.classList.contains('classic-os')) toggleClassicOS(); flashHint('🛟 Safe mode: 3D and effects off for this window'); }, 300); }
     draw();
   </script>
   <script src="stage3d.bundle.js"></script>
