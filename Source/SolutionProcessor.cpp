@@ -78,6 +78,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v14: Dynamic Quality Scaling
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "dqs_mode", 14 }, "Quality (DQS)",
+                          juce::StringArray { "Auto", "Locked 4x (best)", "Eco (lightest)" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v13: 3D stage - distance and motion paths
     {
         juce::NormalisableRange<float> range (0.5f, 40.0f, 0.01f);
@@ -195,6 +199,20 @@ bool SolutionAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+    const auto blockStartTicks = juce::Time::getHighResolutionTicks();
+    {
+        // DQS: decide this block's oversampling from the suite's real-time load.
+        float summed = 0.0f; int active = 0;
+        for (const auto& sl : rackLinkBus->slots)
+            if (sl.active.load (std::memory_order_relaxed)) { summed += sl.cpuLoad.load (std::memory_order_relaxed); ++active; }
+        const float suite = SolutionDSP::DqsController::suiteLoad (summed, active, juce::SystemStats::getNumCpus());
+        dqsSuiteLoad.store (suite, std::memory_order_relaxed);
+        const int level = dqs.update (static_cast<int> (apvts.getRawParameterValue ("dqs_mode")->load()), isNonRealtime(), suite,
+                                      apvts.getRawParameterValue ("dqs_threshold")->load() / 100.0f,
+                                      buffer.getNumSamples() / std::max (1.0, preparedSampleRate));
+        moduleEngine.setQualityLevel (level);
+        dqsLevel.store (moduleEngine.getQualityLevel(), std::memory_order_relaxed);
+    }
 
     // Handle MIDI CC Learn & hardware controller automation
     for (const auto meta : midiMessages)
@@ -581,6 +599,15 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     rackLinkBus->masterPhase.store (corr, std::memory_order_relaxed);
     rackLinkBus->lufsMomentary.store (lufsVal, std::memory_order_relaxed);
     rackLinkBus->truePeakDb.store (loudness.truePeakDb.load (std::memory_order_relaxed), std::memory_order_relaxed);
+    {
+        // How much of this block's real-time budget we used (smoothed).
+        const double used = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - blockStartTicks);
+        const double budget = numSamples / std::max (1.0, preparedSampleRate);
+        const float a = (float) std::exp (-budget / 0.5);
+        ownLoadSmoothed = a * ownLoadSmoothed + (1.0f - a) * (float) (used / budget);
+        dqsOwnLoad.store (ownLoadSmoothed, std::memory_order_relaxed);
+        if (rackSlot >= 0) rackLinkBus->slots[(size_t) rackSlot].cpuLoad.store (ownLoadSmoothed, std::memory_order_relaxed);
+    }
     if (rackSlot >= 0)
     {
         auto& slot = rackLinkBus->slots[(size_t) rackSlot];

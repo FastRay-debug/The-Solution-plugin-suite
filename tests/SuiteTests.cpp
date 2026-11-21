@@ -68,7 +68,7 @@ struct RunResult { double rmsDb = -300.0; double peak = 0.0; bool finite = true;
 
 static RunResult runEngine (ModuleId id, double sr, int maxBlock, bool raggedBlocks, const ProcessParams& p, unsigned seed)
 {
-    SuiteModuleEngine engine; RackLinkBus bus;
+    SuiteModuleEngine engine; auto busPtr = std::make_unique<RackLinkBus>(); auto& bus = *busPtr;
     engine.prepare ({ sr, (juce::uint32) maxBlock, 2 });
     std::mt19937 rng (seed);
     std::normal_distribution<float> noise (0.0f, 0.1f);    // about -20 dBFS RMS
@@ -1346,6 +1346,72 @@ static void testStageEngine()
     std::printf ("  done\n");
 }
 
+static void testDqs()
+{
+    std::printf ("== DQS (dynamic quality scaling)\n");
+    using namespace SolutionDSP;
+    const double fs = 48000.0; const int bs = 256;
+    // Same latency at every quality level (an impulse lands on the same sample).
+    auto impulsePeak = [&] (int level)
+    {
+        SuiteModuleEngine e; auto busPtr = std::make_unique<RackLinkBus>(); auto& bus = *busPtr; e.prepare ({ fs, (juce::uint32) bs, 2 });
+        e.setQualityLevel (level);
+        juce::AudioBuffer<float> b (2, bs);
+        for (int k = 0; k < 20; ++k) { b.clear(); e.process (ModuleId::Matrix, b, ProcessParams{}, bus); }   // let the switch finish
+        int peakAt = -1; float peak = 0.0f;
+        for (int k = 0; k < 8; ++k)
+        {
+            b.clear(); if (k == 0) { b.setSample (0, 0, 1.0f); b.setSample (1, 0, 1.0f); }
+            e.process (ModuleId::Matrix, b, ProcessParams{}, bus);
+            for (int i = 0; i < bs; ++i) if (std::abs (b.getSample (0, i)) > peak) { peak = std::abs (b.getSample (0, i)); peakAt = k * bs + i; }
+        }
+        EXPECT (e.getQualityLevel() == level, "engine didn't reach quality level %d", level);
+        return peakAt;
+    };
+    const int p0 = impulsePeak (0), p1 = impulsePeak (1), p2 = impulsePeak (2);
+    std::printf ("  impulse arrives at sample %d / %d / %d (4x / 2x / 1x)\n", p0, p1, p2);
+    EXPECT (std::abs (p0 - p1) <= 1 && std::abs (p0 - p2) <= 1, "latency must not change with quality level");
+
+    // Switching while audio plays: no clicks.
+    {
+        SuiteModuleEngine e; auto busPtr = std::make_unique<RackLinkBus>(); auto& bus = *busPtr; e.prepare ({ fs, (juce::uint32) bs, 2 });
+        juce::AudioBuffer<float> b (2, bs); float last = 0.0f, maxJump = 0.0f; bool finite = true;
+        const int seq[] = { 2, 1, 0, 2, 0 };
+        for (int k = 0; k < 400; ++k)
+        {
+            if (k % 80 == 40) e.setQualityLevel (seq[(k / 80) % 5]);
+            fillSine (b, fs, 220.0, 0.5f, 0.0, k * bs);
+            e.process (ModuleId::Matrix, b, ProcessParams{}, bus);
+            for (int i = 0; i < bs; ++i) { const float v = b.getSample (0, i); finite &= std::isfinite (v); if (k > 4) maxJump = std::max (maxJump, std::abs (v - last)); last = v; }
+        }
+        const float sineStep = 0.5f * (float) (juce::MathConstants<double>::twoPi * 220.0 / fs);
+        std::printf ("  largest sample-to-sample step while switching: %.4f (a 220 Hz sine's own max step: %.4f)\n", maxJump, sineStep);
+        EXPECT (finite && maxJump < sineStep * 1.5f, "quality switching produced a click (step %.4f)", maxJump);
+    }
+
+    // Controller behaviour.
+    DqsController c; const double blk = bs / fs;
+    for (int i = 0; i < 60; ++i) c.update (DqsController::autoMode, false, 0.95f, 0.8f, blk);       // ~0.3 s overloaded
+    EXPECT (c.level >= 1, "should step down after 1/4 s of overload");
+    for (int i = 0; i < 200; ++i) c.update (DqsController::autoMode, false, 0.95f, 0.8f, blk);
+    EXPECT (c.level == 2, "sustained overload should reach the lightest level");
+    for (int i = 0; i < 1300; ++i) c.update (DqsController::autoMode, false, 0.2f, 0.8f, blk);     // ~7 s of headroom
+    EXPECT (c.level == 0, "headroom should bring full quality back (level %d)", c.level);
+    c.update (DqsController::autoMode, false, 0.99f, 0.8f, 1.0);
+    EXPECT (c.update (DqsController::autoMode, true, 0.99f, 0.8f, 1.0) == 0, "offline bounces always use full quality");
+    EXPECT (c.update (DqsController::locked4x, false, 0.99f, 0.8f, 1.0) == 0, "Locked 4x must stay at full quality");
+    EXPECT (c.update (DqsController::eco, false, 0.0f, 0.8f, 1.0) == 2, "Eco must use the lightest level");
+
+    // Plugin: Eco mode really switches, latency reported to the DAW never changes.
+    SolutionAudioProcessor proc; proc.prepareToPlay (fs, 512);
+    const int lat = proc.getLatencySamples();
+    setParam (proc, "dqs_mode", 2.0f);
+    juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512);
+    for (int k = 0; k < 20; ++k) { fillSine (b, fs, 440.0, 0.2f, 0.0, k * 512); proc.processBlock (b, midi); }
+    EXPECT (proc.dqsLevel.load() == 2 && proc.getLatencySamples() == lat, "Eco mode: level %d, latency %d (was %d)", proc.dqsLevel.load(), proc.getLatencySamples(), lat);
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -1368,6 +1434,7 @@ int main()
     testAutoAlign();
     testSafeBounce();
     testStageEngine();
+    testDqs();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

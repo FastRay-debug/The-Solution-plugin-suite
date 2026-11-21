@@ -22,6 +22,7 @@
 #include "AutoAlign.h"
 #include "Distance.h"
 #include "MotionPath.h"
+#include "Dqs.h"
 #include <atomic>
 #include <array>
 
@@ -139,6 +140,8 @@ public:
     bool requestParamOnSlot (int slot, const juce::String& id, float value);    // own slot or another instance's
     std::atomic<float> animAz { 0.0f }, animEl { 0.0f }, animDist { 2.0f };     // where the sound is right now
     SolutionDSP::AudioTap scopeTap;                                            // real-audio scopes in the UI
+    std::atomic<int> dqsLevel { 0 };                                           // 0 = 4x, 1 = 2x, 2 = 1x oversampling
+    std::atomic<float> dqsSuiteLoad { 0.0f }, dqsOwnLoad { 0.0f };
 
     // Auto-Align (message thread): measure against the group's reference and fix timing/polarity.
     juce::String alignNow();
@@ -168,7 +171,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 13;  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 14;  // v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -216,6 +219,8 @@ private:
     long long ownTimeline = 0;
     std::atomic<int> monitorMask { 0 };
     SolutionDSP::DistanceStage distanceStage;
+    SolutionDSP::DqsController dqs;
+    float ownLoadSmoothed = 0.0f;
     SolutionDSP::MotionPlayer motion;
     double motionFreeSeconds = 0.0;
     void timerCallback() override { pollSessionRequests(); }

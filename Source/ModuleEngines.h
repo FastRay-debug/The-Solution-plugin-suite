@@ -7,6 +7,7 @@
 #include <atomic>
 #include <memory>
 #include <cstring>
+#include "Metering.h"
 #include <utility>
 
 namespace SolutionDSP
@@ -74,6 +75,8 @@ namespace SolutionDSP
         // from another instance to switch them all off.
         std::atomic<int>   monitorMask { 0 };
         std::atomic<bool>  monitorOffRequest { false };
+
+        std::atomic<float> cpuLoad { 0.0f };             // this instance's share of the real-time budget (0..1)
 
         // 3D stage: where this track sits and what it sounds like.
         std::atomic<float> posAz { 0.0f }, posEl { 0.0f }, posDist { 2.0f }, posWidth { 1.0f }, toneHz { 1000.0f };
@@ -425,6 +428,16 @@ namespace SolutionDSP
             roomMatcher.prepare (spec);
             oversampler.initProcessing (static_cast<size_t> (spec.maximumBlockSize));
             oversampler.reset();
+            os2.initProcessing (static_cast<size_t> (spec.maximumBlockSize));
+            os2.reset();
+            // Every quality level ends up with the 4x path's latency, so the DAW never sees a change.
+            const int l4 = getLatencySamples(), l2 = (int) std::lround (os2.getLatencyInSamples());
+            pad2.prepare (2, std::max (0, l4 - l2));
+            pad1.prepare (2, l4);
+            dqsScratch.setSize (2, static_cast<int> (spec.maximumBlockSize), false, true, true);
+            dqsPrime = l4 + 32;
+            dqsFade = std::max (64, (int) (0.010 * spec.sampleRate));
+            qualityLevel = targetQuality = 0; transitionPos = -1;
             calPhase = 0.0;
             lfoPhase = 0.0;
         }
@@ -440,7 +453,14 @@ namespace SolutionDSP
             deRumbleHPF.reset();
             roomMatcher.reset();
             oversampler.reset();
+            os2.reset(); pad2.reset(); pad1.reset();
+            qualityLevel = targetQuality; transitionPos = -1;
         }
+
+        // DQS: 0 = 4x oversampling (best), 1 = 2x, 2 = no oversampling (lightest). Audio thread.
+        // Changes are crossfaded after the new path has warmed up, at constant latency.
+        void setQualityLevel (int level) { if (transitionPos < 0) targetQuality = juce::jlimit (0, 2, level); }
+        int getQualityLevel() const { return qualityLevel; }
 
         // Fixed processing delay (from the oversampling filters) - reported to the DAW.
         int getLatencySamples() const { return static_cast<int> (std::lround (oversampler.getLatencyInSamples())); }
@@ -576,36 +596,69 @@ namespace SolutionDSP
                                         * (moduleId == ModuleId::Anchor ? 2.5f : (moduleId == ModuleId::Crown ? 1.8f : 1.4f));
                 const float morphDrive = 1.0f + effectiveDepth * (moduleId == ModuleId::Chimera ? 2.4f : 2.0f);
 
-                auto base = juce::dsp::AudioBlock<float> (buffer).getSubsetChannelBlock (0, 2);
-                auto up = oversampler.processSamplesUp (base);
-                for (size_t ch = 0; ch < 2; ++ch)
+                auto shape = [&] (float x)
                 {
-                    auto* data = up.getChannelPointer (ch);
-                    for (size_t i = 0; i < up.getNumSamples(); ++i)
+                    switch (moduleId)
                     {
-                        float x = data[i];
-                        switch (moduleId)
-                        {
-                            case ModuleId::Loft:
-                            case ModuleId::Aether:  x = 0.7f * x + 0.3f * std::tanh (x * airDrive); break;
-                            case ModuleId::Anchor:
-                            case ModuleId::Bridge:
-                            case ModuleId::Crown:   x = applyClipper (x, clipDrive); break;
-                            case ModuleId::Mosaic:
-                            case ModuleId::Chimera: x = 0.6f * x + 0.4f * applyClipper (x, morphDrive); break;
-                            default: break;
-                        }
-                        x *= duckGain;
-                        if (p.transientSculpt)   // Predictive Transient Sculpting (peak tamer)
-                        {
-                            const float ax = std::abs (x);
-                            if (ax > 0.72f)
-                                x = std::copysign (0.72f + 0.28f * std::tanh ((ax - 0.72f) * 2.5f), x);
-                        }
-                        data[i] = x;
+                        case ModuleId::Loft:
+                        case ModuleId::Aether:  x = 0.7f * x + 0.3f * std::tanh (x * airDrive); break;
+                        case ModuleId::Anchor:
+                        case ModuleId::Bridge:
+                        case ModuleId::Crown:   x = applyClipper (x, clipDrive); break;
+                        case ModuleId::Mosaic:
+                        case ModuleId::Chimera: x = 0.6f * x + 0.4f * applyClipper (x, morphDrive); break;
+                        default: break;
                     }
+                    x *= duckGain;
+                    if (p.transientSculpt)   // Transient Sculpting (peak tamer)
+                    {
+                        const float ax = std::abs (x);
+                        if (ax > 0.72f)
+                            x = std::copysign (0.72f + 0.28f * std::tanh ((ax - 0.72f) * 2.5f), x);
+                    }
+                    return x;
+                };
+                auto shapeBlock = [&] (juce::dsp::AudioBlock<float> blk)
+                {
+                    for (size_t ch = 0; ch < 2; ++ch)
+                    {
+                        auto* data = blk.getChannelPointer (ch);
+                        for (size_t i = 0; i < blk.getNumSamples(); ++i) data[i] = shape (data[i]);
+                    }
+                };
+                auto runPath = [&] (int level, juce::AudioBuffer<float>& buf)
+                {
+                    juce::AudioBuffer<float> view (buf.getArrayOfWritePointers(), 2, numSamples);
+                    auto blk = juce::dsp::AudioBlock<float> (view);
+                    if (level == 0)      { auto up = oversampler.processSamplesUp (blk); shapeBlock (up); oversampler.processSamplesDown (blk); }
+                    else if (level == 1) { auto up = os2.processSamplesUp (blk); shapeBlock (up); os2.processSamplesDown (blk); pad2.process (view, numSamples); }
+                    else                 { shapeBlock (blk); pad1.process (view, numSamples); }
+                };
+                auto resetPath = [&] (int level)
+                {
+                    if (level == 0) oversampler.reset(); else if (level == 1) { os2.reset(); pad2.reset(); } else pad1.reset();
+                };
+
+                if (transitionPos < 0 && targetQuality == qualityLevel)
+                    runPath (qualityLevel, buffer);
+                else
+                {
+                    if (transitionPos < 0) { transitionPos = 0; resetPath (targetQuality); }
+                    for (int ch = 0; ch < 2; ++ch) dqsScratch.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+                    runPath (qualityLevel, buffer);       // current quality
+                    runPath (targetQuality, dqsScratch);  // new quality, warming up then fading in
+                    for (int i = 0; i < numSamples; ++i)
+                    {
+                        const float g = juce::jlimit (0.0f, 1.0f, (float) (transitionPos + i - dqsPrime) / (float) dqsFade);
+                        for (int ch = 0; ch < 2; ++ch)
+                        {
+                            auto* d = buffer.getWritePointer (ch);
+                            d[i] += g * (dqsScratch.getSample (ch, i) - d[i]);
+                        }
+                    }
+                    transitionPos += numSamples;
+                    if (transitionPos >= dqsPrime + dqsFade) { qualityLevel = targetQuality; transitionPos = -1; }
                 }
-                oversampler.processSamplesDown (base);
             }
 
             const float midGain  = juce::Decibels::decibelsToGain (p.midDb);
@@ -672,5 +725,9 @@ namespace SolutionDSP
         juce::dsp::ProcessorDuplicator<juce::dsp::IIR::Filter<float>, juce::dsp::IIR::Coefficients<float>> airShelf, depthLowPass, deRumbleHPF;
         RoomMatcherEngine roomMatcher;
         juce::dsp::Oversampling<float> oversampler { 2, 2, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
+        juce::dsp::Oversampling<float> os2 { 2, 1, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true };
+        IntegerDelay pad2, pad1;
+        juce::AudioBuffer<float> dqsScratch;
+        int qualityLevel = 0, targetQuality = 0, transitionPos = -1, dqsPrime = 64, dqsFade = 480;
     };
 }

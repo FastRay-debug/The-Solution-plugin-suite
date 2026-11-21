@@ -875,10 +875,15 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:5px;">
           <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;">DSP &amp; RESOURCE ENGINE</span>
-          <button id="secDqsBtn" onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'DQS Oversampling: LOCKED 4x':'DQS Oversampling: AUTO';" data-tip="Switches Dynamic Quality Scaling between automatic CPU scaling and locked 4x">DQS Oversampling: AUTO</button>
+          <div class="ctrl" data-tip="Dynamic Quality Scaling: steps oversampling 4x -> 2x -> off when the whole suite is short of CPU, and back up when there's room. Bounces always use full quality. Latency never changes.">
+            <label>QUALITY (DQS) <span id="dqsStatus" style="color:var(--gold)"></span></label>
+            <select data-sync="dqs_mode" onchange="bind('dqs_mode', this.value, '', 1)">
+              <option value="0">Auto - scale with CPU load</option><option value="1">Locked 4x - always best</option><option value="2">Eco - always lightest</option>
+            </select>
+          </div>
           <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Lookahead Buffer: ON':'Lookahead Buffer: OFF';" data-tip="Predictive lookahead buffer for transient &amp; CPU spike protection (OFF by default)">Lookahead Buffer: OFF</button>
           <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'LAN DSP Offload: ACTIVE':'LAN DSP Offload: LOCAL';" data-tip="Offloads heavy oversampling across local network DSP nodes (AGridder-style)">LAN DSP Offload: LOCAL</button>
-          <div class="ctrl" data-tip="CPU load percentage threshold that triggers Dynamic Quality Scaling"><label>DQS CPU THRESHOLD <span id="v-dqs_cpu">80%</span></label><input type="range" min="50" max="95" step="1" value="80" oninput="document.getElementById('v-dqs_cpu').textContent=this.value+'%'"></div>
+          <div class="ctrl" data-tip="Suite CPU load that makes Auto step quality down"><label>DQS CPU THRESHOLD <span id="v-dqs_threshold">80%</span></label><input type="range" data-sync="dqs_threshold" min="50" max="95" step="1" value="80" oninput="bind('dqs_threshold', this.value, '%', 1)"></div>
 
           <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;margin-top:4px;">WORKFLOW &amp; MASTERING</span>
           <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Beginner Mode: ON':'Beginner Mode: OFF';" data-tip="Simplifies UI to core macro controls for fast, distraction-free mixing">Beginner Mode: OFF</button>
@@ -1664,6 +1669,7 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
+        if (id === 'dqs_threshold') document.getElementById('v-dqs_threshold').textContent = Math.round(v) + '%';
         if (id === 'align_delay_ms') document.getElementById('v-align_delay_ms').textContent = (+v).toFixed(2) + ' ms';
         if (id === 'char_amount') showValue(id, v, '%', 100);
         if (id === 'char_drive') showValue(id, v, ' dB', 1);
@@ -1749,6 +1755,7 @@
             t.streaming.map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${x.target} LUFS</td><td>${Math.abs(x.gain) < 0.05 ? 'leave it' : (x.gain < 0 ? 'turn it DOWN ' + (-x.gain).toFixed(1) + ' dB' : 'turn it UP ' + x.gain.toFixed(1) + ' dB')}</td></tr>`).join('');
         }
         if (t.monitorMask !== undefined) updateMonitorBanner(t.monitorMask, t.sessionMonitors || 0);
+        if (t.dqsLevel !== undefined) document.getElementById('dqsStatus').textContent = ['4x', '2x', '1x'][t.dqsLevel] + ' · suite CPU ' + Math.round(t.dqsSuiteLoad * 100) + '% (this module ' + Math.round(t.dqsOwnLoad * 100) + '%)';
         if (t.notchAuto !== undefined) {
           const led = document.getElementById('notchLed'), mode = document.querySelector('[data-sync="mode_notch"]').value;
           led.textContent = mode === '2' ? (t.notchAuto > 0.05 ? '● -' + (t.notchAuto * 2.85).toFixed(1) + ' dB' : 'idle') : (mode === '1' ? '● -2.9 dB' : 'off');

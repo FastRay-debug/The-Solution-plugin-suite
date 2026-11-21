@@ -636,6 +636,9 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("analysing",     audioProcessor.isRoomAnalysing());
     payload->setProperty ("notchAuto",     audioProcessor.getAutoNotchDepth());
     payload->setProperty ("monitorMask",   audioProcessor.getMonitorMask());
+    payload->setProperty ("dqsLevel",      audioProcessor.dqsLevel.load());
+    payload->setProperty ("dqsSuiteLoad",  audioProcessor.dqsSuiteLoad.load());
+    payload->setProperty ("dqsOwnLoad",    audioProcessor.dqsOwnLoad.load());
     payload->setProperty ("sessionMonitors", audioProcessor.getSessionMonitorCount());
     payload->setProperty ("abMatch",       audioProcessor.abMatchDb.load());
     payload->setProperty ("smoothDb",      audioProcessor.smoothDb.load());
