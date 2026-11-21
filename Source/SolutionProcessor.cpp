@@ -152,9 +152,34 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     return { params.begin(), params.end() };
 }
 
+void SolutionAudioProcessor::panicReset()
+{
+    // suspendProcessing() waits for the audio thread to leave processBlock and makes the host output
+    // silence, so re-preparing every DSP stage here is safe and nothing glitches mid-block.
+    if (preparedSampleRate <= 0.0 || preparedBlockSize <= 0) return;
+    suspendProcessing (true);
+    prepareToPlay (preparedSampleRate, preparedBlockSize);
+    loudness.requestReset();
+    panicFadeRemaining.store ((int) (0.1 * preparedSampleRate));
+    panicCount.fetch_add (1);
+    suspendProcessing (false);
+}
+
+void SolutionAudioProcessor::panicResetEverywhere()
+{
+    for (size_t i = 0; i < rackLinkBus->slots.size(); ++i)
+        if (rackLinkBus->slots[i].active.load() && (int) i != rackSlot)
+            rackLinkBus->slots[i].panicRequest = true;      // each instance resets itself on its own timer
+    panicReset();
+}
+
 void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     preparedSampleRate = sampleRate;
+    preparedBlockSize = samplesPerBlock;
+   #if ! SOLUTION_HEADLESS
+    diagBridge->sampleRate = sampleRate;
+   #endif
     juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 };
     moduleEngine.prepare (spec);
     dryCopy.setSize (2, samplesPerBlock, false, true, true);
@@ -215,6 +240,22 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                                       buffer.getNumSamples() / std::max (1.0, preparedSampleRate));
         moduleEngine.setQualityLevel (level);
         dqsLevel.store (moduleEngine.getQualityLevel(), std::memory_order_relaxed);
+    }
+    {
+        // Diagnostics: input clipping and broken samples (NaN/Inf would blow up every filter after us).
+        bool clipped = false, bad = false;
+        for (int ch = 0; ch < getTotalNumInputChannels() && ch < buffer.getNumChannels(); ++ch)
+        {
+            const float* d = buffer.getReadPointer (ch);
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                const float v = d[i];
+                if (! std::isfinite (v)) bad = true;
+                else if (std::abs (v) >= 1.0f) clipped = true;
+            }
+        }
+        if (bad)     { diag.badSamples.fetch_add (1, std::memory_order_relaxed); buffer.clear(); }
+        if (clipped) diag.inputClips.fetch_add (1, std::memory_order_relaxed);
     }
 
     // Handle MIDI CC Learn & hardware controller automation
@@ -556,6 +597,19 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     loudness.process (left, right, numSamples);
 
     double sumL2 = 0.0, sumR2 = 0.0, sumLR = 0.0;
+    if (const int fade = panicFadeRemaining.load (std::memory_order_relaxed); fade > 0)
+    {
+        // After a panic reset, come back in over ~100 ms instead of with a click.
+        const int total = std::max (1, (int) (0.1 * preparedSampleRate));
+        const int n = std::min (fade, numSamples);
+        const float g0 = 1.0f - (float) fade / (float) total, g1 = 1.0f - (float) (fade - n) / (float) total;
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        {
+            buffer.applyGainRamp (ch, 0, n, std::max (0.0f, g0), std::max (0.0f, g1));
+        }
+        panicFadeRemaining.store (fade - n, std::memory_order_relaxed);
+    }
+
     float maxPeak = 0.0f;
     for (int i = 0; i < numSamples; ++i)
     {
@@ -609,8 +663,23 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         const double budget = numSamples / std::max (1.0, preparedSampleRate);
         const float a = (float) std::exp (-budget / 0.5);
         ownLoadSmoothed = a * ownLoadSmoothed + (1.0f - a) * (float) (used / budget);
+        diag.lastBlockLoad.store ((float) (used / budget), std::memory_order_relaxed);
+        if (used > budget && ! isNonRealtime()) diag.overloads.fetch_add (1, std::memory_order_relaxed);
+        const bool cancelling = corr < -0.3f && 0.5f * (rmsL + rmsR) > 0.01f;
+        const float before = phaseBadSeconds;
+        phaseBadSeconds = cancelling ? phaseBadSeconds + (float) budget : 0.0f;
+        if (before < 0.5f && phaseBadSeconds >= 0.5f) diag.phaseEvents.fetch_add (1, std::memory_order_relaxed);
         dqsOwnLoad.store (ownLoadSmoothed, std::memory_order_relaxed);
-        if (rackSlot >= 0) rackLinkBus->slots[(size_t) rackSlot].cpuLoad.store (ownLoadSmoothed, std::memory_order_relaxed);
+        if (rackSlot >= 0)
+        {
+            auto& sl = rackLinkBus->slots[(size_t) rackSlot];
+            sl.cpuLoad.store (ownLoadSmoothed, std::memory_order_relaxed);
+            sl.overloads.store (diag.overloads.load (std::memory_order_relaxed), std::memory_order_relaxed);
+            sl.errors.store (diag.inputClips.load (std::memory_order_relaxed) + diag.badSamples.load (std::memory_order_relaxed)
+                             + diag.phaseEvents.load (std::memory_order_relaxed), std::memory_order_relaxed);
+            sl.latency.store (getLatencySamples(), std::memory_order_relaxed);
+            sl.dqsLevel.store (dqsLevel.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        }
     }
     if (rackSlot >= 0)
     {

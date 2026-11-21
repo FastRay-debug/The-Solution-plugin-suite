@@ -144,6 +144,8 @@ function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
             Source/MixAssistant.h
             Source/RemoteControl.cpp
             Source/RemoteControl.h
+            Source/SystemMonitor.cpp
+            Source/SystemMonitor.h
             Source/SolutionEditor.cpp
             Source/SolutionEditor.h
     )
@@ -198,10 +200,34 @@ add_solution_module(Innerspace Inn1 "Innerspace"  "com.fastraymedia.thesolution.
 add_solution_module(TheMatrix  Mtx1 "The Matrix"  "com.fastraymedia.thesolution.thematrix")
 add_solution_module(TheScope   Scp1 "The Scope"   "com.fastraymedia.thesolution.thescope")
 
+# 3b. The Solution Utility - standalone Diagnostic Utility (system + every Solution plugin in every DAW)
+juce_add_gui_app(SolutionUtility
+    PRODUCT_NAME      "Solution Utility"
+    COMPANY_NAME      "Fast Ray Media"
+    BUNDLE_ID         "com.fastraymedia.thesolution.utility"
+    NEEDS_WEB_BROWSER TRUE
+    ICON_BIG          "${CMAKE_CURRENT_SOURCE_DIR}/UI/icon.png"
+    ICON_SMALL        "${CMAKE_CURRENT_SOURCE_DIR}/UI/icon.png")
+target_sources(SolutionUtility PRIVATE Source/UtilityApp.cpp Source/SystemMonitor.cpp Source/SystemMonitor.h)
+target_compile_definitions(SolutionUtility PRIVATE
+    JUCE_WEB_BROWSER=1
+    JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
+    JUCE_USE_CURL=0
+    JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:SolutionUtility,JUCE_PRODUCT_NAME>"
+    JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:SolutionUtility,JUCE_VERSION>")
+if(WIN32)
+    target_link_libraries(SolutionUtility PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/webview2/build/native/x64/WebView2LoaderStatic.lib")
+endif()
+target_link_libraries(SolutionUtility PRIVATE
+    SolutionSuiteUI
+    juce::juce_gui_extra
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_warning_flags)
+
 # 4. Automated tests (cmake -B build -DSOLUTION_BUILD_TESTS=ON && cmake --build build --target SuiteTests)
 if(SOLUTION_BUILD_TESTS)
     juce_add_console_app(SuiteTests PRODUCT_NAME "SuiteTests")
-    target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp Source/PresetManager.cpp Source/RoomCorrection.cpp Source/MixAssistant.cpp Source/RemoteControl.cpp)
+    target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp Source/PresetManager.cpp Source/RoomCorrection.cpp Source/MixAssistant.cpp Source/RemoteControl.cpp Source/SystemMonitor.cpp)
     target_compile_definitions(SuiteTests PRIVATE
         SOLUTION_HEADLESS=1
         JucePlugin_Name="SuiteTests"

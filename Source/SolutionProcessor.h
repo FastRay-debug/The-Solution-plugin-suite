@@ -5,6 +5,9 @@
 #ifndef SOLUTION_HEADLESS
  #define SOLUTION_HEADLESS 0
 #endif
+#if ! SOLUTION_HEADLESS
+ #include "DiagBridge.h"
+#endif
 #include <juce_dsp/juce_dsp.h>
 #include "ModuleEngines.h"
 #include "PresetManager.h"
@@ -114,6 +117,11 @@ public:
     int getSessionMonitorCount() const;                          // other instances with monitoring tools on
     void turnOffMonitoring();                                    // message thread
     void turnOffMonitoringEverywhere();                          // every instance in the session
+    // Fast Ray hub - Emergency Panic Reset: flush every tail/delay/filter/limiter, then fade back in.
+    void panicReset();                                           // message thread
+    void panicResetEverywhere();                                 // every Solution instance in the session
+    std::atomic<int> panicCount { 0 };
+    std::atomic<int> panicFadeRemaining { 0 };
     void pollSessionRequests()                                   // requests from other instances (timer, message thread)
     {
         pollAlignRequests();
@@ -121,6 +129,8 @@ public:
         auto& me = rackLinkBus->slots[(size_t) rackSlot];
         if (me.monitorOffRequest.exchange (false))
             turnOffMonitoring();
+        if (me.panicRequest.exchange (false))
+            panicReset();
         const auto& params = getParameters();
         for (size_t i = 0; i < me.reqParam.size(); ++i)                    // moves from another track's stage
         {
@@ -142,6 +152,20 @@ public:
     SolutionDSP::AudioTap scopeTap;                                            // real-audio scopes in the UI
     std::atomic<int> dqsLevel { 0 };                                           // 0 = 4x, 1 = 2x, 2 = 1x oversampling
     std::atomic<float> dqsSuiteLoad { 0.0f }, dqsOwnLoad { 0.0f };
+
+    // Diagnostics: real events counted on the audio thread (the utility turns them into a log).
+    struct DiagCounters
+    {
+        std::atomic<uint32_t> overloads { 0 };    // blocks that took longer than real time allows
+        std::atomic<uint32_t> inputClips { 0 };   // blocks whose input hit 0 dBFS or above
+        std::atomic<uint32_t> badSamples { 0 };   // blocks containing NaN/Inf (silenced to protect speakers)
+        std::atomic<uint32_t> phaseEvents { 0 };  // half-second stretches of strong phase cancellation
+        std::atomic<float>    lastBlockLoad { 0.0f };
+    } diag;
+    float phaseBadSeconds = 0.0f;
+   #if ! SOLUTION_HEADLESS
+    juce::SharedResourcePointer<SolutionDiag::DiagBridge> diagBridge;   // feeds the standalone Solution Utility
+   #endif
 
     // Auto-Align (message thread): measure against the group's reference and fix timing/polarity.
     juce::String alignNow();
@@ -256,6 +280,7 @@ private:
     juce::ThreadPool analysisPool { 1 };                         // declared last: joins first on destruction
     int rackSlot = -1;
     double preparedSampleRate = 0.0;
+    int preparedBlockSize = 0;
 
     std::atomic<int> learnArmedIndex { -1 };
     std::array<std::atomic<int>, 128> ccToParamIndex;

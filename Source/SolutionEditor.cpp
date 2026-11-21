@@ -171,6 +171,28 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                emitToViews ("alignResult", juce::var (audioProcessor.alignNow()));
            })
            .withEventListener ("autoStage", [this] (const juce::var&) { audioProcessor.startAutoGainStage(); })
+           .withEventListener ("diag", [this] (const juce::var& data)
+           {
+               const auto cmd = data.getProperty ("cmd", {}).toString();
+               if (cmd == "open")       { if (systemMonitor == nullptr) systemMonitor = std::make_unique<juce::SharedResourcePointer<SolutionDiag::SystemMonitor>>(); sendDiagnostics(); }
+               else if (cmd == "close") systemMonitor.reset();
+               else if (cmd == "export") exportDiagnostics (data.getProperty ("format", "csv").toString());
+               else if (cmd == "clearLog") { diagLog.clear(); sendDiagnostics(); }
+               else if (cmd == "slotParam")
+                   audioProcessor.requestParamOnSlot ((int) data.getProperty ("slot", -1), data.getProperty ("id", {}).toString(), (float) data.getProperty ("value", 0.0));
+               else if (cmd == "panicSlot")
+               {
+                   const int slot = (int) data.getProperty ("slot", -1);
+                   if (slot == audioProcessor.getRackSlot()) audioProcessor.panicReset();
+                   else if (slot >= 0 && slot < (int) audioProcessor.getRackBus().slots.size()) audioProcessor.getRackBus().slots[(size_t) slot].panicRequest = true;
+               }
+           })
+           .withEventListener ("panic", [this] (const juce::var& data)
+           {
+               if ((bool) data.getProperty ("all", false)) audioProcessor.panicResetEverywhere();
+               else                                         audioProcessor.panicReset();
+               emitToViews ("panicDone", data);
+           })
            .withEventListener ("remote", [this] (const juce::var& data)
            {
                const auto cmd = data.getProperty ("cmd", {}).toString();
@@ -682,6 +704,8 @@ void SolutionAudioProcessorEditor::timerCallback()
 
     if (audioProcessor.consumeParamsChanged())
         sendParamState();
+    if (frameCounter % 15 == 0) updateDiagLog();          // keep the event log even while the panel is closed
+    if (systemMonitor != nullptr && frameCounter % 30 == 0) sendDiagnostics();
     if (++frameCounter % 6 == 0)      // 10 times a second (the 3D stage follows every track)
         sendRackState();
     if (frameCounter % 2 == 0)        // real scopes at 30 fps
@@ -732,4 +756,77 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("learnedCc",     audioProcessor.getLastLearnedCc());
 
     emitToViews ("telemetry", juce::var (payload.get()));
+}
+
+
+//==============================================================================
+// Diagnostic Utility
+juce::var SolutionAudioProcessorEditor::diagPluginList()
+{
+    return SolutionDiag::describeRackSlots (audioProcessor.getRackBus(), audioProcessor.getRackSlot(), audioProcessor.getSampleRate());
+}
+
+void SolutionAudioProcessorEditor::updateDiagLog()
+{
+    auto add = [this] (const juce::String& level, const juce::String& text)
+    {
+        juce::DynamicObject::Ptr e = new juce::DynamicObject();
+        e->setProperty ("time", juce::Time::getCurrentTime().toString (false, true, true, true));
+        e->setProperty ("level", level);
+        e->setProperty ("text", text);
+        diagLog.insert (0, juce::var (e.get()));
+        if (diagLog.size() > 200) diagLog.removeLast();
+    };
+    auto& d = audioProcessor.diag;
+    const auto clips = d.inputClips.load(), bad = d.badSamples.load(), phase = d.phaseEvents.load();
+    const int panic = audioProcessor.panicCount.load();
+    if (clips > lastClips) add ("warn", "Input clipping on this track (" + juce::String ((int) (clips - lastClips)) + " blocks at or over 0 dBFS)");
+    if (bad > lastBad)     add ("error", "Broken samples (NaN/Inf) arrived on this track and were silenced");
+    if (phase > lastPhase) add ("warn", "Phase cancellation on this track: left and right are fighting (correlation below -0.3)");
+    if (panic > lastPanic) add ("info", "Panic reset: every tail, delay and filter on this track was flushed");
+    lastClips = clips; lastBad = bad; lastPhase = phase; lastPanic = panic;
+
+    auto& bus = audioProcessor.getRackBus();
+    for (size_t i = 0; i < bus.slots.size() && i < lastSlotCounts.size(); ++i)
+    {
+        auto& sl = bus.slots[i]; auto& last = lastSlotCounts[i];
+        if (! sl.active.load()) { last = {}; continue; }
+        const auto ov = sl.overloads.load(), er = sl.errors.load();
+        const auto who = juce::String (SolutionDSP::moduleDisplayName (static_cast<SolutionDSP::ModuleId> (sl.moduleId.load())))
+                       + (sl.trackName.isNotEmpty() ? " (" + sl.trackName + ")" : juce::String());
+        if (last.seen && ov > last.overloads)
+            add ("error", who + ": " + juce::String ((int) (ov - last.overloads)) + " audio block(s) ran past real time - raise the buffer size or let DQS step down");
+        if (last.seen && er > last.errors && (int) i != audioProcessor.getRackSlot())
+            add ("warn", who + ": " + juce::String ((int) (er - last.errors)) + " new signal event(s) (clipping / phase / broken samples)");
+        last = { ov, er, true };
+    }
+}
+
+void SolutionAudioProcessorEditor::sendDiagnostics()
+{
+    if (systemMonitor == nullptr) return;
+    const auto s = (*systemMonitor)->getSnapshot();
+    juce::var payload = SolutionDiag::snapshotToVar (s);      // keeps the object alive
+    auto* o = payload.getDynamicObject();
+    o->setProperty ("plugins", diagPluginList());
+    o->setProperty ("log", diagLog);
+    o->setProperty ("host", juce::String (juce::PluginHostType().getHostDescription()));
+    o->setProperty ("sampleRate", audioProcessor.getSampleRate());
+    o->setProperty ("blockSize", audioProcessor.getBlockSize());
+    emitToViews ("diagData", payload);
+}
+
+void SolutionAudioProcessorEditor::exportDiagnostics (const juce::String& format)
+{
+    if (systemMonitor == nullptr) systemMonitor = std::make_unique<juce::SharedResourcePointer<SolutionDiag::SystemMonitor>>();
+    const auto s = (*systemMonitor)->getSnapshot();
+    const bool xml = format == "xml";
+    const auto text = xml ? SolutionDiag::makeXmlReport (s, diagPluginList(), juce::var (diagLog))
+                          : SolutionDiag::makeCsvReport (s, diagPluginList(), juce::var (diagLog));
+    const auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("The Solution").getChildFile ("Diagnostics");
+    dir.createDirectory();
+    const auto file = dir.getChildFile ("Solution-Diagnostics-" + juce::Time::getCurrentTime().formatted ("%Y%m%d-%H%M%S") + (xml ? ".xml" : ".csv"));
+    const bool ok = file.replaceWithText (text);
+    if (ok) file.revealToUser();
+    emitToViews ("diagExported", ok ? juce::var (file.getFullPathName()) : juce::var ("Couldn't write to " + dir.getFullPathName()));
 }

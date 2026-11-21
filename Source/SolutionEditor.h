@@ -2,6 +2,7 @@
 
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "SolutionProcessor.h"
+#include "SystemMonitor.h"
 
 class SolutionAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                            private juce::Timer
@@ -44,6 +45,16 @@ private:
     void emitToViews (const juce::Identifier& name, const juce::var& value);
     void handleFullscreen (const juce::var& data);
     juce::String baseUrl() const;
+    // Diagnostic Utility (Fast Ray hub): real system + session readings while the panel is open.
+    void sendDiagnostics();
+    void updateDiagLog();
+    void exportDiagnostics (const juce::String& format);
+    juce::var diagPluginList();
+    std::unique_ptr<juce::SharedResourcePointer<SolutionDiag::SystemMonitor>> systemMonitor;
+    juce::Array<juce::var> diagLog;
+    struct SlotCounts { uint32_t overloads = 0, errors = 0; bool seen = false; };
+    std::array<SlotCounts, 64> lastSlotCounts {};
+    uint32_t lastClips = 0, lastBad = 0, lastPhase = 0; int lastPanic = 0;
     struct PopoutWindow;
     std::unique_ptr<PopoutWindow> popout;      // declared after webView: closes first
 

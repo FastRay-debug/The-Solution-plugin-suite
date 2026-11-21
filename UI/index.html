@@ -30,6 +30,134 @@
       display: flex; align-items: center; justify-content: space-between; padding: 0 10px; gap: 6px;
       overflow: hidden;
     }
+    /* ===== Diagnostic Utility (Fast Ray hub) ===== */
+    .diag { display: none; position: fixed; inset: 0; z-index: 870; color: #e8d9c4; font-family: 'Bahnschrift', 'DIN Alternate', 'Segoe UI', 'Helvetica Neue', sans-serif;
+            background: radial-gradient(ellipse at 30% 20%, #16213a 0%, #0a0f1c 55%, #05070d 100%); overflow: hidden; flex-direction: column; }
+    .diag.open { display: flex; }
+    html.utility-mode .dg-x, html.utility-mode .fr-hub button:not(.fr-util) { display: none; }
+    html.utility-mode .ribbon, html.utility-mode .main { visibility: hidden; }
+    html.utility-mode .fr-hub { visibility: visible; }
+    .diag::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.18;
+            background-image: linear-gradient(115deg, transparent 49.6%, #3b82f6 50%, transparent 50.4%), linear-gradient(35deg, transparent 49.7%, #38bdf8 50%, transparent 50.3%);
+            background-size: 160px 120px, 220px 180px; }
+    .dg-head { position: relative; display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid rgba(255,157,46,0.35);
+               background: linear-gradient(180deg, rgba(40,48,66,0.95), rgba(14,18,28,0.95)); }
+    .dg-title { font-size: 17px; letter-spacing: 2px; color: #ffb35c; text-shadow: 0 0 10px rgba(255,140,30,0.6); padding: 2px 14px;
+                border: 1px solid rgba(255,157,46,0.45); border-radius: 4px; background: rgba(10,14,22,0.7); }
+    .dg-lamps i { display: inline-block; width: 13px; height: 13px; margin: 0 2px; border-radius: 2px; box-shadow: inset 0 0 3px rgba(0,0,0,0.6), 0 0 6px currentColor; vertical-align: middle; }
+    .dg-spacer { flex: 1; }
+    .dg-btn { font: inherit; font-size: 11px; letter-spacing: 1px; color: #ffb35c; background: linear-gradient(180deg, #2b3242, #141924); border: 1px solid rgba(255,157,46,0.55);
+              border-radius: 5px; padding: 5px 12px; cursor: pointer; box-shadow: 0 0 8px rgba(255,140,30,0.15); }
+    .dg-btn:hover, .dg-btn.active { background: linear-gradient(180deg, #4a3520, #20150b); box-shadow: 0 0 12px rgba(255,140,30,0.5); }
+    .dg-x { padding: 5px 9px; }
+    .dg-grid { position: relative; flex: 1; min-height: 0; display: grid; gap: 9px; padding: 9px 11px;
+               grid-template-columns: minmax(250px, 0.95fr) minmax(330px, 1.6fr) minmax(190px, 0.72fr);
+               grid-template-rows: minmax(0, 1fr) minmax(120px, 0.42fr); }
+    .dg-bay { position: relative; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+    .dg-procs { grid-column: 1 / 2; }
+    .dg-inspect, .dg-log { border: 1px solid rgba(255,157,46,0.28); border-radius: 8px; padding: 8px; background: rgba(8,11,18,0.72); }
+    .dg-procs { border: 1px solid rgba(255,157,46,0.28); border-radius: 8px; padding: 8px; background: rgba(8,11,18,0.72); }
+    .dg-bezel { position: relative; padding: 7px 9px; border-radius: 9px; min-height: 0;
+                background: linear-gradient(160deg, rgba(58,66,84,0.55), rgba(18,22,32,0.85) 40%, rgba(12,15,22,0.92));
+                border: 1px solid rgba(160,170,190,0.28); box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 18px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,140,30,0.12), 0 4px 14px rgba(0,0,0,0.6); }
+    .dg-lbl { font-size: 11px; letter-spacing: 1.6px; color: #ffad55; text-shadow: 0 0 6px rgba(255,140,30,0.55); text-transform: uppercase; }
+    .dg-sub { text-align: center; font-size: 10px; }
+    .dg-split { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .dg-hint { font-size: 10px; color: #8b95a7; letter-spacing: 0.5px; text-transform: none; text-shadow: none; }
+    .dg-row { display: flex; gap: 8px; align-items: stretch; justify-content: space-between; }
+    .dg-row canvas { width: 48%; height: auto; }
+    .dg-cap { font-size: 11px; color: #93a4c3; justify-content: space-around; }
+    .dg-dialbox { flex: 1; display: flex; flex-direction: column; align-items: center; }
+    .dg-dialbox canvas { width: 100%; max-width: 200px; height: auto; }
+    .dg-ledbox { width: 74px; display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
+    .dg-leds { flex: 1; width: 40px; display: flex; flex-direction: column-reverse; gap: 3px; padding: 4px; background: #07090e; border-radius: 4px; border: 1px solid #2a2f3a; }
+    .dg-leds i { flex: 1; min-height: 3px; border-radius: 1px; background: #2a1a0c; }
+    .dg-leds i.on { background: #ff9d2e; box-shadow: 0 0 6px #ff8a1c; }
+    .dg-leds i.hot { background: #ff4b4b; box-shadow: 0 0 6px #ff3030; }
+    .dg-num { font-size: 18px; color: #ffb35c; text-shadow: 0 0 8px rgba(255,140,30,0.7); font-variant-numeric: tabular-nums; }
+    .dg-bezel canvas { display: block; }
+    #dgHeat, #dgHist { width: 100%; height: auto; }
+    .dg-cores-wrap { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .dg-cores { flex: 1; min-height: 0; display: grid; gap: 5px; align-content: start; overflow: auto; }
+    .dg-core { position: relative; border-radius: 10px; padding: 3px 2px 4px; text-align: center; cursor: pointer;
+               background: linear-gradient(170deg, rgba(120,130,150,0.22), rgba(20,25,36,0.8) 45%, rgba(10,13,20,0.9)); border: 1px solid rgba(180,190,210,0.25);
+               box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -6px 12px rgba(0,0,0,0.5); }
+    .dg-core canvas { width: 100%; height: auto; display: block; }
+    .dg-core span { font-size: 9px; letter-spacing: 1px; color: #8fb3ff; }
+    .dg-core.sel { border-color: #ff9d2e; box-shadow: 0 0 12px rgba(255,140,30,0.5), inset 0 1px 0 rgba(255,255,255,0.2); }
+    .dg-tog { font: inherit; font-size: 10px; letter-spacing: 1px; color: #93a4c3; background: transparent; border: 1px solid rgba(147,164,195,0.35); border-radius: 4px; padding: 2px 7px; margin-left: 4px; cursor: pointer; }
+    .dg-tog.active { color: #ffb35c; border-color: #ff9d2e; box-shadow: 0 0 6px rgba(255,140,30,0.4); }
+    .dg-macros { display: flex; gap: 8px; }
+    .dg-macros button { flex: 1; font: inherit; font-size: 22px; color: #ffad55; padding: 6px 0; border-radius: 7px; cursor: pointer; text-shadow: 0 0 8px rgba(255,140,30,0.7);
+                        background: linear-gradient(180deg, #3a4152, #151a24 55%, #0d1017); border: 1px solid rgba(255,157,46,0.4); box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 3px 8px rgba(0,0,0,0.6); }
+    .dg-macros button.stored { border-color: #ff9d2e; box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 0 10px rgba(255,140,30,0.45); }
+    .dg-macros button small { display: block; font-size: 9px; color: #8b95a7; text-shadow: none; }
+    .dg-right { gap: 5px; overflow: auto; }
+    .dg-stat { padding: 4px 10px; border-radius: 8px; background: linear-gradient(180deg, rgba(26,31,44,0.92), rgba(9,12,18,0.95)); border: 1px solid rgba(160,170,190,0.25);
+               box-shadow: inset 0 0 12px rgba(0,0,0,0.7); display: grid; grid-template-columns: 1fr; }
+    .dg-stat span { font-size: 10px; letter-spacing: 1.4px; color: #ffad55; }
+    .dg-stat b { font-size: 22px; font-weight: 600; color: #ffb35c; text-shadow: 0 0 10px rgba(255,140,30,0.65); font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .dg-stat b.na { color: #4b5563; text-shadow: none; font-size: 18px; }
+    .dg-stat small { font-size: 9.5px; color: #8b95a7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dg-status { padding: 8px 10px; border-radius: 8px; text-align: center; background: linear-gradient(180deg, #0f3d22, #072414); border: 1px solid #22c55e; box-shadow: 0 0 16px rgba(34,197,94,0.4), inset 0 0 14px rgba(0,0,0,0.5); }
+    .dg-status span { display: block; font-size: 10px; letter-spacing: 1.5px; color: #86efac; }
+    .dg-status b { display: block; font-size: 22px; color: #4ade80; text-shadow: 0 0 12px rgba(74,222,128,0.8); }
+    .dg-status small { font-size: 9.5px; color: #a7f3d0; }
+    .dg-status.warn { background: linear-gradient(180deg, #4a3208, #241703); border-color: #f59e0b; box-shadow: 0 0 16px rgba(245,158,11,0.4); }
+    .dg-status.warn b, .dg-status.warn span, .dg-status.warn small { color: #fcd34d; text-shadow: 0 0 10px rgba(245,158,11,0.7); }
+    .dg-status.bad { background: linear-gradient(180deg, #4a0d0d, #240505); border-color: #ef4444; box-shadow: 0 0 16px rgba(239,68,68,0.45); }
+    .dg-status.bad b, .dg-status.bad span, .dg-status.bad small { color: #fca5a5; text-shadow: 0 0 10px rgba(239,68,68,0.7); }
+    .dg-chips { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 7px; align-content: start; }
+    .dg-chipc { position: relative; padding: 7px 8px 6px; border-radius: 6px; cursor: grab; transition: transform 0.25s, box-shadow 0.25s, opacity 0.25s;
+                background: linear-gradient(150deg, #2b3343, #10141d 60%); border: 1px solid rgba(255,157,46,0.35); box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 10px rgba(0,0,0,0.6); }
+    .dg-chipc::before { content: ''; position: absolute; inset: 3px; border-radius: 4px; pointer-events: none;
+                        background: repeating-linear-gradient(90deg, transparent 0 9px, rgba(255,157,46,0.07) 9px 10px); }
+    .dg-chipc b { display: block; font-size: 11.5px; color: #ffd29a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dg-chipc small { display: block; font-size: 9.5px; color: #8b95a7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dg-chipc .bar { height: 4px; margin-top: 5px; border-radius: 2px; background: #1b2130; overflow: hidden; }
+    .dg-chipc .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff9d2e, #ff4b4b); }
+    .dg-chipc.self { border-color: #d4af37; }
+    .dg-chipc.held { transform: translateY(-6px) scale(1.04); box-shadow: 0 0 18px rgba(255,140,30,0.75); opacity: 0.55; }
+    .dg-chipc .err { position: absolute; top: 4px; right: 5px; font-size: 9px; color: #fca5a5; }
+    .dg-inspect { grid-column: 2 / 3; overflow: auto; }
+    .dg-insp { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
+    .dg-insp div { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; padding: 5px 7px; }
+    .dg-insp div span { display: block; font-size: 9.5px; color: #8b95a7; letter-spacing: 1px; }
+    .dg-insp div b { font-size: 17px; color: #ffb35c; text-shadow: 0 0 6px rgba(255,140,30,0.5); }
+    .dg-insp-head { display: flex; align-items: center; gap: 10px; animation: dgPull 0.45s ease-out; }
+    @keyframes dgPull { from { transform: translateX(-60px) scale(0.85); opacity: 0; } to { transform: none; opacity: 1; } }
+    .dg-insp-head b { font-size: 18px; color: #ffd29a; }
+    .dg-actions { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; align-items: center; font-size: 10px; color: #8b95a7; }
+    .dg-actions select { font: inherit; font-size: 11px; background: #10141d; color: #ffd29a; border: 1px solid rgba(255,157,46,0.45); border-radius: 4px; padding: 2px 4px; }
+    .dg-log { grid-column: 3 / 4; display: flex; flex-direction: column; }
+    .dg-loglist { flex: 1; min-height: 0; overflow: auto; font-size: 10.5px; line-height: 1.45; }
+    .dg-loglist p { margin: 0 0 3px; padding-left: 7px; border-left: 2px solid #64748b; color: #cbd5e1; }
+    .dg-loglist p.error { border-color: #ef4444; } .dg-loglist p.warn { border-color: #f59e0b; } .dg-loglist p.info { border-color: #38bdf8; }
+    .dg-loglist p i { font-style: normal; color: #64748b; margin-right: 5px; }
+    .dg-foot { position: relative; display: flex; gap: 22px; padding: 6px 14px; font-size: 11.5px; letter-spacing: 1px; color: #8fb3ff; border-top: 1px solid rgba(255,157,46,0.3);
+               background: linear-gradient(180deg, rgba(14,18,28,0.95), rgba(6,8,13,0.98)); white-space: nowrap; overflow: hidden; }
+    #roboHandCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+    .diag.teach [data-teach]::after { content: attr(data-teach); position: absolute; right: 8px; top: 24px; z-index: 6; max-width: 250px; padding: 6px 9px; border-radius: 6px;
+               font-size: 10.5px; line-height: 1.35; letter-spacing: 0.3px; text-transform: none; color: #ffe4c2; background: rgba(20,14,8,0.92); border: 1px solid #ff9d2e;
+               box-shadow: 0 0 14px rgba(255,140,30,0.45); pointer-events: none; }
+    .fastray-btn { flex-shrink: 0; height: 48px; width: 153px; margin: -6px 4px -6px -6px; padding: 0; border: none; background: none; cursor: pointer;
+                   position: relative; z-index: 6; transition: transform 0.12s, filter 0.12s; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.8)); }
+    .fastray-btn svg { width: 100%; height: 100%; display: block; }
+    .fastray-btn:hover { transform: scale(1.04); filter: drop-shadow(0 0 6px rgba(255,138,28,0.75)); }
+    .fastray-btn:active { transform: scale(0.97); }
+    .fastray-btn.open { filter: drop-shadow(0 0 9px rgba(255,138,28,0.95)); }
+    .dg-head .dg-badge { margin: -6px 4px -6px -8px; }
+    .fr-hub { display: none; position: fixed; top: 46px; left: 8px; z-index: 950; width: 290px; padding: 8px;
+              background: linear-gradient(180deg, rgba(30,35,45,0.98), rgba(10,12,16,0.98)); border: 1px solid rgba(255,138,28,0.6);
+              border-radius: 8px; box-shadow: 0 12px 30px rgba(0,0,0,0.85), 0 0 18px rgba(255,138,28,0.18); }
+    .fr-hub.open { display: block; }
+    .fr-hub-title { font: bold 10px monospace; letter-spacing: 2px; color: #FF9D2E; padding: 2px 6px 7px; }
+    .fr-hub button { display: block; width: 100%; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+                     border-radius: 6px; padding: 7px 9px; margin-bottom: 5px; color: #E5E7EB; cursor: pointer; }
+    .fr-hub button:hover { border-color: rgba(255,138,28,0.7); background: rgba(255,138,28,0.08); }
+    .fr-hub button b { display: block; font-size: 12px; }
+    .fr-hub button span { display: block; font-size: 10px; color: #94A3B8; margin-top: 2px; }
+    .fr-hub button.fr-danger b { color: #FCA5A5; }
     .ribbon-title {
       font-weight: 800; letter-spacing: 0.13em; color: var(--gold); font-size: 11px;
       text-transform: uppercase; white-space: nowrap; cursor: pointer;
@@ -273,7 +401,163 @@
 </head>
 <body>
   <div id="fsBadge"></div>
+  <div id="diagOverlay" class="diag" data-panel="diag">
+    <div class="dg-head">
+      <button class="fastray-btn dg-badge" onclick="toggleFastRayHub(event)" data-tip="Fast Ray command hub"></button>
+      <span class="dg-lamps"><i style="background:#ef4444"></i><i style="background:#f59e0b"></i></span>
+      <span class="dg-title">MULTI-CORE PERFORMANCE &amp; AUDIO DIAGNOSTICS</span>
+      <span class="dg-lamps"><i style="background:#60a5fa"></i><i style="background:#2563eb"></i></span>
+      <span class="dg-spacer"></span>
+      <button class="dg-btn" id="dgTeachBtn" onclick="toggleTeach()">TEACH MODE</button>
+      <button class="dg-btn" onclick="emit('diag',{cmd:'export',format:'csv'})">EXPORT CSV</button>
+      <button class="dg-btn" onclick="emit('diag',{cmd:'export',format:'xml'})">EXPORT XML</button>
+      <button class="dg-btn dg-x" onclick="closeDiagnostics()" title="Close (Esc)">✕</button>
+    </div>
+    <div class="dg-grid">
+      <!-- LEFT BAY -->
+      <div class="dg-bay dg-left">
+        <div class="dg-row">
+          <div class="dg-bezel dg-dialbox" data-teach="AUDIO ENGINE UTILIZATION: how much of the real-time budget every Solution plugin in this session is using together. Above ~80% DQS steps quality down so you never get dropouts.">
+            <div class="dg-lbl">AUDIO ENGINE LOAD</div>
+            <canvas id="dgDial" width="190" height="170"></canvas>
+            <div class="dg-lbl dg-sub">ALL SOLUTION PLUGINS</div>
+          </div>
+          <div class="dg-bezel dg-ledbox" data-teach="THIS PLUGIN: the share of real time this track's Solution plugin used in its last blocks.">
+            <div class="dg-lbl">THIS<br>PLUGIN</div>
+            <div class="dg-leds" id="dgLeds"></div>
+            <div class="dg-num" id="dgOwn">--</div>
+          </div>
+        </div>
+        <div class="dg-bezel" data-teach="ANALOG VU METERS: real VU ballistics (300 ms) of this track's output. 0 VU = -18 dBFS RMS, the classic analogue alignment level.">
+          <div class="dg-lbl">ANALOG VU METERS</div>
+          <div class="dg-row"><canvas id="dgVuL" width="200" height="110"></canvas><canvas id="dgVuR" width="200" height="110"></canvas></div>
+          <div class="dg-row dg-cap"><span>Output L</span><span>Output R</span></div>
+        </div>
+        <div class="dg-bezel" data-teach="HEAT METER: the hottest real temperature sensor your computer reports (CPU or graphics card), 30-95 °C mapped to 0-10. If no sensor is exposed it says so instead of guessing.">
+          <div class="dg-lbl">HEAT METER</div>
+          <canvas id="dgHeat" width="420" height="120"></canvas>
+        </div>
+      </div>
+      <!-- CENTER BAY -->
+      <div class="dg-bay dg-center">
+        <div class="dg-bezel dg-cores-wrap" data-teach="INDIVIDUAL CORE UTILIZATION: real-time load of every logical core in your CPU, straight from the operating system.">
+          <div class="dg-lbl dg-split"><span>CORE UTILIZATION</span><span id="dgAvg">AVERAGE --</span></div>
+          <div class="dg-cores" id="dgCores"></div>
+          <div class="dg-lbl dg-split dg-viewsel"><span>CPU PERFORMANCE VIEW</span>
+            <span><button class="dg-tog active" id="dgViewAvg" onclick="setCoreView('avg')">AVERAGE</button><button class="dg-tog" id="dgViewSingle" onclick="setCoreView('single')">SINGLE CORE</button></span></div>
+        </div>
+        <div class="dg-bezel" data-teach="TEMPERATURE HISTORY: the last 60 seconds of real CPU and graphics-card temperature (or CPU load when your PC exposes no temperature).">
+          <div class="dg-lbl dg-split"><span id="dgHistTitle">TEMPERATURE HISTORY (LAST 60 SEC)</span><span id="dgHistLegend"></span></div>
+          <canvas id="dgHist" width="560" height="125"></canvas>
+        </div>
+        <div class="dg-bezel" data-teach="MACRO STRIP: five instant snapshots of this plugin. Click to recall, Shift+click to store the current settings. They save with your session.">
+          <div class="dg-lbl dg-split"><span>MACRO STRIP</span><span class="dg-hint">click = recall · shift+click = store</span></div>
+          <div class="dg-macros" id="dgMacros"></div>
+        </div>
+      </div>
+      <!-- RIGHT BAY -->
+      <div class="dg-bay dg-right" data-teach="HARDWARE STATISTICS: measured values only. 'n/a' means your PC doesn't expose that sensor without installing a driver.">
+        <div class="dg-lbl">HARDWARE STATISTICS</div>
+        <div class="dg-stat"><span>CPU TEMP</span><b id="dgCpuTemp">--</b><small id="dgCpuTempSrc"></small></div>
+        <div class="dg-stat"><span>GPU TEMP</span><b id="dgGpuTemp">--</b><small id="dgGpuName"></small></div>
+        <div class="dg-stat"><span>GPU LOAD</span><b id="dgGpuLoad">--</b><small id="dgGpuClock"></small></div>
+        <div class="dg-stat"><span>GPU FAN</span><b id="dgGpuFan">--</b><small id="dgGpuPower"></small></div>
+        <div class="dg-stat"><span>VRAM</span><b id="dgVram">--</b><small id="dgUiFps"></small></div>
+        <div class="dg-stat"><span>SYSTEM RAM</span><b id="dgRam">--</b><small id="dgProcRam"></small></div>
+        <div class="dg-status" id="dgStatus"><span>SYSTEM STATUS</span><b>--</b><small></small></div>
+      </div>
+      <!-- PROCESSORS + LOG -->
+      <div class="dg-bay dg-procs" data-teach="SOLUTION PROCESSORS: every Solution plugin running in this session. Grab one with the hand to pull it out and inspect it: its own load, quality level, latency and problems.">
+        <div class="dg-lbl dg-split"><span>SOLUTION PROCESSORS</span><span id="dgProcCount" class="dg-hint"></span></div>
+        <div class="dg-chips" id="dgChips"></div>
+      </div>
+      <div class="dg-bay dg-inspect" id="dgInspect">
+        <div class="dg-lbl">INSPECTOR</div>
+        <div id="dgInspectBody" class="dg-hint">Click a processor chip and the hand will pull it out for you.</div>
+      </div>
+      <div class="dg-bay dg-log" data-teach="AUTOMATED ERROR LOGGER: real events only - audio blocks that ran past real time, input clipping, phase cancellation, broken samples and panic resets.">
+        <div class="dg-lbl dg-split"><span>ERROR LOGGER</span><span><span id="dgLogCount"></span> <button class="dg-tog" onclick="emit('diag',{cmd:'clearLog'})">CLEAR</button></span></div>
+        <div id="dgLog" class="dg-loglist"></div>
+      </div>
+    </div>
+    <div class="dg-foot"><span>STATUS: <b style="color:#4ade80">DIAGNOSTIC UTILITY ACTIVE</b></span><span id="dgChip">CPU: --</span><span id="dgHost"></span><span id="dgUptime">UPTIME: --</span></div>
+    <canvas id="roboHandCanvas"></canvas>
+  </div>
+
   <div class="ribbon">
+    <button id="fastRayBtn" class="fastray-btn" onclick="toggleFastRayHub(event)" data-tip="Fast Ray the Engineer: presets, diagnostics &amp; error log, emergency panic reset">
+      <svg viewBox="0 0 420 132" role="img" aria-label="Fast Ray the Engineer">
+  <defs>
+    <linearGradient id="frRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.14" stop-color="#d9dee4"/><stop offset="0.32" stop-color="#7d8590"/>
+      <stop offset="0.47" stop-color="#f4f6f8"/><stop offset="0.53" stop-color="#3d434b"/><stop offset="0.72" stop-color="#aeb5be"/>
+      <stop offset="0.88" stop-color="#e9ecef"/><stop offset="1" stop-color="#565d66"/>
+    </linearGradient>
+    <linearGradient id="frRimSheen" x1="0" y1="0" x2="1" y2="0.35">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.0"/><stop offset="0.38" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.0"/><stop offset="0.8" stop-color="#000000" stop-opacity="0.25"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.4"/>
+    </linearGradient>
+    <linearGradient id="frPlate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a5058"/><stop offset="0.45" stop-color="#2b2f35"/><stop offset="1" stop-color="#1a1d21"/>
+    </linearGradient>
+    <pattern id="frBrush" width="6" height="3" patternUnits="userSpaceOnUse">
+      <rect width="6" height="1" fill="#ffffff" opacity="0.05"/><rect y="2" width="6" height="0.6" fill="#000000" opacity="0.12"/>
+    </pattern>
+    <linearGradient id="frFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9aa1aa"/><stop offset="0.3" stop-color="#5c636c"/><stop offset="0.55" stop-color="#2e3238"/>
+      <stop offset="0.8" stop-color="#4b5159"/><stop offset="1" stop-color="#7a818a"/>
+    </linearGradient>
+    <linearGradient id="frEdge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#9aa2ac"/><stop offset="0.55" stop-color="#e8ebee"/><stop offset="1" stop-color="#6b727b"/>
+    </linearGradient>
+    <filter id="frGlow" x="-15%" y="-40%" width="130%" height="180%"><feGaussianBlur stdDeviation="4"/></filter>
+    <filter id="frBevel" x="-5%" y="-20%" width="110%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.6" result="b"/>
+      <feSpecularLighting in="b" surfaceScale="3" specularConstant="0.9" specularExponent="22" lighting-color="#ffffff" result="s">
+        <feDistantLight azimuth="235" elevation="48"/>
+      </feSpecularLighting>
+      <feComposite in="s" in2="SourceAlpha" operator="in" result="sc"/>
+      <feComposite in="SourceGraphic" in2="sc" operator="arithmetic" k1="0" k2="1" k3="0.85" k4="0"/>
+    </filter>
+    <filter id="frShadow" x="-10%" y="-30%" width="120%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="#000" flood-opacity="0.75"/></filter>
+  </defs>
+  <!-- orange neon halo -->
+  <path d="M46 122 C16 122 6 100 14 78 L33 31 C40 15 54 9 74 9 L396 5 C404 5 412 6 416 8 C396 20 376 58 354 100 C346 115 334 122 314 122 Z"
+        fill="none" stroke="#ff7a12" stroke-width="7" opacity="0.85" filter="url(#frGlow)"/>
+  <!-- polished chrome rim -->
+  <g filter="url(#frShadow)">
+    <path d="M46 122 C16 122 6 100 14 78 L33 31 C40 15 54 9 74 9 L396 5 C404 5 412 6 416 8 C396 20 376 58 354 100 C346 115 334 122 314 122 Z" fill="url(#frRim)" stroke="#1b1e22" stroke-width="1.5"/>
+    <path d="M46 122 C16 122 6 100 14 78 L33 31 C40 15 54 9 74 9 L396 5 C404 5 412 6 416 8 C396 20 376 58 354 100 C346 115 334 122 314 122 Z" fill="url(#frRimSheen)"/>
+  </g>
+  <path d="M50 114 C28 114 21 98 26 82 L43 37 C48 24 58 19 76 19 L372 16 C356 34 344 62 330 96 C324 109 316 114 302 114 Z" fill="#0d0f12"/>
+  <!-- brushed gunmetal plate -->
+  <path d="M52 111 C32 111 26 97 30 83 L46 39 C51 27 60 22 77 22 L366 19 C351 37 340 63 327 95 C321 107 314 111 301 111 Z" fill="url(#frPlate)"/>
+  <path d="M52 111 C32 111 26 97 30 83 L46 39 C51 27 60 22 77 22 L366 19 C351 37 340 63 327 95 C321 107 314 111 301 111 Z" fill="url(#frBrush)"/>
+  <path d="M48 40 C53 28 61 23.5 77 23.5 L362 20.5" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="1.2"/>
+  <!-- screw, top right -->
+  <circle cx="378" cy="15" r="5.2" fill="url(#frRim)" stroke="#1b1e22" stroke-width="1"/>
+  <path d="M374.5 15 h7" stroke="#2b2f35" stroke-width="1.4"/>
+  <!-- lettering: chrome outline, black keyline, gunmetal face with bevel -->
+  <g font-family="'Arial Black', 'Arial Bold', Impact, 'Helvetica Neue', sans-serif" font-weight="900" font-style="italic" text-anchor="middle" transform="skewX(-12)">
+    <g transform="translate(206 0)">
+      <text x="0" y="74" font-size="58" letter-spacing="1" fill="none" stroke="url(#frEdge)" stroke-width="9" stroke-linejoin="round">FAST RAY</text>
+      <text x="0" y="74" font-size="58" letter-spacing="1" fill="none" stroke="#0a0b0d" stroke-width="4.5" stroke-linejoin="round">FAST RAY</text>
+      <text x="0" y="74" font-size="58" letter-spacing="1" fill="url(#frFace)" filter="url(#frBevel)">FAST RAY</text>
+      <text x="4" y="103" font-size="26" letter-spacing="1.5" fill="none" stroke="url(#frEdge)" stroke-width="6" stroke-linejoin="round">THE ENGINEER</text>
+      <text x="4" y="103" font-size="26" letter-spacing="1.5" fill="none" stroke="#0a0b0d" stroke-width="3" stroke-linejoin="round">THE ENGINEER</text>
+      <text x="4" y="103" font-size="26" letter-spacing="1.5" fill="url(#frFace)" filter="url(#frBevel)">THE ENGINEER</text>
+    </g>
+  </g>
+</svg>
+    </button>
+    <div id="fastRayHub" class="fr-hub">
+      <div class="fr-hub-title">FAST RAY · COMMAND HUB</div>
+      <button onclick="frHub('presets')"><b>🗄 Preset Manager</b><span>Save, load and tag presets (Ctrl+S)</span></button>
+      <button class="fr-util" onclick="frHub('diag')"><b>🩺 Diagnostics &amp; Error Log</b><span>Real CPU cores, GPU, every Solution plugin, events</span></button>
+      <button onclick="frHub('panic')" class="fr-danger"><b>🛑 Panic Reset · this track</b><span>Kill stuck tails, feedback and noise, fade back in</span></button>
+      <button onclick="frHub('panicAll')" class="fr-danger"><b>🛑 Panic Reset · whole session</b><span>Every Solution plugin in the session at once</span></button>
+      <button class="fr-util" onclick="frHub('keys')"><b>⌨ Shortcuts &amp; Manual</b><span>Everything the keyboard can do</span></button>
+    </div>
     <div class="ribbon-title" id="moduleTitle"><span id="secretTrigger" onclick="openSecretMenu(event)" title="Secret Menu" style="cursor:pointer;">T</span><span id="moduleTitleRest" onclick="toggleCalTone()" title="Click title for Tape Calibration Tone (-18 dBFS)">HE SOLUTION · SUITE MODULE</span></div>
     <div class="skin-bar">
       <select id="skinSelect" onchange="applySkin(this.value)" title="Select from 50 /cars & /places skins">
@@ -1200,6 +1484,7 @@
         if (e.shiftKey) { e.preventDefault(); monitorOff(false); flashHint('Monitoring tools off'); return; }
         if (grabMode) { grabMode = false; const o = selectedStageObject(); if (o && o.self) emit('stageGesture', { phase: 'end' }); return; }
         if (window.gl3d && window.gl3d.flying) { toggleFly(); return; }
+        if (diagOpen && !IS_POPOUT && !IS_UTILITY) { closeDiagnostics(); return; }
         if (IS_POPOUT) { emit('fullscreen', { cmd: 'return' }); return; }
         if (document.querySelector('.panel-max')) { toggleMaxPanel(); return; }
         if (pathDraw) { togglePathDraw(); return; }
@@ -1716,7 +2001,8 @@
 
     if (window.__JUCE__ && window.__JUCE__.backend) {
       window.__JUCE__.backend.addEventListener('paramState', (m) => {
-        if (m.values) syncFromPlugin(m.values);
+        if (m.values) { syncFromPlugin(m.values); window._paramValues = Object.assign(window._paramValues || {}, m.values); }
+        if (m.ui) { window._uiProps = Object.assign(window._uiProps || {}, m.ui); if (typeof renderMacros === 'function' && diagOpen) renderMacros(); }
         if (m.ui && m.ui.skin && SKINS[m.ui.skin]) {
           const sel = document.getElementById('skinSelect');
           if (sel) sel.value = m.ui.skin;
@@ -1750,6 +2036,7 @@
       });
       window.__JUCE__.backend.emitEvent('uiReady', {});
       window.__JUCE__.backend.addEventListener('telemetry', (t) => {
+        window._tele = t;
         if (t.module) setModuleTitle(t.module);
         if (t.skinsEnabled !== undefined && t.skinsEnabled !== skinsEnabled) { skinsEnabled = !!t.skinsEnabled; updateSkinVisibility(); }
         document.getElementById('m-phase').textContent = (t.phase >= 0 ? '+' : '') + t.phase.toFixed(2);
@@ -2334,6 +2621,266 @@
       if (g.flying) g.exitFly(); else { if (vizMode > 1) setVizMode(0); g.enterFly(); }
       document.getElementById('flyBtn').classList.toggle('active', g.flying);
     }
+    // ===================== DIAGNOSTIC UTILITY (Fast Ray hub) =====================
+    // Every number here is measured (system via the plugin, audio via telemetry); 'n/a' when unavailable.
+    const IS_UTILITY = new URLSearchParams(location.search).get('utility') === '1';
+    if (IS_UTILITY) document.documentElement.classList.add('utility-mode');
+    let diagData = null, diagOpen = false, coreView = 'avg', selCore = 0, heldChip = null, vuL = -60, vuR = -60, heatNeedle = 0, dialNeedle = 0, diagLast = performance.now();
+    const diagEl = () => document.getElementById('diagOverlay');
+    document.querySelectorAll('.dg-badge').forEach(b => b.innerHTML = document.querySelector('#fastRayBtn svg').outerHTML.replace(/\bfr([A-Z]\w*)/g, 'frd$1'));   // own gradient ids
+    if (IS_UTILITY) {
+      document.querySelector('.dg-ledbox .dg-lbl').innerHTML = 'BUSIEST<br>PLUGIN';
+      document.querySelectorAll('.dg-cap span').forEach(e => e.textContent = 'Loudest track (short-term)');
+      document.querySelector('.dg-sub').textContent = 'EVERY DAW ON THIS PC';
+    }
+    function openDiagnostics() {
+      diagOpen = true; diagEl().classList.add('open'); emit('diag', { cmd: 'open' });
+      renderMacros(); if (!diagData) renderDiag(); requestAnimationFrame(diagFrame);
+      if (window.roboHand) window.roboHand.show(true);
+    }
+    function closeDiagnostics() { diagOpen = false; diagEl().classList.remove('open'); emit('diag', { cmd: 'close' }); if (window.roboHand) window.roboHand.show(false); }
+    function toggleTeach() { diagEl().classList.toggle('teach'); document.getElementById('dgTeachBtn').classList.toggle('active', diagEl().classList.contains('teach')); }
+    function setCoreView(v) { coreView = v; document.getElementById('dgViewAvg').classList.toggle('active', v === 'avg'); document.getElementById('dgViewSingle').classList.toggle('active', v === 'single'); renderDiag(); }
+    if (window.__JUCE__ && window.__JUCE__.backend) {
+      window.__JUCE__.backend.addEventListener('diagData', (d) => { diagData = d; if (diagOpen) renderDiag(); });
+      window.__JUCE__.backend.addEventListener('diagExported', (p) => flashHint('Saved: ' + p));
+      window.__JUCE__.backend.addEventListener('panicDone', () => {});
+    }
+    const fmt = (v, dp = 0, unit = '') => (v === null || v === undefined || !isFinite(v)) ? null : v.toFixed(dp) + unit;
+    function setStat(id, v, small, smallId) {
+      const el = document.getElementById(id); el.textContent = v === null ? 'n/a' : v; el.classList.toggle('na', v === null);
+      if (smallId) document.getElementById(smallId).textContent = small || '';
+    }
+    function hms(s) { s = Math.floor(s || 0); const d = Math.floor(s / 86400), h = Math.floor(s / 3600) % 24, m = Math.floor(s / 60) % 60, x = s % 60; return (d ? d + 'd ' : '') + [h, m, x].map(n => String(n).padStart(2, '0')).join(':'); }
+
+    function renderDiag() {
+      const d = diagData || { cores: [], plugins: [], log: [], gpus: [] };
+      // cores
+      const host = document.getElementById('dgCores'), n = (d.cores || []).length;
+      if (host.childElementCount !== n || host.dataset.view !== coreView) {
+        host.dataset.view = coreView; host.innerHTML = '';
+        (coreView === 'single' ? [selCore] : d.cores.map((_, i) => i)).forEach(i => {
+          const c = document.createElement('div'); c.className = 'dg-core' + (i === selCore ? ' sel' : ''); c.dataset.i = i;
+          c.innerHTML = `<canvas width="${coreView === 'single' ? 520 : 150}" height="${coreView === 'single' ? 170 : 78}"></canvas><span>CORE ${i + 1}</span>`;
+          c.onclick = () => { selCore = i; grabCore(c); if (coreView === 'single') setCoreView('avg'); else host.querySelectorAll('.dg-core').forEach(x => x.classList.toggle('sel', +x.dataset.i === i)); };
+          c.ondblclick = () => { selCore = i; setCoreView('single'); };
+          host.appendChild(c);
+        });
+      }
+      const rows = coreView === 'single' ? 1 : n <= 8 ? 1 : n <= 24 ? 2 : n <= 48 ? 3 : 4;
+      host.style.gridTemplateColumns = `repeat(${coreView === 'single' ? 1 : Math.max(1, Math.ceil(n / rows))}, minmax(0, 1fr))`;
+      host.querySelectorAll('.dg-core').forEach(c => drawCoreGauge(c.firstChild, (d.cores || [])[+c.dataset.i], coreView === 'single'));
+      document.getElementById('dgAvg').textContent = 'AVERAGE ' + (fmt(d.cpuTotal, 0, '%') || '--') + (d.logical ? ` · ${d.logical} THREADS` : '');
+      // hardware
+      const g = (d.gpus || [])[0] || {};
+      setStat('dgCpuTemp', fmt(d.cpuTemp, 1, '°C'), d.cpuTemp != null ? (d.tempSource || '') : 'no sensor exposed without a driver', 'dgCpuTempSrc');
+      setStat('dgGpuTemp', fmt(g.temp, 0, '°C'), g.name || (window.gl3d && window.gl3d.gpuInfo ? window.gl3d.gpuInfo.renderer : ''), 'dgGpuName');
+      setStat('dgGpuLoad', fmt(g.load, 0, '%'), g.clock != null ? g.clock.toFixed(0) + ' MHz' : (g.source ? 'via ' + g.source : ''), 'dgGpuClock');
+      setStat('dgGpuFan', fmt(g.fan, 0, '%'), g.power != null ? g.power.toFixed(0) + ' W board power' : '', 'dgGpuPower');
+      setStat('dgVram', g.memUsed != null ? (g.memUsed / 1024).toFixed(1) + (g.memTotal ? ' / ' + (g.memTotal / 1024).toFixed(0) : '') + ' GB' : null,
+              window.gl3d && window.gl3d.active ? `3D stage ${window.gl3d.fps || 0} fps · ${window.gl3d.gpuInfo.webgl}` : '', 'dgUiFps');
+      setStat('dgRam', d.ramUsed != null ? (d.ramUsed / 1024).toFixed(1) + ' / ' + (d.ramTotal / 1024).toFixed(0) + ' GB' : null, d.procRam != null ? 'DAW using ' + (d.procRam / 1024).toFixed(2) + ' GB' : '', 'dgProcRam');
+      // status from real conditions
+      const plugins = d.plugins || [], recentErr = (d.log || []).filter(e => e.level === 'error').length;
+      const suite = (window._tele && window._tele.dqsSuiteLoad) || 0, hot = Math.max(d.cpuTemp || 0, g.temp || 0);
+      let cls = '', word = 'STABLE', why = 'no overruns · load and temperatures normal';
+      if (recentErr || suite > 0.95 || hot > 92) { cls = 'bad'; word = 'AT RISK'; why = recentErr ? recentErr + ' overrun/error event(s) logged' : suite > 0.95 ? 'audio engine near 100%' : 'hardware running very hot'; }
+      else if ((d.log || []).some(e => e.level === 'warn') || suite > 0.8 || (d.cpuTotal || 0) > 90 || hot > 85) { cls = 'warn'; word = 'WATCH'; why = suite > 0.8 ? 'engine load high - DQS active' : (d.cpuTotal || 0) > 90 ? 'CPU nearly maxed' : hot > 85 ? 'running hot' : 'signal warnings logged'; }
+      const st = document.getElementById('dgStatus'); st.className = 'dg-status ' + cls;
+      const pct = Math.max(0, Math.round(100 - suite * 40 - recentErr * 5 - Math.max(0, (d.cpuTotal || 0) - 70) * 0.5));
+      st.querySelector('b').textContent = word + ' ' + pct + '%'; st.querySelector('small').textContent = why;
+      // processors
+      const chips = document.getElementById('dgChips');
+      document.getElementById('dgProcCount').textContent = plugins.length + ' running · click one to grab it';
+      chips.innerHTML = plugins.map(p => `<div class="dg-chipc ${p.self ? 'self' : ''} ${heldChip === p.slot ? 'held' : ''}" data-slot="${p.slot}">
+          ${(p.overloads || p.errors) ? `<span class="err">⚠ ${p.overloads + p.errors}</span>` : ''}
+          <b>${escapeHtml(p.module)}</b><small>${escapeHtml(p.name || (p.self ? 'this track' : 'track ' + (p.slot + 1)))}${p.daw ? ' · ' + escapeHtml(p.daw) : ''}</small>
+          <small>${(p.load * 100).toFixed(1)}% · ${['4×', '2×', '1×'][p.dqs] || '4×'} · ${p.latencyMs.toFixed(1)} ms</small>
+          <div class="bar"><i style="width:${Math.min(100, p.load * 100 * 4).toFixed(0)}%"></i></div></div>`).join('') || '<div class="dg-hint">No Solution plugins reporting yet.</div>';
+      chips.querySelectorAll('.dg-chipc').forEach(c => c.onclick = () => grabChip(+c.dataset.slot, c));
+      if (heldChip !== null) renderInspector(plugins.find(p => p.slot === heldChip));
+      // log
+      const log = d.log || [];
+      document.getElementById('dgLogCount').textContent = log.length ? log.length + ' EVENT' + (log.length > 1 ? 'S' : '') : '0 ERRORS';
+      document.getElementById('dgLog').innerHTML = log.map(e => `<p class="${e.level}"><i>${escapeHtml(e.time)}</i>${escapeHtml(e.text)}</p>`).join('') || '<p class="info">All clear - no overruns, clipping, phase problems or broken samples.</p>';
+      document.getElementById('dgChip').textContent = 'CPU: ' + (d.cpuModel || '--');
+      document.getElementById('dgHost').textContent = (d.host ? 'HOST: ' + d.host + ' · ' : '') + (d.sampleRate ? (d.sampleRate / 1000).toFixed(1) + ' kHz / ' + d.blockSize + ' samples' : '');
+      document.getElementById('dgUptime').textContent = 'SYSTEM UPTIME: ' + hms(d.uptime);
+      drawHistory(d);
+    }
+    function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    function renderInspector(p) {
+      const body = document.getElementById('dgInspectBody');
+      if (!p) { body.innerHTML = '<span class="dg-hint">That processor has closed.</span>'; return; }
+      const sameSlot = body.dataset.slot === String(p.slot);
+      const html = `<div class="dg-insp-head" ${sameSlot ? 'style="animation:none"' : ''}><b>${escapeHtml(p.module)}</b><span class="dg-hint">${escapeHtml(p.name || '')}${p.self ? ' · this track' : ''}</span></div>
+        <div class="dg-insp">
+          <div><span>DSP LOAD</span><b>${(p.load * 100).toFixed(1)}%</b></div>
+          <div><span>QUALITY (DQS)</span><b>${['4× FULL', '2× BALANCED', '1× ECO'][p.dqs] || '4×'}</b></div>
+          <div><span>LATENCY</span><b>${p.latencyMs.toFixed(1)} ms</b></div>
+          <div><span>LOUDNESS</span><b>${p.lufs > -69 ? p.lufs.toFixed(1) : '--'} LU</b></div>
+          <div><span>TRUE PEAK</span><b>${p.tp > -69 ? p.tp.toFixed(1) : '--'} dB</b></div>
+          <div><span>OVERRUNS</span><b>${p.overloads}</b></div>
+          <div><span>SIGNAL EVENTS</span><b>${p.errors}</b></div>
+          <div><span>SLOT</span><b>${p.slot + 1}</b></div>
+        </div>
+        ${p.remote ? `<div class="dg-actions">Running in ${escapeHtml(p.daw || 'a DAW')} - change its quality or panic it from the plugin's own Fast Ray hub. <button class="dg-btn" onclick="releaseChip()">PUT BACK</button></div>` : `<div class="dg-actions">QUALITY MODE
+          <select onchange="emit('diag',{cmd:'slotParam',slot:${p.slot},id:'dqs_mode',value:+this.value})"><option value="0">Auto (DQS)</option><option value="1">Locked 4× (best)</option><option value="2">Eco (lightest)</option></select>
+          <button class="dg-btn" onclick="emit('diag',{cmd:'panicSlot',slot:${p.slot}})">🛑 PANIC THIS ONE</button>
+          <button class="dg-btn" onclick="releaseChip()">PUT BACK</button></div>`}`;
+      if (!sameSlot) { body.innerHTML = html; body.dataset.slot = p.slot; }
+      else { const tmp = document.createElement('div'); tmp.innerHTML = html; body.querySelector('.dg-insp').replaceWith(tmp.querySelector('.dg-insp')); }
+    }
+    function grabChip(slot, el) {
+      heldChip = slot; document.getElementById('dgInspectBody').dataset.slot = '';
+      if (window.roboHand) { const r = el.getBoundingClientRect(), dest = document.getElementById('dgInspect').getBoundingClientRect();
+        window.roboHand.grab(r.left + r.width / 2, r.top + r.height / 2, dest.left + dest.width * 0.5, dest.top + dest.height * 0.5, true); }
+      renderDiag();
+    }
+    function releaseChip() { heldChip = null; document.getElementById('dgInspectBody').innerHTML = '<span class="dg-hint">Click a processor chip and the hand will pull it out for you.</span>'; document.getElementById('dgInspectBody').dataset.slot = ''; if (window.roboHand) window.roboHand.release(); renderDiag(); }
+    function grabCore(el) { if (window.roboHand) { const r = el.getBoundingClientRect(); window.roboHand.grab(r.left + r.width / 2, r.top + r.height / 2, r.left + r.width / 2, r.top + r.height / 2 - 6); } }
+
+    // ---- drawing ----
+    function arcGauge(c, x, y, r, a0, a1, v, opts) {
+      c.lineCap = 'round';
+      c.strokeStyle = 'rgba(60,70,90,0.9)'; c.lineWidth = opts.w; c.beginPath(); c.arc(x, y, r, a0, a1); c.stroke();
+      const g = c.createLinearGradient(x - r, 0, x + r, 0); g.addColorStop(0, '#ff7a18'); g.addColorStop(0.7, '#ffb35c'); g.addColorStop(1, '#ff4b4b');
+      c.shadowColor = '#ff8a1c'; c.shadowBlur = opts.glow; c.strokeStyle = g; c.beginPath(); c.arc(x, y, r, a0, a0 + (a1 - a0) * Math.max(0, Math.min(1, v))); c.stroke(); c.shadowBlur = 0;
+    }
+    function drawCoreGauge(cv, v, big) {
+      const c = cv.getContext('2d'), W = cv.width, H = cv.height; c.clearRect(0, 0, W, H);
+      const gl = c.createLinearGradient(0, 0, 0, H); gl.addColorStop(0, 'rgba(255,255,255,0.10)'); gl.addColorStop(0.5, 'rgba(255,255,255,0.0)');
+      c.fillStyle = gl; c.beginPath(); c.ellipse(W / 2, H * 0.2, W * 0.46, H * 0.25, 0, 0, Math.PI * 2); c.fill();
+      const r = Math.min(W * 0.4, H * 0.95), y = H * 0.96;
+      arcGauge(c, W / 2, y, r, Math.PI * 1.08, Math.PI * 1.92, (v || 0) / 100, { w: big ? 12 : 6, glow: big ? 16 : 8 });
+      c.fillStyle = v == null ? '#4b5563' : '#ffd29a'; c.shadowColor = '#ff8a1c'; c.shadowBlur = 8; c.textAlign = 'center';
+      c.font = `600 ${big ? 54 : 22}px Bahnschrift, 'Segoe UI', sans-serif`; c.fillText(v == null ? '--' : Math.round(v) + '%', W / 2, y - r * 0.28); c.shadowBlur = 0;
+    }
+    function drawDial(cv, v) {
+      const c = cv.getContext('2d'), W = cv.width, H = cv.height, x = W / 2, y = H * 0.62, r = H * 0.5; c.clearRect(0, 0, W, H);
+      const a0 = Math.PI * 0.8, a1 = Math.PI * 2.2;
+      c.fillStyle = '#0a0d14'; c.beginPath(); c.arc(x, y, r + 6, 0, Math.PI * 2); c.fill();
+      const rim = c.createLinearGradient(0, y - r, 0, y + r); rim.addColorStop(0, '#d7dce3'); rim.addColorStop(0.5, '#4b5260'); rim.addColorStop(1, '#a9b0bb');
+      c.strokeStyle = rim; c.lineWidth = 5; c.beginPath(); c.arc(x, y, r + 6, 0, Math.PI * 2); c.stroke();
+      arcGauge(c, x, y, r - 8, a0, a1, v, { w: 9, glow: 14 });
+      c.fillStyle = '#ffad55'; c.font = '600 11px Bahnschrift, sans-serif'; c.textAlign = 'center';
+      for (let i = 0; i <= 10; i++) { const a = a0 + (a1 - a0) * i / 10, rr = r - 22; c.strokeStyle = 'rgba(255,173,85,0.7)'; c.lineWidth = i % 5 ? 1 : 2;
+        c.beginPath(); c.moveTo(x + Math.cos(a) * (r - 15), y + Math.sin(a) * (r - 15)); c.lineTo(x + Math.cos(a) * (r - 20), y + Math.sin(a) * (r - 20)); c.stroke();
+        if (i % 2 === 0) c.fillText(i * 10, x + Math.cos(a) * (rr - 8), y + Math.sin(a) * (rr - 8) + 4); }
+      const a = a0 + (a1 - a0) * Math.max(0, Math.min(1, v));
+      c.strokeStyle = '#ff9d2e'; c.lineWidth = 3; c.shadowColor = '#ff8a1c'; c.shadowBlur = 10; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * (r - 26), y + Math.sin(a) * (r - 26)); c.stroke(); c.shadowBlur = 0;
+      const hub = c.createRadialGradient(x - 4, y - 4, 2, x, y, 14); hub.addColorStop(0, '#f1f5f9'); hub.addColorStop(1, '#3f4652'); c.fillStyle = hub; c.beginPath(); c.arc(x, y, 12, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#ffd29a'; c.font = '600 24px Bahnschrift, sans-serif'; c.shadowColor = '#ff8a1c'; c.shadowBlur = 10; c.fillText(Math.round(v * 100) + '%', x, y + r * 0.62); c.shadowBlur = 0;
+    }
+    function drawVu(cv, db) {
+      const c = cv.getContext('2d'), W = cv.width, H = cv.height; c.clearRect(0, 0, W, H);
+      const face = c.createLinearGradient(0, 0, W, 0); face.addColorStop(0, '#141a2a'); face.addColorStop(0.75, '#1c2236'); face.addColorStop(1, '#5a3112');
+      c.fillStyle = face; c.fillRect(0, 0, W, H);
+      const glow = c.createRadialGradient(W * 0.88, H * 0.6, 4, W * 0.88, H * 0.6, W * 0.35); glow.addColorStop(0, 'rgba(255,150,40,0.75)'); glow.addColorStop(1, 'rgba(255,150,40,0)'); c.fillStyle = glow; c.fillRect(0, 0, W, H);
+      const x = W / 2, y = H * 1.25, r = H * 1.02, vu = (d) => Math.PI * 1.5 + (Math.max(-20, Math.min(3, d)) - -8.5) / 23 * 1.25;
+      c.lineWidth = 2; c.strokeStyle = '#cbd5e1'; c.beginPath(); c.arc(x, y, r, vu(-20), vu(0)); c.stroke(); c.strokeStyle = '#ff4b4b'; c.lineWidth = 3.5; c.beginPath(); c.arc(x, y, r, vu(0), vu(3)); c.stroke();
+      c.fillStyle = '#cbd5e1'; c.font = '600 10px Bahnschrift, sans-serif'; c.textAlign = 'center';
+      [-20, -10, -7, -5, -3, -1, 0, 1, 2, 3].forEach(d => { const a = vu(d); c.strokeStyle = d >= 0 ? '#ff4b4b' : '#cbd5e1'; c.lineWidth = 1.5;
+        c.beginPath(); c.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); c.lineTo(x + Math.cos(a) * (r - 7), y + Math.sin(a) * (r - 7)); c.stroke();
+        c.fillStyle = d >= 0 ? '#ff6b6b' : '#cbd5e1'; c.fillText(Math.abs(d), x + Math.cos(a) * (r + 9), y + Math.sin(a) * (r + 9) + 3); });
+      c.fillStyle = '#e2e8f0'; c.font = '600 15px Bahnschrift, sans-serif'; c.fillText('VU', x, H * 0.82);
+      const a = vu(db); c.strokeStyle = '#ffb35c'; c.lineWidth = 2; c.shadowColor = '#ff8a1c'; c.shadowBlur = 6;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * (r + 2), y + Math.sin(a) * (r + 2)); c.stroke(); c.shadowBlur = 0;
+      c.strokeStyle = 'rgba(160,170,190,0.4)'; c.lineWidth = 2; c.strokeRect(1, 1, W - 2, H - 2);
+    }
+    function drawHeat(cv, level, label) {
+      const c = cv.getContext('2d'), W = cv.width, H = cv.height; c.clearRect(0, 0, W, H);
+      const bg = c.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#1a2033'); bg.addColorStop(1, '#0b0e18'); c.fillStyle = bg; c.fillRect(0, 0, W, H);
+      const x = W / 2, y = H * 2.35, r = H * 2.05, a0 = -Math.PI / 2 - 0.62, a1 = -Math.PI / 2 + 0.62, at = (v) => a0 + (a1 - a0) * v / 10;
+      c.lineWidth = 2; c.strokeStyle = '#cbd5e1'; c.beginPath(); c.arc(x, y, r, a0, at(8)); c.stroke();
+      c.lineWidth = 6; c.strokeStyle = '#d43c2c'; c.beginPath(); c.arc(x, y, r - 2, at(7.6), a1); c.stroke();
+      c.fillStyle = '#e2e8f0'; c.font = '600 14px Bahnschrift, sans-serif'; c.textAlign = 'center';
+      for (let i = 0; i <= 10; i++) { const a = at(i); c.strokeStyle = '#cbd5e1'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); c.lineTo(x + Math.cos(a) * (r - 9), y + Math.sin(a) * (r - 9)); c.stroke();
+        c.fillText(i, x + Math.cos(a) * (r + 12), y + Math.sin(a) * (r + 12) + 4); }
+      c.fillStyle = label ? '#e2e8f0' : '#64748b'; c.font = '600 18px Bahnschrift, sans-serif'; c.fillText(label || 'NO TEMPERATURE SENSOR EXPOSED', x, H * 0.78);
+      const a = at(Math.max(0, Math.min(10, level))); c.strokeStyle = '#ffb35c'; c.lineWidth = 2.5; c.shadowColor = '#ff8a1c'; c.shadowBlur = 8;
+      c.beginPath(); c.moveTo(x + Math.cos(a) * (r * 0.62), y + Math.sin(a) * (r * 0.62)); c.lineTo(x + Math.cos(a) * (r + 2), y + Math.sin(a) * (r + 2)); c.stroke(); c.shadowBlur = 0;
+    }
+    function drawHistory(d) {
+      const cv = document.getElementById('dgHist'), c = cv.getContext('2d'), W = cv.width, H = cv.height; c.clearRect(0, 0, W, H);
+      const temps = (d.histTemp || []).some(v => v != null), gtemps = (d.histGpuTemp || []).some(v => v != null);
+      const useTemp = temps || gtemps, lo = useTemp ? 30 : 0, hi = useTemp ? 100 : 100, L = 34, R = W - 8, T = 8, B = H - 18;
+      document.getElementById('dgHistTitle').textContent = useTemp ? 'TEMPERATURE HISTORY (LAST 60 SEC)' : 'CPU LOAD HISTORY (LAST 60 SEC) · NO TEMP SENSOR';
+      document.getElementById('dgHistLegend').innerHTML = useTemp ? `${temps ? '<span style="color:#ffb35c">■ CPU</span> ' : ''}${gtemps ? '<span style="color:#38bdf8">■ GPU</span>' : ''}` : '<span style="color:#ffb35c">■ CPU %</span>';
+      c.fillStyle = 'rgba(8,10,16,0.8)'; c.fillRect(L, T, R - L, B - T);
+      c.font = '10px Bahnschrift, sans-serif'; c.fillStyle = '#93a4c3'; c.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) { const v = lo + (hi - lo) * i / 4, yy = B - (B - T) * i / 4; c.strokeStyle = 'rgba(147,164,195,0.12)'; c.beginPath(); c.moveTo(L, yy); c.lineTo(R, yy); c.stroke(); c.fillText(Math.round(v) + (useTemp ? 'C' : '%'), L - 4, yy + 3); }
+      const series = (arr, col, fill) => {
+        const pts = (arr || []).map((v, i, a) => v == null ? null : [R - (a.length - 1 - i) * (R - L) / 59, B - (B - T) * (v - lo) / (hi - lo)]).filter(Boolean);
+        if (pts.length < 2) return;
+        if (fill) { const g = c.createLinearGradient(0, T, 0, B); g.addColorStop(0, col + 'cc'); g.addColorStop(1, col + '10'); c.fillStyle = g;
+          c.beginPath(); c.moveTo(pts[0][0], B); pts.forEach(p => c.lineTo(p[0], p[1])); c.lineTo(pts[pts.length - 1][0], B); c.fill(); }
+        c.strokeStyle = col; c.lineWidth = 2; c.shadowColor = col; c.shadowBlur = 6; c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke(); c.shadowBlur = 0;
+      };
+      if (useTemp) { series(d.histTemp, '#ffb35c', true); series(d.histGpuTemp, '#38bdf8', false); } else series(d.histCpu, '#ffb35c', true);
+      c.textAlign = 'left'; c.fillStyle = '#93a4c3'; c.fillText('-60 s', L + 2, H - 4); c.textAlign = 'right'; c.fillText('now', R, H - 4);
+    }
+    function renderMacros() {
+      const ui = window._uiProps || {}, host = document.getElementById('dgMacros');
+      host.innerHTML = [1, 2, 3, 4, 5].map(i => { const m = ui['macro' + i]; let when = ''; try { when = m ? JSON.parse(m).when : ''; } catch (e) {}
+        return `<button class="${m ? 'stored' : ''}" data-i="${i}">${i}<small>${m ? when : 'empty'}</small></button>`; }).join('');
+      host.querySelectorAll('button').forEach(b => b.onclick = (e) => macro(+b.dataset.i, e.shiftKey));
+    }
+    function macro(i, store) {
+      window._uiProps = window._uiProps || {};
+      if (store) {
+        const values = {}; Object.keys(window._paramValues || {}).forEach(k => values[k] = window._paramValues[k]);
+        const snap = JSON.stringify({ when: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), values });
+        window._uiProps['macro' + i] = snap; emit('setUiProp', { key: 'macro' + i, value: snap }); flashHint('Macro ' + i + ' stored'); renderMacros(); return;
+      }
+      const m = window._uiProps['macro' + i]; if (!m) { flashHint('Macro ' + i + ' is empty - Shift+click to store'); return; }
+      try { const v = JSON.parse(m).values; Object.keys(v).forEach(k => emit('setParam', { id: k, value: v[k] })); flashHint('Macro ' + i + ' recalled'); } catch (e) {}
+    }
+    function diagFrame(now) {
+      if (!diagOpen) return;
+      const dt = Math.min(0.1, (now - diagLast) / 1000); diagLast = now;
+      let t = window._tele || {};
+      const toDb = (x) => x > 1e-5 ? 20 * Math.log10(x) : -60, k = 1 - Math.exp(-dt / 0.3);
+      if (IS_UTILITY) {
+        // No audio here: drive the meters from what the Solution plugins report.
+        const ps = (diagData && diagData.plugins) || [], loads = ps.map(p => p.load || 0), lufs = ps.map(p => p.lufs).filter(v => v > -69);
+        const cores = (diagData && diagData.logical) || 1, loud = lufs.length ? Math.max(...lufs) : -60;
+        t = { dqsSuiteLoad: loads.reduce((a, b) => a + b, 0) / Math.max(1, Math.min(cores, loads.length)), dqsOwnLoad: loads.length ? Math.max(...loads) : 0,
+              rmsL: Math.pow(10, loud / 20), rmsR: Math.pow(10, loud / 20) };
+        window._tele = t;
+      }
+      vuL += (toDb(t.rmsL || 0) + 18 - vuL) * k; vuR += (toDb(t.rmsR || 0) + 18 - vuR) * k;      // 0 VU = -18 dBFS RMS
+      drawVu(document.getElementById('dgVuL'), vuL); drawVu(document.getElementById('dgVuR'), vuR);
+      dialNeedle += ((t.dqsSuiteLoad || 0) - dialNeedle) * (1 - Math.exp(-dt / 0.25)); drawDial(document.getElementById('dgDial'), dialNeedle);
+      const own = t.dqsOwnLoad || 0, leds = document.getElementById('dgLeds');
+      if (leds.childElementCount !== 16) leds.innerHTML = '<i></i>'.repeat(16);
+      [...leds.children].forEach((el, i) => { el.className = own * 16 * 2 > i ? (i > 12 ? 'hot' : 'on') : ''; });   // full scale = 50% of real time
+      document.getElementById('dgOwn').textContent = (own * 100).toFixed(1) + '%';
+      const d = diagData || {}, g = (d.gpus || [])[0] || {}, hot = [d.cpuTemp, g.temp].filter(v => v != null && isFinite(v));
+      const hottest = hot.length ? Math.max(...hot) : null, level = hottest == null ? 0 : (hottest - 30) / 6.5;
+      heatNeedle += (level - heatNeedle) * (1 - Math.exp(-dt / 0.6));
+      drawHeat(document.getElementById('dgHeat'), heatNeedle, hottest == null ? null : `HEAT LEVEL ${Math.max(0, level).toFixed(1)} · ${hottest.toFixed(0)}°C`);
+      requestAnimationFrame(diagFrame);
+    }
+
+    // ---------- Fast Ray command hub (badge, top-left of every module) ----------
+    function toggleFastRayHub(e) {
+      if (e) e.stopPropagation();
+      const hub = document.getElementById('fastRayHub'), open = !hub.classList.contains('open');
+      hub.classList.toggle('open', open); document.querySelectorAll('.fastray-btn').forEach(b => b.classList.toggle('open', open));
+    }
+    document.addEventListener('mousedown', (e) => {
+      if (!e.target.closest('#fastRayHub') && !e.target.closest('.fastray-btn')) { document.getElementById('fastRayHub').classList.remove('open'); document.getElementById('fastRayBtn').classList.remove('open'); }
+    });
+    function frHub(cmd) {
+      toggleFastRayHub();
+      if (cmd === 'presets') openVault();
+      else if (cmd === 'diag') openDiagnostics();
+      else if (cmd === 'keys') openShortcuts();
+      else if (cmd === 'panic' || cmd === 'panicAll') { emit('panic', { all: cmd === 'panicAll' }); flashHint(cmd === 'panicAll' ? '🛑 PANIC RESET · every Solution plugin flushed' : '🛑 PANIC RESET · this track flushed'); }
+    }
+
     // ---------- fullscreen panels ----------
     const IS_POPOUT = params.get('popout') === '1';
     let hoverPanel = 'stage';
@@ -2355,7 +2902,8 @@
       emit('fullscreen', { cmd: 'popout', panel });
     }
     if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.addEventListener('fullscreenState', (on) => { if (!IS_POPOUT) showFsBadge(on ? '⧉ FULLSCREEN ON OTHER DISPLAY · Ctrl+` to bring back' : '', on ? 0 : 1); });
-    if (IS_POPOUT) setTimeout(() => setMaxPanel(params.get('panel') || 'stage'), 50);
+    if (IS_POPOUT) setTimeout(() => { if (params.get('panel') === 'diag') openDiagnostics(); else setMaxPanel(params.get('panel') || 'stage'); }, 50);
+    if (!IS_POPOUT && (IS_UTILITY || /scope/i.test(params.get('module') || ''))) setTimeout(openDiagnostics, IS_UTILITY ? 50 : 400);   // The Scope is the suite's diagnostic home
 
     window.stageApi = {
       cam, distToR, rToDist, worldPos, mapRoomPoint, findClashes, flash: flashHint,

@@ -10,6 +10,7 @@
 
 #include "../Source/ModuleEngines.h"
 #include "../Source/SolutionProcessor.h"
+#include "../Source/SystemMonitor.h"
 #include <atomic>
 #include <complex>
 #include <cstdio>
@@ -1412,6 +1413,47 @@ static void testDqs()
     std::printf ("  done\n");
 }
 
+static void testDiagnostics()
+{
+    std::printf ("Diagnostics: real counters + real system readings\n");
+    const double fs = 48000.0;
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (fs, 512);
+        juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512);
+        for (int k = 0; k < 10; ++k) { fillSine (b, fs, 440.0, 0.2f, 0.0, k * 512); proc.processBlock (b, midi); }
+        EXPECT (proc.diag.inputClips.load() == 0 && proc.diag.badSamples.load() == 0 && proc.diag.phaseEvents.load() == 0,
+                "a clean sine must log no events (clips %u, bad %u, phase %u)", proc.diag.inputClips.load(), proc.diag.badSamples.load(), proc.diag.phaseEvents.load());
+        fillSine (b, fs, 440.0, 1.2f, 0.0, 0); proc.processBlock (b, midi);
+        EXPECT (proc.diag.inputClips.load() == 1, "input over 0 dBFS must be counted once per block (%u)", proc.diag.inputClips.load());
+        fillSine (b, fs, 440.0, 0.2f, 0.0, 0); b.setSample (0, 100, std::numeric_limits<float>::quiet_NaN()); proc.processBlock (b, midi);
+        bool finite = true; for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < 512; ++i) finite = finite && std::isfinite (b.getSample (ch, i));
+        EXPECT (proc.diag.badSamples.load() == 1 && finite, "NaN input must be counted and never reach the output");
+        for (int k = 0; k < 120; ++k)       // ~1.3 s of left = -right
+        {
+            fillSine (b, fs, 300.0, 0.3f, 0.0, k * 512);
+            b.copyFrom (1, 0, b, 0, 0, 512); b.applyGain (1, 0, 512, -1.0f);
+            proc.processBlock (b, midi);
+        }
+        EXPECT (proc.diag.phaseEvents.load() >= 1, "sustained out-of-phase audio must be logged (%u)", proc.diag.phaseEvents.load());
+    }
+    {
+        SolutionDiag::SystemMonitor monitor;
+        juce::Thread::sleep (1300);
+        const auto s = monitor.getSnapshot();
+        EXPECT (s.logicalCores > 0 && (int) s.coreLoadPct.size() == s.logicalCores, "per-core loads: %d of %d cores", (int) s.coreLoadPct.size(), s.logicalCores);
+        bool inRange = true; for (auto v : s.coreLoadPct) inRange = inRange && v >= 0.0f && v <= 100.0f;
+        EXPECT (inRange && std::isfinite (s.cpuTotalPct), "core loads must be real percentages");
+        EXPECT (std::isfinite (s.ramUsedMb) && s.ramUsedMb > 0 && s.ramUsedMb <= s.ramTotalMb, "RAM used %.0f of %.0f MB", s.ramUsedMb, s.ramTotalMb);
+        EXPECT (s.historyCpuPct.size() >= 1, "history must fill once a second");
+        const auto csv = SolutionDiag::makeCsvReport (s, {}, {});
+        const auto xml = juce::parseXML (SolutionDiag::makeXmlReport (s, {}, {}));
+        EXPECT (csv.contains ("Core 1,") && xml != nullptr && xml->getChildByName ("System") != nullptr, "CSV/XML reports must be well-formed");
+        std::printf ("  %s, %d cores, CPU %.0f%%, temp %s, RAM %.0f/%.0f MB, %d GPU(s)\n", s.cpuModel.toRawUTF8(), s.logicalCores, s.cpuTotalPct,
+                     std::isfinite (s.cpuTempC) ? juce::String (s.cpuTempC, 1).toRawUTF8() : "n/a", s.ramUsedMb, s.ramTotalMb, (int) s.gpus.size());
+    }
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -1435,6 +1477,7 @@ int main()
     testSafeBounce();
     testStageEngine();
     testDqs();
+    testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

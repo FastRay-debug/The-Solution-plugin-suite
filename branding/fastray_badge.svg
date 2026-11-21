@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 132" role="img" aria-label="Fast Ray the Engineer">
+  <defs>
+    <linearGradient id="frRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.14" stop-color="#d9dee4"/><stop offset="0.32" stop-color="#7d8590"/>
+      <stop offset="0.47" stop-color="#f4f6f8"/><stop offset="0.53" stop-color="#3d434b"/><stop offset="0.72" stop-color="#aeb5be"/>
+      <stop offset="0.88" stop-color="#e9ecef"/><stop offset="1" stop-color="#565d66"/>
+    </linearGradient>
+    <linearGradient id="frRimSheen" x1="0" y1="0" x2="1" y2="0.35">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.0"/><stop offset="0.38" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.0"/><stop offset="0.8" stop-color="#000000" stop-opacity="0.25"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.4"/>
+    </linearGradient>
+    <linearGradient id="frPlate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a5058"/><stop offset="0.45" stop-color="#2b2f35"/><stop offset="1" stop-color="#1a1d21"/>
+    </linearGradient>
+    <pattern id="frBrush" width="6" height="3" patternUnits="userSpaceOnUse">
+      <rect width="6" height="1" fill="#ffffff" opacity="0.05"/><rect y="2" width="6" height="0.6" fill="#000000" opacity="0.12"/>
+    </pattern>
+    <linearGradient id="frFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9aa1aa"/><stop offset="0.3" stop-color="#5c636c"/><stop offset="0.55" stop-color="#2e3238"/>
+      <stop offset="0.8" stop-color="#4b5159"/><stop offset="1" stop-color="#7a818a"/>
+    </linearGradient>
+    <linearGradient id="frEdge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#9aa2ac"/><stop offset="0.55" stop-color="#e8ebee"/><stop offset="1" stop-color="#6b727b"/>
+    </linearGradient>
+    <filter id="frGlow" x="-15%" y="-40%" width="130%" height="180%"><feGaussianBlur stdDeviation="4"/></filter>
+    <filter id="frBevel" x="-5%" y="-20%" width="110%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.6" result="b"/>
+      <feSpecularLighting in="b" surfaceScale="3" specularConstant="0.9" specularExponent="22" lighting-color="#ffffff" result="s">
+        <feDistantLight azimuth="235" elevation="48"/>
+      </feSpecularLighting>
+      <feComposite in="s" in2="SourceAlpha" operator="in" result="sc"/>
+      <feComposite in="SourceGraphic" in2="sc" operator="arithmetic" k1="0" k2="1" k3="0.85" k4="0"/>
+    </filter>
+    <filter id="frShadow" x="-10%" y="-30%" width="120%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="#000" flood-opacity="0.75"/></filter>
+  </defs>
+  <!-- orange neon halo -->
+  <path d="M46 122 C16 122 6 100 14 78 L33 31 C40 15 54 9 74 9 L396 5 C404 5 412 6 416 8 C396 20 376 58 354 100 C346 115 334 122 314 122 Z"
+        fill="none" stroke="#ff7a12" stroke-width="7" opacity="0.85" filter="url(#frGlow)"/>
+  <!-- polished chrome rim -->
+  <g filter="url(#frShadow)">
+    <path d="M46 122 C16 122 6 100 14 78 L33 31 C40 15 54 9 74 9 L396 5 C404 5 412 6 416 8 C396 20 376 58 354 100 C346 115 334 122 314 122 Z" fill="url(#frRim)" stroke="#1b1e22" stroke-width="1.5"/>
+    <path d="M46 122 C16 122 6 100 14 78 L33 31 C40 15 54 9 74 9 L396 5 C404 5 412 6 416 8 C396 20 376 58 354 100 C346 115 334 122 314 122 Z" fill="url(#frRimSheen)"/>
+  </g>
+  <path d="M50 114 C28 114 21 98 26 82 L43 37 C48 24 58 19 76 19 L372 16 C356 34 344 62 330 96 C324 109 316 114 302 114 Z" fill="#0d0f12"/>
+  <!-- brushed gunmetal plate -->
+  <path d="M52 111 C32 111 26 97 30 83 L46 39 C51 27 60 22 77 22 L366 19 C351 37 340 63 327 95 C321 107 314 111 301 111 Z" fill="url(#frPlate)"/>
+  <path d="M52 111 C32 111 26 97 30 83 L46 39 C51 27 60 22 77 22 L366 19 C351 37 340 63 327 95 C321 107 314 111 301 111 Z" fill="url(#frBrush)"/>
+  <path d="M48 40 C53 28 61 23.5 77 23.5 L362 20.5" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="1.2"/>
+  <!-- screw, top right -->
+  <circle cx="378" cy="15" r="5.2" fill="url(#frRim)" stroke="#1b1e22" stroke-width="1"/>
+  <path d="M374.5 15 h7" stroke="#2b2f35" stroke-width="1.4"/>
+  <!-- lettering: chrome outline, black keyline, gunmetal face with bevel -->
+  <g font-family="'Arial Black', 'Arial Bold', Impact, 'Helvetica Neue', sans-serif" font-weight="900" font-style="italic" text-anchor="middle" transform="skewX(-12)">
+    <g transform="translate(206 0)">
+      <text x="0" y="74" font-size="58" letter-spacing="1" fill="none" stroke="url(#frEdge)" stroke-width="9" stroke-linejoin="round">FAST RAY</text>
+      <text x="0" y="74" font-size="58" letter-spacing="1" fill="none" stroke="#0a0b0d" stroke-width="4.5" stroke-linejoin="round">FAST RAY</text>
+      <text x="0" y="74" font-size="58" letter-spacing="1" fill="url(#frFace)" filter="url(#frBevel)">FAST RAY</text>
+      <text x="4" y="103" font-size="26" letter-spacing="1.5" fill="none" stroke="url(#frEdge)" stroke-width="6" stroke-linejoin="round">THE ENGINEER</text>
+      <text x="4" y="103" font-size="26" letter-spacing="1.5" fill="none" stroke="#0a0b0d" stroke-width="3" stroke-linejoin="round">THE ENGINEER</text>
+      <text x="4" y="103" font-size="26" letter-spacing="1.5" fill="url(#frFace)" filter="url(#frBevel)">THE ENGINEER</text>
+    </g>
+  </g>
+</svg>

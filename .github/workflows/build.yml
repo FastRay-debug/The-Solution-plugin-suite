@@ -100,6 +100,9 @@ jobs:
             Get-ChildItem "$rel/CLAP" -File -Filter *.clap -ErrorAction SilentlyContinue | Copy-Item -Destination "$out/CLAP" -Force
             Get-ChildItem "$rel/Standalone" -File -Filter *.exe -ErrorAction SilentlyContinue | Copy-Item -Destination "$out/Standalone" -Force
           }
+          New-Item -ItemType Directory -Force -Path "$out/Utility" | Out-Null
+          Copy-Item "build/SolutionUtility_artefacts/Release/Solution Utility.exe" "$out/Utility" -Force
+          if (-not (Test-Path "$out/Utility/Solution Utility.exe")) { throw "Solution Utility was not built" }
           $n = (Get-ChildItem "$out/VST3" -Directory).Count
           Write-Host "Collected $n VST3 plugins"
           if ($n -ne 13) { throw "Expected 13 VST3 plugins, found $n" }

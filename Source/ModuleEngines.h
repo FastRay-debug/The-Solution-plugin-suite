@@ -75,8 +75,11 @@ namespace SolutionDSP
         // from another instance to switch them all off.
         std::atomic<int>   monitorMask { 0 };
         std::atomic<bool>  monitorOffRequest { false };
+        std::atomic<bool>  panicRequest { false };      // Fast Ray hub: Emergency Panic Reset from another instance
 
         std::atomic<float> cpuLoad { 0.0f };             // this instance's share of the real-time budget (0..1)
+        std::atomic<uint32_t> overloads { 0 }, errors { 0 };   // diagnostics counters
+        std::atomic<int>   latency { 0 }, dqsLevel { 0 };
 
         // 3D stage: where this track sits and what it sounds like.
         std::atomic<float> posAz { 0.0f }, posEl { 0.0f }, posDist { 2.0f }, posWidth { 1.0f }, toneHz { 1000.0f };
@@ -128,7 +131,7 @@ namespace SolutionDSP
                     for (auto& b : s.bandDb) b = -100.0f;
                     s.alignRole = 0; s.alignRingEnd = -1; s.alignRequest = false;
                     s.monitorMask = 0; s.monitorOffRequest = false;
-                    s.posAz = 0.0f; s.posEl = 0.0f; s.posDist = 2.0f; s.posWidth = 1.0f; s.toneHz = 1000.0f; s.creature = 0;
+                    s.posAz = 0.0f; s.posEl = 0.0f; s.posDist = 2.0f; s.posWidth = 1.0f; s.toneHz = 1000.0f; s.creature = 0; s.panicRequest = false; s.overloads = 0; s.errors = 0; s.latency = 0; s.dqsLevel = 0;
                     for (auto& q : s.reqParam) q = -1;
                     return i;
                 }

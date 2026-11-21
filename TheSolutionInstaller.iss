@@ -50,6 +50,7 @@ Name: "formats\clap";       Description: "CLAP  (Bitwig, Reaper, FL Studio)";   
 Name: "formats\aax";        Description: "AAX  (Pro Tools)";                    Types: full
 #endif
 Name: "formats\standalone"; Description: "Standalone apps + Start Menu shortcuts"; Types: full
+Name: "utility";            Description: "Solution Utility (Fast Ray diagnostics: CPU cores, GPU, every Solution plugin)"; Types: full custom
 Name: "skins";              Description: "Skin faceplates (shared by all modules)"; Types: full custom
 Name: "modules";            Description: "Modules";                             Types: full custom
 Name: "modules\bunker"; Description: "The Bunker"; Types: full custom
@@ -67,6 +68,7 @@ Name: "modules\matrix"; Description: "The Matrix"; Types: full custom
 Name: "modules\scope"; Description: "The Scope"; Types: full custom
 
 [Files]
+Source: "{#Src}\Utility\Solution Utility.exe"; DestDir: "{app}\Utility"; Components: utility; Flags: ignoreversion skipifsourcedoesntexist
 ; The Bunker
 Source: "{#Src}\VST3\The Bunker.vst3\*"; DestDir: "{commoncf64}\VST3\The Solution\The Bunker.vst3"; Components: formats\vst3 and modules\bunker; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#Src}\CLAP\The Bunker.clap"; DestDir: "{commoncf64}\CLAP\The Solution"; Components: formats\clap and modules\bunker; Flags: ignoreversion skipifsourcedoesntexist
@@ -162,6 +164,7 @@ Source: "{#Src}\Standalone\The Scope.exe"; DestDir: "{app}\Standalone"; Componen
 Source: "{#Src}\Skins\*.jpg"; DestDir: "{commonappdata}\Fast Ray Media\The Solution\Skins"; Components: skins; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
+Name: "{group}\Solution Utility"; Filename: "{app}\Utility\Solution Utility.exe"; Components: utility
 Name: "{group}\The Bunker"; Filename: "{app}\Standalone\The Bunker.exe"; Components: formats\standalone and modules\bunker; Check: StandaloneExists('The Bunker')
 Name: "{group}\The Stage"; Filename: "{app}\Standalone\The Stage.exe"; Components: formats\standalone and modules\stage; Check: StandaloneExists('The Stage')
 Name: "{group}\The Land"; Filename: "{app}\Standalone\The Land.exe"; Components: formats\standalone and modules\land; Check: StandaloneExists('The Land')
