@@ -21,6 +21,8 @@ SolutionAudioProcessor::SolutionAudioProcessor()
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             apvts.addParameterListener (ranged->getParameterID(), this);
 
+    startTimerHz (5);     // picks up alignment requests from other instances
+
     learnableParamIds = {
         "stage_azimuth", "stage_elevation", "stage_depth", "stage_haas_itd",
         "stage_width", "stage_anchor_hz", "stage_ms_mid", "stage_ms_side",
@@ -31,6 +33,7 @@ SolutionAudioProcessor::SolutionAudioProcessor()
 
 SolutionAudioProcessor::~SolutionAudioProcessor()
 {
+    stopTimer();
     remote.reset();      // stop serving before anything it reads goes away
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
@@ -75,6 +78,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v11: Auto-Align (time + polarity between mics on the same source)
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "align_role", 11 }, "Auto-Align Role",
+                          juce::StringArray { "Off", "Reference", "Align to reference" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "align_delay_ms", 11 }, "Align Delay (ms)", juce::NormalisableRange<float> (0.0f, 20.0f, 0.001f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "align_invert", 11 }, "Align Polarity Invert", false));
     // --- v10: Unmask (frequency-specific make-room via Rack Link)
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "unmask_role", 10 }, "Unmask Role",
                           juce::StringArray { "Off", "Priority (vocal / kick)", "Make room" }, 0));
@@ -140,6 +148,9 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     monoLows.prepare (sampleRate, samplesPerBlock);
     listeningRoom.prepare (sampleRate);
     unmask.prepare (sampleRate);
+    alignDelayLine.prepare ({ sampleRate, (juce::uint32) samplesPerBlock, 2 });
+    alignDelayLine.setMaximumDelayInSamples ((int) std::ceil (0.021 * sampleRate) + 8);
+    alignDelayLine.reset();
     smoother.prepare (sampleRate);
     phoneBass.prepare (sampleRate);
     abMatcher.prepare (sampleRate);
@@ -202,6 +213,48 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     if (dryCopy.getNumSamples() < numSamples)
         dryCopy.setSize (2, numSamples, false, false, true);
+
+    // Auto-Align: share the raw input (timeline-stamped) and apply this track's alignment.
+    {
+        const int alignRole = static_cast<int> (apvts.getRawParameterValue ("align_role")->load());
+        if (rackSlot >= 0 && alignRole != 0)
+        {
+            long long t = ownTimeline;
+            bool valid = true;
+            if (auto* ph = getPlayHead())
+            {
+                valid = false;
+                if (auto pos = ph->getPosition())
+                    if (pos->getIsPlaying())
+                        if (auto ts = pos->getTimeInSamples()) { t = *ts; valid = true; }
+            }
+            auto& slot = rackLinkBus->slots[(size_t) rackSlot];
+            slot.alignRole.store (alignRole, std::memory_order_relaxed);
+            if (valid)
+            {
+                const auto* l = buffer.getReadPointer (0); const auto* r = buffer.getReadPointer (1);
+                constexpr int N = SolutionDSP::RackSlot::alignRingSize;
+                for (int i = 0; i < numSamples; ++i) slot.alignRing[(size_t) (((t + i) % N + N) % N)] = 0.5f * (l[i] + r[i]);
+                slot.alignRingEnd.store (t + numSamples, std::memory_order_release);
+            }
+        }
+        else if (rackSlot >= 0)
+            rackLinkBus->slots[(size_t) rackSlot].alignRole.store (0, std::memory_order_relaxed);
+        ownTimeline += numSamples;
+
+        const float delaySamples = apvts.getRawParameterValue ("align_delay_ms")->load() * 0.001f * (float) preparedSampleRate;
+        const bool invert = apvts.getRawParameterValue ("align_invert")->load() > 0.5f;
+        if (delaySamples > 0.001f || invert)
+        {
+            alignDelayLine.setDelay (delaySamples);
+            const float sign = invert ? -1.0f : 1.0f;
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                auto* d = buffer.getWritePointer (ch);
+                for (int i = 0; i < numSamples; ++i) { alignDelayLine.pushSample (ch, d[i]); d[i] = sign * alignDelayLine.popSample (ch); }
+            }
+        }
+    }
 
     // Auto gain staging: listen to the raw input, then the message thread sets the trims.
     if (autoStageState.load (std::memory_order_relaxed) == 1)
@@ -572,6 +625,60 @@ juce::String SolutionAudioProcessor::setCharacterModel (const juce::String& mode
         return error.isNotEmpty() ? error : "Couldn't load " + modelName;
     character.setModel (std::move (model));
     return {};
+}
+
+juce::String SolutionAudioProcessor::alignNow()
+{
+    if (rackSlot < 0) return "Rack Link isn't available in this host session";
+    auto& bus = *rackLinkBus;
+    auto& me = bus.slots[(size_t) rackSlot];
+    const int group = me.group.load();
+    if (group <= 0) return "Put this track and the reference in the same Rack Link group (A-D) first";
+    if (me.alignRole.load() != 2) return "Set this track to 'Align to reference' first";
+
+    int refSlot = -1;
+    for (int i = 0; i < SolutionDSP::RackLinkBus::maxSlots; ++i)
+        if (i != rackSlot && bus.slots[(size_t) i].active.load() && bus.slots[(size_t) i].alignRole.load() == 1 && bus.slots[(size_t) i].group.load() == group)
+            refSlot = i;
+    if (refSlot < 0) return "No reference track found in this group - set one track to 'Reference'";
+
+    auto& ref = bus.slots[(size_t) refSlot];
+    const auto r = SolutionDSP::computeAlignment (ref.alignRing.data(), ref.alignRingEnd.load (std::memory_order_acquire),
+                                                  me.alignRing.data(), me.alignRingEnd.load (std::memory_order_acquire),
+                                                  SolutionDSP::RackSlot::alignRingSize, preparedSampleRate);
+    if (! r.found) return r.message;
+
+    // We can only delay, so delay whichever mic hears the sound first.
+    auto setParam = [this] (const char* id, float v) { auto* q = apvts.getParameter (id); q->beginChangeGesture(); q->setValueNotifyingHost (q->convertTo0to1 (v)); q->endChangeGesture(); };
+    const double ms = std::abs (r.lagSamples) / preparedSampleRate * 1000.0;
+    setParam ("align_invert", r.invert ? 1.0f : 0.0f);
+    juce::String what;
+    if (r.lagSamples < 0)      // this track is earlier -> delay it; the reference needs none
+    {
+        setParam ("align_delay_ms", (float) ms);
+        ref.alignRequestDelaySamples = 0.0f; ref.alignRequestInvert = false; ref.alignRequest = true;
+        what = "Delayed this track by " + juce::String (ms, 2) + " ms";
+    }
+    else                       // the reference is earlier -> ask it to delay itself
+    {
+        setParam ("align_delay_ms", 0.0f);
+        ref.alignRequestDelaySamples = (float) r.lagSamples; ref.alignRequestInvert = false; ref.alignRequest = true;
+        what = "Delayed the reference track by " + juce::String (ms, 2) + " ms";
+    }
+    if (r.invert) what << ", flipped this track's polarity";
+    return what + " (match " + juce::String (juce::roundToInt (r.confidence * 100.0)) + "%)";
+}
+
+void SolutionAudioProcessor::pollAlignRequests()
+{
+    if (rackSlot < 0) return;
+    auto& me = rackLinkBus->slots[(size_t) rackSlot];
+    if (! me.alignRequest.exchange (false)) return;
+    const float ms = me.alignRequestDelaySamples.load() / (float) std::max (1.0, preparedSampleRate) * 1000.0f;
+    for (auto [id, v] : { std::pair<const char*, float> { "align_delay_ms", ms }, { "align_invert", me.alignRequestInvert.load() ? 1.0f : 0.0f } })
+    {
+        auto* q = apvts.getParameter (id); q->beginChangeGesture(); q->setValueNotifyingHost (q->convertTo0to1 (v)); q->endChangeGesture();
+    }
 }
 
 void SolutionAudioProcessor::startAutoGainStage()

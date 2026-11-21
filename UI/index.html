@@ -754,6 +754,18 @@
       </div>
       <svg id="unmaskBars" viewBox="0 0 360 46" style="width:100%;height:46px;background:#05070a;border:1px solid #1f2937;border-radius:4px;"></svg>
       <div style="font-size:10px;color:var(--mute);">Put the priority and the tracks that should make room in the same group (A-D). Bars show the live dips on this track.</div>
+      <div style="font-size:11px;color:var(--accent2);margin-top:4px;">AUTO-ALIGN · fix timing &amp; polarity between mics on the same source</div>
+      <div style="display:flex;gap:8px;align-items:center;font-size:11px;">
+        <select data-sync="align_role" onchange="bind('align_role', this.value, '', 1)">
+          <option value="0">Align: off</option><option value="1">This is the REFERENCE (e.g. kick in / bass DI)</option><option value="2">ALIGN this to the reference</option>
+        </select>
+        <button onclick="window.__JUCE__ && window.__JUCE__.backend.emitEvent('alignNow', {})" data-tip="Press play first, then align">⟲ ALIGN NOW</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;font-size:11px;">
+        <span>delay</span><input type="range" data-sync="align_delay_ms" min="0" max="20" step="0.01" value="0" oninput="bind('align_delay_ms', this.value, ' ms', 1)" style="flex:1;"><span id="v-align_delay_ms">0.00 ms</span>
+        <label><input type="checkbox" data-sync="align_invert" onchange="bind('align_invert', this.checked ? 1 : 0, '', 1)"> Ø invert</label>
+      </div>
+      <div id="alignMsg" style="font-size:11px;color:var(--gold);"></div>
       <div class="ctrl"><label>GLUE <span id="v-glue_amount">0%</span> <small id="glueGrTxt" style="color:var(--gold)"></small></label>
         <input type="range" data-sync="glue_amount" min="0" max="1" step="0.01" value="0" oninput="bind('glue_amount', this.value, '%', 100)"></div>
       <label style="font-size:11px;letter-spacing:0.05em;"><input type="checkbox" data-sync="glue_follow_suite" onchange="bind('glue_follow_suite', this.checked ? 1 : 0, '', 1)"> Follow suite glue (set on The Scope) <span id="suiteGlueTxt" style="color:var(--accent2)"></span></label>
@@ -1486,6 +1498,7 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
+        if (id === 'align_delay_ms') document.getElementById('v-align_delay_ms').textContent = (+v).toFixed(2) + ' ms';
         if (id === 'char_amount') showValue(id, v, '%', 100);
         if (id === 'char_drive') showValue(id, v, ' dB', 1);
         if (id === 'trim_in_db' || id === 'trim_out_db') showValue(id, v, ' dB', 1);
@@ -1533,6 +1546,7 @@
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
       window.__JUCE__.backend.addEventListener('roomNotice', (msg) => alert(msg));
+      window.__JUCE__.backend.addEventListener('alignResult', (msg) => { document.getElementById('alignMsg').textContent = msg; });
       window.__JUCE__.backend.addEventListener('roomList', (m) => { roomList = m || []; renderRooms(); });
       window.__JUCE__.backend.addEventListener('remoteState', (m) => { window._remote = m; renderRemote(); });
       window.__JUCE__.backend.addEventListener('characterState', (m) => { window._char = m; renderCharacter(); });

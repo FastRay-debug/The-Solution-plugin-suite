@@ -13,6 +13,12 @@
 | Stem Focus | Stem Focus menu | Process only drums, tonal parts or the centre vocal; SOLO to hear it |
 | Neural Character | 🧠 CHARACTER | Run captured models of real hardware (see `docs/NEURAL_MODELS.md`) |
 | Phone remote | 📱 REMOTE | Control the module from a phone/tablet on the same Wi-Fi with a pairing code |
+| A/B · Δ | top bar | Loudness-matched original / hear only what the module changes |
+| Pro Tricks | ★ PRO | Auto gain staging, mono-the-lows + Phase Guard, Smooth (harshness), Phone Bass, streaming preview |
+| Listening Rooms | 🏛 ROOMS | 24 rooms (studios, venues, devices, cars, mono) + Translation Tour; monitoring only |
+| Unmask | click **LK** | Priority track (vocal/kick) makes the rest of its group dip only where they collide |
+| Auto-Align | click **LK** | Fixes timing and polarity between mics on the same source with one click |
+| 115 Hz notch | Room panel | Off / On / Auto (engages only when 115 Hz builds up) |
 
 ## Download & Install (Windows)
 

@@ -1189,6 +1189,58 @@ static void testUnmask()
     std::printf ("  done\n");
 }
 
+static void testAutoAlign()
+{
+    std::printf ("== Auto-Align (time + polarity between mics)\n");
+    const double fs = 48000.0; const int bs = 512;
+    juce::MidiBuffer midi; juce::Random rnd (12);
+    // A shared "drum" source; the follower mic hears it `offset` samples later (negative = earlier), maybe inverted.
+    auto scenario = [&] (int offset, bool inverted)
+    {
+        SolutionAudioProcessor ref, fol;
+        for (auto* p : { &ref, &fol }) { p->prepareToPlay (fs, bs); setParam (*p, "global_mix", 0.0f); setParam (*p, "stage_ceiling_guard", 0.0f); setParam (*p, "link_group", 3.0f); }
+        setParam (ref, "align_role", 1.0f); setParam (fol, "align_role", 2.0f);
+        std::vector<float> src ((size_t) (fs * 4));
+        for (size_t i = 0; i < src.size(); ++i) src[i] = (i % 6000 < 800 ? 0.6f : 0.05f) * (rnd.nextFloat() * 2 - 1);   // hits + bleed
+        auto sample = [&] (long long i) { return (i >= 0 && i < (long long) src.size()) ? src[(size_t) i] : 0.0f; };
+        auto feed = [&] (int blocks, long long start, double& coherence)
+        {
+            double eSum = 0, eA = 0, eB = 0;
+            for (int k = 0; k < blocks; ++k)
+            {
+                juce::AudioBuffer<float> a (2, bs), b (2, bs);
+                for (int i = 0; i < bs; ++i)
+                {
+                    const long long t = start + (long long) k * bs + i;
+                    const float x = sample (t), y = (inverted ? -1.0f : 1.0f) * sample (t - offset);
+                    a.setSample (0, i, x); a.setSample (1, i, x); b.setSample (0, i, y); b.setSample (1, i, y);
+                }
+                ref.processBlock (a, midi); fol.processBlock (b, midi);
+                for (int i = 0; i < bs; ++i) { const double s = a.getSample (0, i) + b.getSample (0, i); eSum += s * s; eA += (double) a.getSample (0, i) * a.getSample (0, i); eB += (double) b.getSample (0, i) * b.getSample (0, i); }
+            }
+            coherence = eSum / (2 * (eA + eB) + 1e-20);      // 1.0 = perfectly aligned & same polarity
+        };
+        double before = 0, after = 0;
+        feed (100, 0, before);
+        const auto msg = fol.alignNow();
+        ref.pollAlignRequests(); fol.pollAlignRequests();
+        feed (100, 100LL * bs, after);
+        auto realValue = [&] (SolutionAudioProcessor& p, const char* id) { auto* q = p.apvts.getParameter (id); return q->convertFrom0to1 (q->getValue()); };
+        std::printf ("  offset %+d%s: %s | coherence %.2f -> %.2f (ref delay %.3f ms, follower delay %.3f ms)\n", offset, inverted ? " inverted" : "", msg.toRawUTF8(),
+                     before, after, realValue (ref, "align_delay_ms"), realValue (fol, "align_delay_ms"));
+        return after;
+    };
+    EXPECT (scenario (37, false) > 0.97, "follower 37 samples late: should end up coherent");
+    EXPECT (scenario (-23, true) > 0.97, "follower 23 samples early and inverted: should end up coherent");
+    EXPECT (scenario (0, true) > 0.97, "polarity-only problem should be fixed");
+
+    SolutionAudioProcessor lonely; lonely.prepareToPlay (fs, bs);
+    setParam (lonely, "link_group", 1.0f); setParam (lonely, "align_role", 2.0f);
+    juce::AudioBuffer<float> b (2, bs); b.clear(); lonely.processBlock (b, midi);
+    EXPECT (lonely.alignNow().contains ("No reference"), "aligning without a reference should explain why");
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -1208,6 +1260,7 @@ int main()
     testProTricks();
     testListeningRooms();
     testUnmask();
+    testAutoAlign();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

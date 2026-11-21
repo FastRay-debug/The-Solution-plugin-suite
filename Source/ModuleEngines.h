@@ -59,6 +59,16 @@ namespace SolutionDSP
         std::atomic<std::uint32_t> heartbeat { 0 };  // bumps every audio block
         std::atomic<int>   unmaskRole  { 0 };        // 0 off, 1 priority, 2 make room
         std::array<std::atomic<float>, 12> bandDb;   // priority's level per Unmask band (dBFS)
+
+        // Auto-Align: recent raw input (mono) stamped with the host timeline, plus requests
+        // from another instance asking this one to change its alignment delay / polarity.
+        static constexpr int alignRingSize = 16384;
+        std::atomic<int>   alignRole { 0 };          // 0 off, 1 reference, 2 align to reference
+        std::array<float, alignRingSize> alignRing {};
+        std::atomic<long long> alignRingEnd { -1 };  // timeline index one past the newest sample (-1 = not valid)
+        std::atomic<bool>  alignRequest { false };
+        std::atomic<float> alignRequestDelaySamples { 0.0f };
+        std::atomic<bool>  alignRequestInvert { false };
         juce::String trackName;                       // message thread only
     };
 
@@ -87,6 +97,7 @@ namespace SolutionDSP
                     s.moduleId = moduleId; s.group = 0; s.duckSource = false; s.keyLevel = 0.0f;
                     s.lufsShort = -70.0f; s.truePeak = -70.0f; s.gainReduct = 0.0f; s.unmaskRole = 0;
                     for (auto& b : s.bandDb) b = -100.0f;
+                    s.alignRole = 0; s.alignRingEnd = -1; s.alignRequest = false;
                     return i;
                 }
             }

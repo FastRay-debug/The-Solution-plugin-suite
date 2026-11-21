@@ -157,6 +157,10 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                            sendRoomResult();
                        });
                    })
+                   .withEventListener ("alignNow", [this] (const juce::var&)
+                   {
+                       webView.emitEventIfBrowserIsVisible ("alignResult", juce::var (audioProcessor.alignNow()));
+                   })
                    .withEventListener ("autoStage", [this] (const juce::var&) { audioProcessor.startAutoGainStage(); })
                    .withEventListener ("remote", [this] (const juce::var& data)
                    {

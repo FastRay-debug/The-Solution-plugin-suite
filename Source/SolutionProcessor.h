@@ -19,12 +19,14 @@
 #include "ProTricks.h"
 #include "RoomLibrary.h"
 #include "Unmask.h"
+#include "AutoAlign.h"
 #include <atomic>
 #include <array>
 
 class SolutionAudioProcessor final : public juce::AudioProcessor,
                                      private juce::AudioProcessorValueTreeState::Listener,
-                                     private juce::AsyncUpdater
+                                     private juce::AsyncUpdater,
+                                     private juce::Timer
 {
 public:
     SolutionAudioProcessor();
@@ -102,6 +104,10 @@ public:
     int getAutoGainStageState() const { return autoStageState.load(); }   // 0 idle, 1 listening
     std::atomic<float> abMatchDb { 0.0f }, smoothDb { 0.0f }, guardDb { 0.0f }, streamGainDb { 0.0f };
 
+    // Auto-Align (message thread): measure against the group's reference and fix timing/polarity.
+    juce::String alignNow();
+    void pollAlignRequests();                  // applies a request from another instance (timer)
+
     // Stem Focus adds latency only while it's on; the host is told on the message thread.
     void updateLatencyNow();
     int getBaseLatency() const { return moduleEngine.getLatencySamples() + ceilingLimiter.getLatency(); }
@@ -126,7 +132,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 10;  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask
+    static constexpr int stateVersion = 11;  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -170,6 +176,9 @@ private:
     SolutionDSP::MonoLows monoLows;
     SolutionDSP::ListeningRoomSim listeningRoom;
     SolutionDSP::Unmask unmask;
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> alignDelayLine { 4096 };
+    long long ownTimeline = 0;
+    void timerCallback() override { pollAlignRequests(); }
 public:
     std::array<std::atomic<float>, SolutionDSP::Unmask::numBands> unmaskDipDb {};
 private:
