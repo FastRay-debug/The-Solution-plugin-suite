@@ -75,6 +75,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v8: Pro Tricks
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "trim_in_db", 8 },     "Input Trim (dB)",  juce::NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "trim_out_db", 8 },    "Output Trim (dB)", juce::NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "ab_bypass", 8 },      "A/B: Original (Loudness Matched)", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "delta_listen", 8 },   "Delta: Hear What Changed", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "mono_lows_hz", 8 },   "Mono The Lows Below (Hz, 0 = off)", juce::NormalisableRange<float> (0.0f, 300.0f, 1.0f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "phase_guard", 8 },    "Phase Guard (Mono-Safe Width)", false));
+    {
+        juce::StringArray services { "Off" };
+        for (const auto& svc : SolutionDSP::streamingServices()) services.add (svc.name);
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "stream_preview", 8 }, "Streaming Preview", services, 0));
+    }
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "smooth_amount", 8 },  "Smooth (Harshness)", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "phone_bass", 8 },     "Phone Bass", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f));
     // --- v7: fixed 115 Hz mode notch - Off / On (original, always) / Auto (only when 115 Hz builds up)
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mode_notch", 7 },      "115 Hz Mode Notch",
                           juce::StringArray { "Off", "On", "Auto" }, 2));
@@ -113,6 +127,11 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     glue.prepare (sampleRate);
     roomCorrector.prepare (sampleRate);
     binaural.prepare (sampleRate);
+    monoLows.prepare (sampleRate, samplesPerBlock);
+    smoother.prepare (sampleRate);
+    phoneBass.prepare (sampleRate);
+    abMatcher.prepare (sampleRate);
+    for (auto* g : { &trimInGain, &trimOutGain, &previewGain }) g->reset (sampleRate, 0.05);
     measureOut.setSize (2, samplesPerBlock, false, true, true);
     duckKey.prepare (sampleRate);
     ducker.prepare (sampleRate);
@@ -171,6 +190,31 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     if (dryCopy.getNumSamples() < numSamples)
         dryCopy.setSize (2, numSamples, false, false, true);
+
+    // Auto gain staging: listen to the raw input, then the message thread sets the trims.
+    if (autoStageState.load (std::memory_order_relaxed) == 1)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            const auto* d = buffer.getReadPointer (ch);
+            for (int i = 0; i < numSamples; ++i) autoStageSum += (double) d[i] * d[i];
+        }
+        autoStageCount += numSamples;
+        if (autoStageCount >= (long long) (3.0 * preparedSampleRate))
+        {
+            autoStageResultDb.store ((float) (10.0 * std::log10 (autoStageSum / (2.0 * (double) autoStageCount) + 1e-20)));
+            autoStageState.store (2, std::memory_order_release);
+        }
+    }
+
+    // Input trim (gain staging into the module).
+    trimInGain.setTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("trim_in_db")->load()));
+    if (trimInGain.isSmoothing() || trimInGain.getTargetValue() != 1.0f)
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float g = trimInGain.getNextValue();
+            buffer.getWritePointer (0)[i] *= g; buffer.getWritePointer (1)[i] *= g;
+        }
 
     for (int ch = 0; ch < 2; ++ch)
         dryCopy.copyFrom (ch, 0, buffer, ch, 0, numSamples);
@@ -252,8 +296,13 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     {
         moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
         if (! p.tapeCalTone)      // neural Character (only does anything once a model is chosen)
+        {
             character.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples,
                                apvts.getRawParameterValue ("char_drive")->load(), apvts.getRawParameterValue ("char_amount")->load());
+            smoother.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, apvts.getRawParameterValue ("smooth_amount")->load());
+            smoothDb.store (smoother.getReductionDb(), std::memory_order_relaxed);
+            phoneBass.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, apvts.getRawParameterValue ("phone_bass")->load());
+        }
     }
     if (stemOn && ! stemListen)
         for (int ch = 0; ch < 2; ++ch)
@@ -274,8 +323,13 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             right[i] = dryR[i] * (1.0f - p.wetMix) + right[i] * p.wetMix;
         }
 
-    if (binauralOn && ! p.tapeCalTone)
-        binaural.process (left, right, numSamples, binauralAz, p.elevationDeg, binauralWidth);
+    // Mono the lows + Phase Guard.
+    if (! p.tapeCalTone)
+    {
+        monoLows.process (left, right, numSamples, apvts.getRawParameterValue ("mono_lows_hz")->load(),
+                          apvts.getRawParameterValue ("phase_guard")->load() > 0.5f);
+        guardDb.store (monoLows.getGuardReductionDb(), std::memory_order_relaxed);
+    }
 
     // Rack Link ducking: dip when another source in my group is playing (no routing needed).
     if (! p.tapeCalTone)
@@ -293,13 +347,36 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         glueGainReductionDb.store (glue.getGainReductionDb(), std::memory_order_relaxed);
     }
 
+    // A/B (loudness-matched original) and Delta (only what changed). Monitoring aids.
+    abMatcher.measure (left, right, dryL, dryR, numSamples);
+    const float matchDb = abMatcher.update (numSamples);
+    abMatchDb.store (matchDb, std::memory_order_relaxed);
+    const bool deltaOn = apvts.getRawParameterValue ("delta_listen")->load() > 0.5f && ! p.tapeCalTone;
+    const bool abOn = apvts.getRawParameterValue ("ab_bypass")->load() > 0.5f && ! p.tapeCalTone;
+    if (deltaOn)
+        for (int i = 0; i < numSamples; ++i) { left[i] -= dryL[i]; right[i] -= dryR[i]; }
+    else if (abOn)
+    {
+        const float g = juce::Decibels::decibelsToGain (matchDb);
+        for (int i = 0; i < numSamples; ++i) { left[i] = dryL[i] * g; right[i] = dryR[i] * g; }
+    }
+
+    // Monitoring stages (after A/B and Delta so both sides are heard the same way).
+    if (binauralOn && ! p.tapeCalTone)
+        binaural.process (left, right, numSamples, binauralAz, p.elevationDeg, binauralWidth);
+
     // Measured room correction (for your monitoring chain).
     roomCorrector.process (left, right, numSamples,
                            apvts.getRawParameterValue ("room_correct_amount")->load(),
                            apvts.getRawParameterValue ("room_correct_on")->load() > 0.5f && ! p.tapeCalTone);
 
+    // Output trim.
+    trimOutGain.setTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("trim_out_db")->load()));
+    if (trimOutGain.isSmoothing() || trimOutGain.getTargetValue() != 1.0f)
+        for (int i = 0; i < numSamples; ++i) { const float g = trimOutGain.getNextValue(); left[i] *= g; right[i] *= g; }
+
     // True-peak ceiling guard (look-ahead limiter; always in the path so latency never changes).
-    ceilingLimiter.process (buffer, numSamples, ceilingLin, ceilingOn);
+    ceilingLimiter.process (buffer, numSamples, ceilingLin, ceilingOn && ! deltaOn);
     limiterGainReductionDb.store (ceilingLimiter.getGainReductionDb(), std::memory_order_relaxed);
     loudness.process (left, right, numSamples);
 
@@ -318,7 +395,20 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         for (int ch = 0; ch < 2; ++ch)
             buffer.copyFrom (ch, 0, measureOut, ch, 0, numSamples);
     else
+    {
         assistant.tap.push (left, right, numSamples);     // Mix Assistant listens to the final output
+
+        // Streaming preview: play it back the way a service's loudness normalisation would.
+        const int service = static_cast<int> (apvts.getRawParameterValue ("stream_preview")->load());
+        float previewDb = 0.0f;
+        if (service > 0)
+            previewDb = SolutionDSP::streamingGainDb (SolutionDSP::streamingServices()[(size_t) (service - 1)],
+                                                      loudness.integrated.load (std::memory_order_relaxed), loudness.truePeakDb.load (std::memory_order_relaxed));
+        streamGainDb.store (previewDb, std::memory_order_relaxed);
+        previewGain.setTargetValue (juce::Decibels::decibelsToGain (previewDb));
+        if (previewGain.isSmoothing() || previewGain.getTargetValue() != 1.0f)
+            for (int i = 0; i < numSamples; ++i) { const float g = previewGain.getNextValue(); left[i] *= g; right[i] *= g; }
+    }
 
     const float rmsL = static_cast<float> (std::sqrt (sumL2 / numSamples));
     const float rmsR = static_cast<float> (std::sqrt (sumR2 / numSamples));
@@ -449,6 +539,30 @@ juce::String SolutionAudioProcessor::setCharacterModel (const juce::String& mode
         return error.isNotEmpty() ? error : "Couldn't load " + modelName;
     character.setModel (std::move (model));
     return {};
+}
+
+void SolutionAudioProcessor::startAutoGainStage()
+{
+    autoStageSum = 0.0; autoStageCount = 0;     // audio thread doesn't touch these until state becomes 1
+    autoStageState.store (1, std::memory_order_release);
+}
+
+bool SolutionAudioProcessor::pollAutoGainStage()
+{
+    if (autoStageState.load (std::memory_order_acquire) != 2)
+        return false;
+    autoStageState.store (0);
+    const float rmsDb = autoStageResultDb.load();
+    if (rmsDb < -70.0f)
+        return false;                            // silence: leave the trims alone
+    // Sweet spot for analog-style saturation: about -18 dBFS average. Output trim restores the level.
+    const float trim = juce::jlimit (-24.0f, 24.0f, -18.0f - rmsDb);
+    for (auto [id, v] : { std::pair<const char*, float> { "trim_in_db", trim }, { "trim_out_db", -trim } })
+    {
+        auto* param = apvts.getParameter (id);
+        param->beginChangeGesture(); param->setValueNotifyingHost (param->convertTo0to1 (v)); param->endChangeGesture();
+    }
+    return true;
 }
 
 void SolutionAudioProcessor::updateLatencyNow()

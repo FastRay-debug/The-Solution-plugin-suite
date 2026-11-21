@@ -955,6 +955,120 @@ static void testModeNotchSwitch()
     std::printf ("  done\n");
 }
 
+static double toneDb (const juce::AudioBuffer<float>& b, int ch, double hz, double fs, int from)
+{
+    std::complex<double> acc; const int n = b.getNumSamples() - from;
+    for (int i = from; i < b.getNumSamples(); ++i) acc += (double) b.getSample (ch, i) * std::polar (1.0, -juce::MathConstants<double>::twoPi * hz * i / fs);
+    return 20.0 * std::log10 (std::abs (acc) / n * 2.0 + 1e-12);
+}
+
+static void testProTricks()
+{
+    std::printf ("== Pro Tricks\n");
+    using namespace SolutionDSP;
+    const double fs = 48000.0; const int bs = 480;
+    juce::MidiBuffer midi; juce::Random rnd (99);
+
+    // Run a processor over `seconds` of generated audio; returns the last second.
+    auto render = [&] (SolutionAudioProcessor& proc, double seconds, std::function<void (juce::AudioBuffer<float>&, int)> gen)
+    {
+        const int blocks = (int) (seconds * fs / bs);
+        juce::AudioBuffer<float> tail (2, (int) fs);
+        for (int k = 0; k < blocks; ++k)
+        {
+            juce::AudioBuffer<float> b (2, bs); gen (b, k * bs); proc.processBlock (b, midi);
+            const int pos = k * bs - (blocks * bs - (int) fs);
+            if (pos >= 0) for (int ch = 0; ch < 2; ++ch) tail.copyFrom (ch, pos, b, ch, 0, bs);
+        }
+        return tail;
+    };
+    auto noise = [&] (juce::AudioBuffer<float>& b, int) { for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < b.getNumSamples(); ++i) b.setSample (ch, i, 0.1f * (rnd.nextFloat() * 2 - 1)); };
+
+    // A/B: processed is +6 dB louder; the loudness-matched original must play at the processed level.
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (fs, bs);
+        setParam (proc, "stage_ms_mid", 6.0f); setParam (proc, "stage_ms_side", 6.0f); setParam (proc, "stage_ceiling_guard", 0.0f);
+        const double processedDb = blockRmsDb (render (proc, 5.0, noise));
+        setParam (proc, "ab_bypass", 1.0f);
+        const double originalDb = blockRmsDb (render (proc, 4.0, noise));
+        std::printf ("  A/B: processed %.1f dB, matched original %.1f dB (match %+.1f dB)\n", processedDb, originalDb, proc.abMatchDb.load());
+        EXPECT (proc.abMatchDb.load() > 4.0f && proc.abMatchDb.load() < 8.0f, "A/B match should be about +6 dB (got %.1f)", proc.abMatchDb.load());
+        EXPECT (std::abs (processedDb - originalDb) < 1.5, "A/B original should play as loud as the processed sound");
+    }
+    // Delta: with Global Wet/Dry at 0 nothing changes, so Delta must be silent.
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (fs, bs);
+        setParam (proc, "global_mix", 0.0f); setParam (proc, "delta_listen", 1.0f);
+        EXPECT (blockRmsDb (render (proc, 1.0, noise)) < -90.0, "Delta should be silent when the module changes nothing");
+    }
+    // Mono the lows: 45 Hz in the left only becomes centred (crossover at 150 Hz); 3 kHz in the left stays left.
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (fs, bs);
+        setParam (proc, "global_mix", 0.0f); setParam (proc, "stage_ceiling_guard", 0.0f); setParam (proc, "mono_lows_hz", 150.0f);
+        auto tail = render (proc, 2.0, [&] (juce::AudioBuffer<float>& b, int off) {
+            for (int i = 0; i < b.getNumSamples(); ++i) {
+                const double t = (off + i) / fs;
+                b.setSample (0, i, (float) (0.3 * std::sin (juce::MathConstants<double>::twoPi * 45 * t) + 0.3 * std::sin (juce::MathConstants<double>::twoPi * 3000 * t)));
+                b.setSample (1, i, 0.0f); } });
+        const double lowL = toneDb (tail, 0, 45, fs, 0), lowR = toneDb (tail, 1, 45, fs, 0), hiR = toneDb (tail, 1, 3000, fs, 0), hiL = toneDb (tail, 0, 3000, fs, 0);
+        EXPECT (std::abs (lowL - lowR) < 0.5, "45 Hz should be equal in both channels (L %.1f / R %.1f dB)", lowL, lowR);
+        EXPECT (hiL - hiR > 40.0, "3 kHz should stay in the left channel only (L %.1f / R %.1f dB)", hiL, hiR);
+    }
+    // Phase Guard: an anti-phase mix (cancels in mono) gets its width pulled back.
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (fs, bs);
+        setParam (proc, "global_mix", 0.0f); setParam (proc, "stage_ceiling_guard", 0.0f); setParam (proc, "phase_guard", 1.0f);
+        auto tail = render (proc, 2.0, [&] (juce::AudioBuffer<float>& b, int) { for (int i = 0; i < b.getNumSamples(); ++i) { const float m = 0.03f * (rnd.nextFloat() * 2 - 1), sd = 0.1f * (rnd.nextFloat() * 2 - 1); b.setSample (0, i, m + sd); b.setSample (1, i, m - sd); } });
+        double sll = 0, srr = 0, slr = 0;
+        for (int i = 0; i < tail.getNumSamples(); ++i) { const double l = tail.getSample (0, i), r = tail.getSample (1, i); sll += l * l; srr += r * r; slr += l * r; }
+        const double corr = slr / std::sqrt (sll * srr);
+        std::printf ("  Phase Guard: correlation %.2f (input about -0.8), width %.1f dB\n", corr, proc.guardDb.load());
+        EXPECT (corr > -0.2 && proc.guardDb.load() < -3.0f, "Phase Guard should pull an out-of-phase mix back toward mono-safe");
+    }
+    // Smooth: harsh material is tamed, dull material untouched.
+    {
+        Smoother sm; sm.prepare (fs);
+        juce::AudioBuffer<float> harsh (2, (int) fs), dull (2, (int) fs);
+        BandPass emph; emph.set (fs, 6500.0, 1.0); Biquad lp; lp.lowPass (fs, 1500.0);
+        for (int i = 0; i < (int) fs; ++i) { const double w = rnd.nextFloat() * 2 - 1; const float h = (float) (0.05 * w + 0.4 * emph.run (w)), d = (float) (0.3 * lp.run (w)); harsh.setSample (0, i, h); harsh.setSample (1, i, h); dull.setSample (0, i, d); dull.setSample (1, i, d); }
+        sm.process (harsh.getWritePointer (0), harsh.getWritePointer (1), harsh.getNumSamples(), 1.0f);
+        const float harshCut = sm.getReductionDb();
+        sm.reset(); sm.process (dull.getWritePointer (0), dull.getWritePointer (1), dull.getNumSamples(), 1.0f);
+        std::printf ("  Smooth: harsh cut %.1f dB, dull cut %.1f dB\n", harshCut, sm.getReductionDb());
+        EXPECT (harshCut < -3.0f && sm.getReductionDb() > -0.5f, "Smooth should act on harsh material only");
+    }
+    // Phone Bass: a 60 Hz note gains audible harmonics (180 Hz) only when on.
+    {
+        PhoneBass pb; pb.prepare (fs);
+        juce::AudioBuffer<float> on (2, (int) fs), off (2, (int) fs);
+        fillSine (on, fs, 60.0, 0.3f); fillSine (off, fs, 60.0, 0.3f);
+        pb.process (on.getWritePointer (0), on.getWritePointer (1), on.getNumSamples(), 1.0f);
+        const double h3on = toneDb (on, 0, 180.0, fs, 4800), h3off = toneDb (off, 0, 180.0, fs, 4800);
+        std::printf ("  Phone Bass: 180 Hz harmonic %.1f dB (off: %.1f dB)\n", h3on, h3off);
+        EXPECT (h3on > -30.0 && h3on - h3off > 40.0, "Phone Bass should add harmonics of the bass");
+    }
+    // Streaming preview maths.
+    {
+        const auto& sv = streamingServices();
+        EXPECT (std::abs (streamingGainDb (sv[0], -8.0f, -0.5f) + 6.0f) < 0.01f, "Spotify should turn a -8 LUFS master down 6 dB");
+        EXPECT (std::abs (streamingGainDb (sv[0], -20.0f, -6.0f) - 5.0f) < 0.01f, "Spotify should turn a quiet master up only to -1 dBTP (5 dB)");
+        EXPECT (streamingGainDb (sv[2], -20.0f, -6.0f) == 0.0f, "YouTube never turns quiet tracks up");
+        EXPECT (std::abs (streamingGainDb (sv[1], -20.0f, -2.0f) - 1.0f) < 0.01f, "Apple Music limited by peak headroom");
+        EXPECT (streamingGainDb (sv[0], -20.0f, 0.0f) == 0.0f, "quiet but peaky track must not be turned down");
+    }
+    // Auto gain stage: -30 dBFS input -> +12 dB in, -12 dB out.
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (fs, bs);
+        proc.startAutoGainStage();
+        render (proc, 3.5, [&] (juce::AudioBuffer<float>& b, int off) { fillSine (b, fs, 440.0, 0.04472f, 0.0, off); });   // -30 dBFS RMS
+        EXPECT (proc.pollAutoGainStage(), "auto gain stage didn't finish");
+        auto realValue = [&] (const char* id) { auto* q = proc.apvts.getParameter (id); return q->convertFrom0to1 (q->getValue()); };
+        EXPECT (std::abs (realValue ("trim_in_db") - 12.0f) < 0.3f && std::abs (realValue ("trim_out_db") + 12.0f) < 0.3f,
+                "auto gain stage set %.1f / %.1f dB (expected +12 / -12)", realValue ("trim_in_db"), realValue ("trim_out_db"));
+    }
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -971,6 +1085,7 @@ int main()
     testNeuralCharacter();
     testRemote();
     testModeNotchSwitch();
+    testProTricks();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

@@ -146,6 +146,7 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                            sendRoomResult();
                        });
                    })
+                   .withEventListener ("autoStage", [this] (const juce::var&) { audioProcessor.startAutoGainStage(); })
                    .withEventListener ("remote", [this] (const juce::var& data)
                    {
                        const auto cmd = data.getProperty ("cmd", {}).toString();
@@ -416,6 +417,7 @@ void SolutionAudioProcessorEditor::sendRemoteState (const juce::String& error)
 
 void SolutionAudioProcessorEditor::timerCallback()
 {
+    audioProcessor.pollAutoGainStage();          // sets the trims when the 3 s listen is done
     if (frameCounter % 120 == 60 && audioProcessor.getRemote() != nullptr && audioProcessor.getRemote()->isRunning())
         sendRemoteState();
 
@@ -455,6 +457,24 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("captureProgress", audioProcessor.getRoomCaptureProgress());
     payload->setProperty ("analysing",     audioProcessor.isRoomAnalysing());
     payload->setProperty ("notchAuto",     audioProcessor.getAutoNotchDepth());
+    payload->setProperty ("abMatch",       audioProcessor.abMatchDb.load());
+    payload->setProperty ("smoothDb",      audioProcessor.smoothDb.load());
+    payload->setProperty ("guardDb",       audioProcessor.guardDb.load());
+    payload->setProperty ("streamGain",    audioProcessor.streamGainDb.load());
+    payload->setProperty ("autoStage",     audioProcessor.getAutoGainStageState());
+    {
+        juce::Array<juce::var> services;
+        const float lufsI = audioProcessor.loudness.integrated.load(), tp = audioProcessor.loudness.truePeakDb.load();
+        for (const auto& svc : SolutionDSP::streamingServices())
+        {
+            juce::DynamicObject::Ptr o = new juce::DynamicObject();
+            o->setProperty ("name", juce::String (svc.name));
+            o->setProperty ("target", svc.targetLufs);
+            o->setProperty ("gain", SolutionDSP::streamingGainDb (svc, lufsI, tp));
+            services.add (juce::var (o.get()));
+        }
+        payload->setProperty ("streaming", services);
+    }
     payload->setProperty ("cvLfo",         audioProcessor.getCvLfo());
     payload->setProperty ("envFollower",   audioProcessor.getEnvFollower());
     payload->setProperty ("learnedCc",     audioProcessor.getLastLearnedCc());

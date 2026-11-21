@@ -16,6 +16,7 @@
 #include "StemSplitter.h"
 #include "NeuralCharacter.h"
 #include "RemoteControl.h"
+#include "ProTricks.h"
 #include <atomic>
 #include <array>
 
@@ -93,6 +94,12 @@ public:
     std::function<void (std::function<void()>)> remoteExecutor;   // tests run commands inline
     juce::var getRemoteState() const;
 
+    // Pro Tricks
+    void startAutoGainStage();                 // message thread: measure ~3 s of input
+    bool pollAutoGainStage();                  // message thread: true when it just set the trims
+    int getAutoGainStageState() const { return autoStageState.load(); }   // 0 idle, 1 listening
+    std::atomic<float> abMatchDb { 0.0f }, smoothDb { 0.0f }, guardDb { 0.0f }, streamGainDb { 0.0f };
+
     // Stem Focus adds latency only while it's on; the host is told on the message thread.
     void updateLatencyNow();
     int getBaseLatency() const { return moduleEngine.getLatencySamples() + ceilingLimiter.getLatency(); }
@@ -117,7 +124,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 7;   // v7: 115 Hz notch switch
+    static constexpr int stateVersion = 8;   // v7: 115 Hz notch, v8: Pro Tricks
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -158,6 +165,14 @@ private:
     SolutionDSP::RoomMeasurement measurement;
     SolutionDSP::RoomCorrector roomCorrector;
     SolutionDSP::BinauralRenderer binaural;
+    SolutionDSP::MonoLows monoLows;
+    SolutionDSP::Smoother smoother;
+    SolutionDSP::PhoneBass phoneBass;
+    SolutionDSP::LoudnessMatcher abMatcher;
+    juce::SmoothedValue<float> trimInGain { 1.0f }, trimOutGain { 1.0f }, previewGain { 1.0f };
+    std::atomic<int> autoStageState { 0 };
+    std::atomic<float> autoStageResultDb { -100.0f };
+    double autoStageSum = 0.0; long long autoStageCount = 0;
     SolutionDSP::StemSplitter stemSplitter;
     juce::AudioBuffer<float> stemRest;
     SolutionDSP::IntegerDelay restDelay;
