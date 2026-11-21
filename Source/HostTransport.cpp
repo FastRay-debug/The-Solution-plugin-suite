@@ -20,6 +20,7 @@ TransportKeys defaultTransportKeys (const juce::String& host)
     if (h.contains ("cubase") || h.contains ("nuendo") || h.contains ("steinberg")) return { "Space", "Space", "NumpadMultiply", "NumpadDecimal", "NumpadDivide" };
     if (h.contains ("studio one") || h.contains ("presonus")) return { "Space", "Space", "NumpadMultiply", "NumpadComma", "NumpadDivide" };
     if (h.contains ("pro tools"))                       return { "Space", "Space", "Ctrl+Space", "Enter", "Ctrl+Shift+L" };
+    if (h.contains ("luna"))                            return { "Space", "Space", "R", "Home", "L" };      // UAD LUNA (verify in Voice settings)
     if (h.contains ("bitwig"))                          return { "Space", "Space", "Shift+Space", "Home", "Ctrl+L" };
     return { "Space", "Space", "R", "Home", "L" };
 }

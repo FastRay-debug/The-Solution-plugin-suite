@@ -192,6 +192,14 @@
               background: linear-gradient(180deg, rgba(30,35,45,0.98), rgba(10,12,16,0.98)); border: 1px solid rgba(255,138,28,0.6);
               border-radius: 8px; box-shadow: 0 12px 30px rgba(0,0,0,0.85), 0 0 18px rgba(255,138,28,0.18); }
     .fr-hub.open { display: block; }
+    #lookPop { top: auto; bottom: 46px; left: auto; right: 160px; }
+    .look-slot { display: flex; align-items: center; gap: 6px; padding: 6px 8px; margin-bottom: 4px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); font-size: 12px; }
+    .look-slot:hover { border-color: var(--accent); } .look-slot.empty { color: #94a3b8; border-style: dashed; }
+    .look-slot b { flex: 1; } .look-slot .sw { width: 12px; height: 12px; border-radius: 3px; }
+    .fr-hub .look-slot button { display: inline-block; width: auto; margin: 0; padding: 1px 7px; }
+    #stageMenu { display: none; position: fixed; z-index: 980; width: 220px; padding: 6px; border-radius: 8px; background: rgba(12,15,22,0.97); border: 1px solid var(--accent); box-shadow: 0 10px 28px rgba(0,0,0,0.8); }
+    #stageMenu.open { display: block; }
+    #stageMenu button { display: block; width: 100%; text-align: left; margin: 2px 0; font-size: 12px; }
     .fr-hub-title { font: bold 10px monospace; letter-spacing: 2px; color: #FF9D2E; padding: 2px 6px 7px; }
     .fr-hub button { display: block; width: 100%; text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
                      border-radius: 6px; padding: 7px 9px; margin-bottom: 5px; color: #E5E7EB; cursor: pointer; }
@@ -204,7 +212,10 @@
       text-transform: uppercase; white-space: nowrap; cursor: pointer;
       text-shadow: 0 0 10px rgba(245,158,11,0.5);
     }
-    .skin-bar { display: flex; align-items: center; gap: 3px; overflow: hidden; }
+    .skin-bar { display: flex; align-items: center; gap: 3px; flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+    .skin-bar::-webkit-scrollbar { display: none; }
+    .ribbon-title { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 1250px) { .skin-bar > button .lbl { display: none; } .skin-bar > button { padding: 3px 5px; font-size: 10.5px; } .skin-bar { gap: 2px; } .ribbon-title { font-size: 12px; } }
     .meter-pill {
       display: flex; align-items: center; gap: 8px; font-family: monospace; font-size: 10.5px;
       white-space: nowrap; background: #06080B; border: 1px solid #2D3544; border-radius: 4px;
@@ -443,6 +454,16 @@
 <body>
   <div id="fsBadge"></div>
   <div id="voiceCaption"></div>
+  <div id="stageMenu">
+    <button onclick="stageMenu('fly')">✈ Enter the 3D world (double-click)</button>
+    <button onclick="stageMenu('skins')">🎨 Skins…</button>
+    <button onclick="stageMenu('looks')">✨ Looks (OS slots)…</button>
+    <button onclick="stageMenu('editor')">🖌 Open Skin Editor</button>
+    <button onclick="stageMenu('presets')">🗄 Presets</button>
+    <button onclick="stageMenu('rooms')">🏛 Listening rooms</button>
+    <button onclick="stageMenu('full')">⛶ Maximise (`)</button>
+    <button onclick="stageMenu('other')">⧉ Fullscreen on other display (Ctrl+`)</button>
+  </div>
   <div id="vanillaBanner" style="display:none;position:fixed;top:54px;right:12px;z-index:955;padding:8px 12px;border-radius:8px;background:rgba(30,20,5,0.95);border:1px solid #f59e0b;color:#fde68a;font-size:12px;">
     🛟 SAFE LOAD: started from defaults (Ctrl+Shift was held). Your saved settings are kept.
     <button onclick="emit('restoreSkipped', {}); document.getElementById('vanillaBanner').style.display='none'; flashHint('Your saved settings are back')">RESTORE MY SETTINGS</button>
@@ -545,81 +566,25 @@
     <button id="voiceBtn" class="voice-btn" onclick="toggleVoice()" oncontextmenu="event.preventDefault(); openVoiceSettings();" title="Voice control (Shift+V) · right-click for settings">🎤</button>
     <div class="ribbon-title" id="moduleTitle"><span id="secretTrigger" onclick="openSecretMenu(event)" title="Secret Menu" style="cursor:pointer;">T</span><span id="moduleTitleRest" onclick="toggleCalTone()" title="Click title for Tape Calibration Tone (-18 dBFS)">HE SOLUTION · SUITE MODULE</span></div>
     <div class="skin-bar">
-      <select id="skinSelect" onchange="applySkin(this.value)" title="Select from 50 /cars & /places skins">
-        <optgroup label="/cars (25 Classic & Muscle)">
-          <option value="lincoln69" selected>'69 Lincoln Continental</option>
-          <option value="camaro71">'71 Camaro (Orange)</option>
-          <option value="mach1">'70 Mustang Mach 1</option>
-          <option value="eviltwin">'68 "Evil Twin"</option>
-          <option value="eldorado59">'59 Cadillac Eldorado</option>
-          <option value="cuda70">'70 HEMI 'Cuda</option>
-          <option value="gto67">'67 Pontiac GTO</option>
-          <option value="chevelle70">'70 Chevelle SS 454</option>
-          <option value="charger69">'69 Dodge Charger R/T</option>
-          <option value="corvette63">'63 Corvette Split-Window</option>
-          <option value="gt40">'66 Ford GT40 Gulf</option>
-          <option value="countach">'85 Lamborghini Countach</option>
-          <option value="gnx87">'87 Buick GNX</option>
-          <option value="viper96">'96 Dodge Viper GTS</option>
-          <option value="belair57">'57 Chevy Bel Air</option>
-          <option value="porsche911">'73 Porsche 911 RS</option>
-          <option value="delorean">'81 DeLorean DMC-12</option>
-          <option value="nsx91">'91 Acura NSX</option>
-          <option value="skyline99">'99 Skyline GT-R R34</option>
-          <option value="impala64">'64 Chevy Impala SS</option>
-          <option value="cobra65">'65 Shelby Cobra 427</option>
-          <option value="transam77">'77 Pontiac Trans Am</option>
-          <option value="f40">'89 Ferrari F40</option>
-          <option value="mclarenf1">'94 McLaren F1</option>
-          <option value="supra94">'94 Toyota Supra MK4</option>
-        </optgroup>
-        <optgroup label="/places (25 Iconic Spaces)">
-          <option value="rome">Rome Pantheon</option>
-          <option value="giza">Giza Pyramids</option>
-          <option value="aztec">Aztec Ruins</option>
-          <option value="serengeti">Serengeti Falls</option>
-          <option value="museum">Museum Gallery</option>
-          <option value="piano">Concert Piano</option>
-          <option value="abbey">Abbey Studio Room</option>
-          <option value="tokyo">Tokyo Neon Alley</option>
-          <option value="paris">Paris Opera House</option>
-          <option value="iceland">Icelandic Basalt Cave</option>
-          <option value="kyoto">Kyoto Bamboo Temple</option>
-          <option value="petra">Petra Sandstone Canyon</option>
-          <option value="redrocks">Red Rocks Amphitheater</option>
-          <option value="taj">Taj Mahal Marble Dome</option>
-          <option value="machu">Machu Picchu Cloud Ridge</option>
-          <option value="norway">Nordic Fjord Cliff</option>
-          <option value="venice">Venice Grand Canal</option>
-          <option value="sedona">Sedona Vortex Mesa</option>
-          <option value="antarctica">Antarctic Ice Cavern</option>
-          <option value="sahara">Sahara Starry Dunes</option>
-          <option value="apollo">Apollo Mission Control</option>
-          <option value="cathedral">Gothic Cathedral Nave</option>
-          <option value="subway">NYC Underground Tunnel</option>
-          <option value="monaco">Monaco Harbor Yacht</option>
-          <option value="banff">Banff Emerald Lake</option>
-        </optgroup>
-      </select>
+      
       <button id="emuBtn" onclick="openEmulator()" data-tip="Demo player - plays its own test audio outside your DAW (Shift+A)">▶</button>
-      <button onclick="openVault()" data-tip="The Vault: Presets & A/B">🗄 VAULT</button>
-      <button onclick="openAssistant()" data-tip="Mix Assistant: compare with a reference track or genre target">🎯</button>
+      <button onclick="openVault()" data-tip="The Vault: Presets & A/B">🗄 <span class="lbl">VAULT</span></button>
+      <button onclick="openAssistant()" data-tip="AI Analyze (Mix Assistant): compares your mix with a reference track or genre target and suggests moves. A">🎯 AI</button>
       <button onclick="openCharacter()" data-tip="Neural Character: run a captured model of real hardware on this module">🧠</button>
       <button onclick="openRemote()" data-tip="Control this module from your phone or tablet">📱</button>
-      <button onclick="openPro()" data-tip="Pro Tricks: gain staging, mono lows, smooth, phone bass, streaming preview">★ PRO</button>
-      <button id="roomsBtnTop" onclick="openRooms()" data-tip="Listening Rooms: hear your mix in studios, venues, cars, phones, earbuds...">🏛 ROOMS</button>
+      <button onclick="openPro()" data-tip="Pro Tricks: gain staging, mono lows, smooth, phone bass, streaming preview">★ <span class="lbl">PRO</span></button>
+      <button id="roomsBtnTop" onclick="openRooms()" data-tip="Listening Rooms: hear your mix in studios, venues, cars, phones, earbuds...">🏛 <span class="lbl">ROOMS</span></button>
       <button id="abBtnTop" onclick="toggleParamBtn('ab_bypass')" data-tip="Hear the ORIGINAL at the same loudness - louder no longer fools you (B)">A/B</button>
       <button id="deltaBtnTop" onclick="toggleParamBtn('delta_listen')" data-tip="Delta: hear only what this module adds or removes (D)">Δ</button>
-      <button onclick="openMatrix()" data-tip="The Matrix: CV & MIDI Learn">⚡ MATRIX</button>
+      <button onclick="openMatrix()" data-tip="The Matrix: CV & MIDI Learn">⚡ <span class="lbl">MATRIX</span></button>
       <button onclick="doUndo()" data-tip="Undo">↩</button>
       <button onclick="doRedo()" data-tip="Redo">↪</button>
       <button id="precBtn" onclick="togglePrecision()" data-tip="Oscilloscope (Shift+Space)">⌖</button>
       <button id="rearBtn" onclick="toggleRear()" data-tip="180° rear patch bay (Shift+R)">↻</button>
-      <button id="classicBtn" onclick="toggleClassicOS()" data-tip="Classic OS Mode">OS</button>
-      <button id="tipBtn" class="active" onclick="toggleTooltips()" data-tip="Toggle 0.6s Hover Tooltips ON/OFF">TIP</button>
-      <button id="curBtn" onclick="cycleCursor()" data-tip="Pointer style: mouse / right hand / left hand / pinch (Shift+H)">✋</button>
-      <button onclick="document.getElementById('manualModal').classList.add('open')" data-tip="Built-in Instruction Manual">?</button>
-      <button onclick="document.getElementById('phoneModal').classList.add('open')" data-tip="Phone Sync">📱</button>
+      
+
+      
+      
     </div>
     <div class="meter-pill" id="ribbonMeter" onclick="openMeterMenu(event)" ondblclick="toggleMeterPop()" onwheel="wheelZoomMeter(event)" title="Click: Meter Menu · Wheel: Zoom · Double-Click: Expand">
       <span>PH <b id="m-phase" style="color:var(--accent2)">+1.00</b></span>
@@ -812,28 +777,88 @@
   <div class="footer">
     <div style="display:flex;align-items:center;gap:6px;">
       <span>APPEARANCE:</span>
-      <select onchange="document.documentElement.style.setProperty('--accent', this.value)">
+      <select id="apAccent" onchange="document.documentElement.style.setProperty('--accent', this.value)">
         <option value="#F59E0B">Accent: Amber</option>
         <option value="#FF5E1A">Accent: Hugger Orange</option>
         <option value="#EF4444">Accent: Evil Twin Crimson</option>
         <option value="#38BDF8">Accent: Electric Cyan</option>
         <option value="#10B981">Accent: Jade</option>
       </select>
-      <select onchange="document.documentElement.style.setProperty('--bezel', this.value)">
+      <select id="apBezel" onchange="document.documentElement.style.setProperty('--bezel', this.value)">
         <option value="#2E3542">Bezel: Gunmetal</option>
         <option value="#D4AF37">Bezel: Gold Trim</option>
         <option value="#9CA3AF">Bezel: Chrome</option>
         <option value="#7F1D1D">Bezel: Crimson</option>
       </select>
-      <select onchange="setKnobStyle(this.value)" title="Object Mixer: Swap Knob Cap Finish">
+      <select id="apKnob" onchange="setKnobStyle(this.value)" title="Object Mixer: Swap Knob Cap Finish">
         <option value="gold">Knob: Brushed Gold</option>
         <option value="chrome">Knob: Chrome</option>
         <option value="gunmetal">Knob: Gunmetal</option>
         <option value="billet">Knob: Billet Red</option>
       </select>
+      <select id="skinSelect" onchange="applySkin(this.value)" title="Select from 50 /cars & /places skins">
+        <optgroup label="/cars (25 Classic & Muscle)">
+          <option value="lincoln69" selected>'69 Lincoln Continental</option>
+          <option value="camaro71">'71 Camaro (Orange)</option>
+          <option value="mach1">'70 Mustang Mach 1</option>
+          <option value="eviltwin">'68 "Evil Twin"</option>
+          <option value="eldorado59">'59 Cadillac Eldorado</option>
+          <option value="cuda70">'70 HEMI 'Cuda</option>
+          <option value="gto67">'67 Pontiac GTO</option>
+          <option value="chevelle70">'70 Chevelle SS 454</option>
+          <option value="charger69">'69 Dodge Charger R/T</option>
+          <option value="corvette63">'63 Corvette Split-Window</option>
+          <option value="gt40">'66 Ford GT40 Gulf</option>
+          <option value="countach">'85 Lamborghini Countach</option>
+          <option value="gnx87">'87 Buick GNX</option>
+          <option value="viper96">'96 Dodge Viper GTS</option>
+          <option value="belair57">'57 Chevy Bel Air</option>
+          <option value="porsche911">'73 Porsche 911 RS</option>
+          <option value="delorean">'81 DeLorean DMC-12</option>
+          <option value="nsx91">'91 Acura NSX</option>
+          <option value="skyline99">'99 Skyline GT-R R34</option>
+          <option value="impala64">'64 Chevy Impala SS</option>
+          <option value="cobra65">'65 Shelby Cobra 427</option>
+          <option value="transam77">'77 Pontiac Trans Am</option>
+          <option value="f40">'89 Ferrari F40</option>
+          <option value="mclarenf1">'94 McLaren F1</option>
+          <option value="supra94">'94 Toyota Supra MK4</option>
+        </optgroup>
+        <optgroup label="/places (25 Iconic Spaces)">
+          <option value="rome">Rome Pantheon</option>
+          <option value="giza">Giza Pyramids</option>
+          <option value="aztec">Aztec Ruins</option>
+          <option value="serengeti">Serengeti Falls</option>
+          <option value="museum">Museum Gallery</option>
+          <option value="piano">Concert Piano</option>
+          <option value="abbey">Abbey Studio Room</option>
+          <option value="tokyo">Tokyo Neon Alley</option>
+          <option value="paris">Paris Opera House</option>
+          <option value="iceland">Icelandic Basalt Cave</option>
+          <option value="kyoto">Kyoto Bamboo Temple</option>
+          <option value="petra">Petra Sandstone Canyon</option>
+          <option value="redrocks">Red Rocks Amphitheater</option>
+          <option value="taj">Taj Mahal Marble Dome</option>
+          <option value="machu">Machu Picchu Cloud Ridge</option>
+          <option value="norway">Nordic Fjord Cliff</option>
+          <option value="venice">Venice Grand Canal</option>
+          <option value="sedona">Sedona Vortex Mesa</option>
+          <option value="antarctica">Antarctic Ice Cavern</option>
+          <option value="sahara">Sahara Starry Dunes</option>
+          <option value="apollo">Apollo Mission Control</option>
+          <option value="cathedral">Gothic Cathedral Nave</option>
+          <option value="subway">NYC Underground Tunnel</option>
+          <option value="monaco">Monaco Harbor Yacht</option>
+          <option value="banff">Banff Emerald Lake</option>
+        </optgroup>
+      </select>
       <span id="calBadge" style="display:none;color:#EF4444;font-family:monospace;">● CAL TONE -18 dBFS</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
+      <button id="classicBtn" onmousedown="osDown(event)" onmouseup="osUp(event)" data-tip="Looks: click = next favourite look (Classic OS until you save some) · click and hold = look slots">OS</button>
+      <button id="tipBtn" class="active" onclick="toggleTooltips()" data-tip="Toggle 0.6s Hover Tooltips ON/OFF">TIP</button>
+      <button id="curBtn" onclick="cycleCursor()" data-tip="Pointer style: mouse / right hand / left hand / pinch (Shift+H)">✋</button>
+      <div id="lookPop" class="fr-hub" style="width:260px;"></div>
       <div class="badge" id="guardBadge" ondblclick="toggleCeilingGuard()" style="cursor:pointer;" title="Double-click to toggle -0.5 dBFS Safety Guard">-0.5 dBFS GUARD ACTIVE</div>
       <span class="screw" id="uwScrew" onclick="toggleUltraWide()" title="Chassis Screw: Ultra Wide Haas-Kempf">✦</span>
     </div>
@@ -1014,6 +1039,7 @@
       <div style="display:flex;gap:6px;align-items:center;">
         <select id="charSelect" onchange="charCmd('select', { name: this.value })" style="flex:1;"></select>
         <button onclick="charCmd('list')">↻ RESCAN</button>
+        <button onclick="charCmd('browse')">📁 BROWSE FOR A MODEL…</button>
         <button onclick="charCmd('reveal')">📂 MODELS FOLDER</button>
       </div>
       <div id="charMsg" style="font-size:11px;color:var(--accent2);"></div>
@@ -1245,7 +1271,7 @@
   <div class="modal" id="keysModal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box" style="width:560px;max-height:620px;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;"><strong style="color:var(--gold);letter-spacing:0.1em;">⌨ SHORTCUT MANAGER</strong>
-        <span><button onclick="resetAllKeys()">RESET ALL</button> <button onclick="document.getElementById('keysModal').classList.remove('open')">CLOSE</button></span></div>
+        <span><button onclick="printShortcuts()">🖨 PRINT / PDF</button> <button onclick="resetAllKeys()">RESET ALL</button> <button onclick="document.getElementById('keysModal').classList.remove('open')">CLOSE</button></span></div>
       <div class="dg-hint" style="font-size:11px;margin:6px 0 8px;">Click a key, then press the new combination (Esc cancels). Gold = changed by you, red = two actions share a key. Saved with your session.</div>
       <div id="keysList"></div>
     </div>
@@ -1574,6 +1600,7 @@
       if (mod && e.altKey && k === 'v') { e.preventDefault(); cycleDisplay(); return; }
       if (mod && e.altKey && k === 's') { e.preventDefault(); document.getElementById('secretModal').classList.add('open'); return; }
       if (mod && e.shiftKey && k === 'k') { e.preventDefault(); openShortcutManager(); return; }
+      if (mod && e.shiftKey && k === 'o') { e.preventDefault(); openLookSlots(); return; }
       if (mod && e.shiftKey && k === 'm') { e.preventDefault(); openDiagnostics(); toggleMacroBank(true); return; }
       if (mod && e.altKey && k === 'l') { e.preventDefault(); flipToggle('limiter_lookahead'); return; }
       if (mod && e.altKey && k === 'd') { e.preventDefault(); flipToggle('dc_guard'); return; }
@@ -2094,6 +2121,8 @@
         if (m.ui) { window._uiProps = Object.assign(window._uiProps || {}, m.ui);
           if (m.ui.beginner !== undefined) setBeginner(m.ui.beginner === '1', true);
           if (m.ui.keymap) { try { customKeys = JSON.parse(m.ui.keymap) || {}; } catch (e) {} }
+          if (m.ui.looks) { try { looks = JSON.parse(m.ui.looks) || []; } catch (e) {} }
+          if (m.ui.lamps) lampSrc = m.ui.lamps.split(',').slice(0, 4);
           if (m.ui.modFocus !== undefined) setModFocus(m.ui.modFocus !== '0', true); if (typeof renderMacros === 'function' && diagOpen) renderMacros(); }
         if (m.ui && m.ui.skin && SKINS[m.ui.skin]) {
           const sel = document.getElementById('skinSelect');
@@ -2115,7 +2144,7 @@
         document.getElementById('captureBtn').classList.remove('active');
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
-      window.__JUCE__.backend.addEventListener('roomNotice', (msg) => alert(msg));
+      window.__JUCE__.backend.addEventListener('roomNotice', (msg) => flashHint(msg));
       window.__JUCE__.backend.addEventListener('scope', (m) => { window._scope = m; });
       window.__JUCE__.backend.addEventListener('alignResult', (msg) => { document.getElementById('alignMsg').textContent = msg; });
       window.__JUCE__.backend.addEventListener('roomList', (m) => { roomList = m || []; renderRooms(); });
@@ -2698,8 +2727,10 @@
     cvs.addEventListener('dblclick', (e) => {
       const [mx, my] = canvasPoint(e), o = hitObject(mx, my);
       if (o) { if (o.self) emit('stageGesture', { phase: 'begin' }); moveObject(o, { az: 0, el: 0, dist: 2, width: 1 }); if (o.self) emit('stageGesture', { phase: 'end' }); }
+      else if (window.gl3d && window.gl3d.active && vizMode <= 1 && !precisionMode) toggleFly();     // into the immersive world
       else { cam.yaw = 0; cam.pitch = 0.48; cam.zoom = 1; }
     });
+    cvs.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); openStageMenu(e.clientX, e.clientY); });
 
     // ---------- path presets & motion controls ----------
     function presetPath(kind) {
@@ -3089,6 +3120,8 @@
       ['path', 'P', 'Draw a motion path', () => togglePathDraw()],
       ['motion', 'Shift+P', 'Motion on/off', () => toggleMotion()],
       ['macroBank', 'Ctrl+Shift+M', 'Macro bank (20 slots)', () => { openDiagnostics(); toggleMacroBank(true); }],
+      ['looks', 'Ctrl+Shift+O', 'Look slots (OS button)', () => openLookSlots()],
+      ...Array.from({ length: 20 }, (_, i) => ['macro' + (i + 1), '', 'Recall macro ' + (i + 1), () => macro(i + 1, false)]),
     ];
     let customKeys = {};                                   // action id -> combo (only the ones the user changed)
     function comboOf(e) {
@@ -3114,7 +3147,7 @@
       const used = {}; ACTIONS.forEach(a => { const k = keyOf(a); (used[k] = used[k] || []).push(a[0]); });
       list.innerHTML = ACTIONS.map(a => {
         const k = keyOf(a), clash = used[k].length > 1;
-        return `<div class="km-row"><span>${a[2]}</span><button class="km-key ${customKeys[a[0]] ? 'custom' : ''} ${clash ? 'clash' : ''}" data-act="${a[0]}">${k}</button>${customKeys[a[0]] ? `<button class="km-reset" data-reset="${a[0]}" title="Back to ${a[1]}">↺</button>` : '<span></span>'}</div>`;
+        return `<div class="km-row"><span>${a[2]}</span><button class="km-key ${customKeys[a[0]] ? 'custom' : ''} ${clash && k ? 'clash' : ''}" data-act="${a[0]}">${k || '— set —'}</button>${customKeys[a[0]] ? `<button class="km-reset" data-reset="${a[0]}" title="Back to ${a[1]}">↺</button>` : '<span></span>'}</div>`;
       }).join('');
       list.querySelectorAll('[data-act]').forEach(b => b.onclick = () => captureKey(b));
       list.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => { delete customKeys[b.dataset.reset]; saveKeys(); renderShortcutManager(); });
@@ -3129,8 +3162,98 @@
       };
       window.addEventListener('keydown', onKey, true);
     }
+    function printShortcuts() {
+      const rows = ACTIONS.filter(a => keyOf(a)).map(a => `<tr><td>${a[2]}</td><td><b>${keyOf(a)}</b></td></tr>`).join('');
+      const w = window.open('', '_blank');
+      if (!w) { flashHint('Your host blocked the print window'); return; }
+      w.document.write(`<title>The Solution - Keyboard Shortcuts</title><style>body{font-family:Segoe UI,sans-serif;padding:24px}h1{font-size:20px}table{border-collapse:collapse;width:100%}td{border-bottom:1px solid #ddd;padding:5px 8px;font-size:13px}td:last-child{font-family:monospace;text-align:right}</style><h1>The Solution · Keyboard Shortcuts (Billet Audio)</h1><p>Voice: say "Solution" + a command (Shift+V). Right-click any control to MIDI-learn it.</p><table>${rows}</table>`);
+      w.document.close(); w.focus(); w.print();
+    }
     function saveKeys() { emit('setUiProp', { key: 'keymap', value: JSON.stringify(customKeys) }); }
     function resetAllKeys() { customKeys = {}; saveKeys(); renderShortcutManager(); flashHint('All shortcuts back to defaults'); }
+
+    // ===================== LOOKS: the OS button cycles your favourite looks =====================
+    // Click = next favourite look. Click and hold = look slots (empty ones show + to save the current look).
+    const LOOK_SLOTS = 6;
+    let looks = [], lookIdx = -1, osHoldTimer = null, osHeld = false;
+    function currentLook() {
+      return { accent: document.getElementById('apAccent').value, bezel: document.getElementById('apBezel').value, knob: document.getElementById('apKnob').value,
+               skin: document.getElementById('skinSelect').value, classic: document.body.classList.contains('classic-os') };
+    }
+    function applyLook(l) {
+      if (!l) return;
+      const set = (id, v, fn) => { const el = document.getElementById(id); if (el && v) { el.value = v; fn(v); } };
+      set('apAccent', l.accent, v => document.documentElement.style.setProperty('--accent', v));
+      set('apBezel', l.bezel, v => document.documentElement.style.setProperty('--bezel', v));
+      set('apKnob', l.knob, v => setKnobStyle(v));
+      set('skinSelect', l.skin, v => applySkin(v));
+      if (!!l.classic !== document.body.classList.contains('classic-os')) toggleClassicOS();
+    }
+    function saveLooks() { emit('setUiProp', { key: 'looks', value: JSON.stringify(looks) }); }
+    function osDown(e) { osHeld = false; clearTimeout(osHoldTimer); osHoldTimer = setTimeout(() => { osHeld = true; openLookSlots(); }, 500); }
+    function osUp(e) {
+      clearTimeout(osHoldTimer);
+      if (osHeld) return;
+      const filled = looks.map((l, i) => l ? i : -1).filter(i => i >= 0);
+      if (!filled.length) { toggleClassicOS(); flashHint('Tip: click and hold OS to save looks into slots'); return; }
+      lookIdx = filled[(filled.indexOf(lookIdx) + 1) % filled.length];
+      applyLook(looks[lookIdx]); flashHint('Look ' + (lookIdx + 1) + (looks[lookIdx].name ? ': ' + looks[lookIdx].name : ''));
+    }
+    function openLookSlots() {
+      const pop = document.getElementById('lookPop');
+      pop.innerHTML = '<div class="fr-hub-title">LOOKS · click = use · + = save current · ✕ = clear</div>' + Array.from({ length: LOOK_SLOTS }, (_, i) => {
+        const l = looks[i];
+        return l ? `<div class="look-slot" onclick="applyLook(looks[${i}]); lookIdx=${i}; closeLookSlots()"><span class="sw" style="background:${l.accent}"></span><span class="sw" style="background:${l.bezel}"></span><b>${i + 1}. ${escapeHtml(l.name || (l.classic ? 'Classic' : l.skin || 'Look'))}</b><button onclick="event.stopPropagation(); looks[${i}] = null; saveLooks(); openLookSlots()">✕</button></div>`
+                 : `<div class="look-slot empty" onclick="const n = prompt('Name this look', 'Look ${i + 1}'); if (n !== null) { looks[${i}] = Object.assign(currentLook(), { name: n }); saveLooks(); openLookSlots(); }"><b>＋</b> empty slot ${i + 1}</div>`;
+      }).join('');
+      pop.classList.add('open');
+    }
+    function closeLookSlots() { document.getElementById('lookPop').classList.remove('open'); }
+    document.addEventListener('mousedown', (e) => { if (!e.target.closest('#lookPop') && !e.target.closest('#classicBtn')) closeLookSlots(); });
+
+    // ===================== TITLE-BAR SQUARES: assignable load lights =====================
+    // Each square shows a real reading; click one to choose what it follows.
+    const LAMP_SOURCES = ['engine', 'avg', 'gpu', 'temp', ...Array.from({ length: 32 }, (_, i) => 'core' + (i + 1))];
+    let lampSrc = ['engine', 'avg', 'gpu', 'temp'];
+    function lampValue(src) {
+      const d = diagData || {}, t = window._tele || {}, g = (d.gpus || [])[0] || {};
+      if (src === 'engine') return (t.dqsSuiteLoad || 0) * 100;
+      if (src === 'avg') return d.cpuTotal;
+      if (src === 'gpu') return g.load;
+      if (src === 'temp') { const v = [d.cpuTemp, g.temp].filter(x => x != null); return v.length ? (Math.max(...v) - 30) / 0.65 : null; }
+      if (src.startsWith('core')) return (d.cores || [])[+src.slice(4) - 1];
+      return null;
+    }
+    const lampLabel = (src) => ({ engine: 'Audio engine load', avg: 'CPU average', gpu: 'GPU load', temp: 'Hottest temperature' })[src] || ('CPU ' + src.replace('core', 'core '));
+    function updateLamps() {
+      document.querySelectorAll('.dg-lamps i').forEach((el, i) => {
+        const v = lampValue(lampSrc[i]), on = v == null ? 0 : Math.max(0.12, Math.min(1, v / 100));
+        el.style.opacity = v == null ? 0.25 : (0.3 + 0.7 * on).toFixed(2);
+        el.style.boxShadow = `inset 0 0 3px rgba(0,0,0,0.6), 0 0 ${(2 + on * 12).toFixed(0)}px currentColor`;
+        el.title = lampLabel(lampSrc[i]) + (v == null ? ': n/a' : ': ' + Math.round(v) + '%') + ' · click to change';
+      });
+    }
+    document.querySelectorAll('.dg-lamps i').forEach((el, i) => {
+      el.style.color = getComputedStyle(el).backgroundColor; el.style.cursor = 'pointer';
+      el.onclick = () => { const n = (diagData && diagData.cores) ? diagData.cores.length : 16;
+        const opts = LAMP_SOURCES.filter(s => !s.startsWith('core') || +s.slice(4) <= n);
+        lampSrc[i] = opts[(opts.indexOf(lampSrc[i]) + 1) % opts.length]; emit('setUiProp', { key: 'lamps', value: lampSrc.join(',') });
+        updateLamps(); flashHint('Light ' + (i + 1) + ' follows: ' + lampLabel(lampSrc[i])); };
+    });
+    setInterval(() => { if (diagOpen) updateLamps(); }, 500);
+
+    // ===================== 3D stage right-click menu =====================
+    function openStageMenu(x, y) {
+      const m = document.getElementById('stageMenu');
+      m.style.left = Math.min(x, innerWidth - 230) + 'px'; m.style.top = Math.min(y, innerHeight - 260) + 'px'; m.classList.add('open');
+    }
+    function stageMenu(cmd) {
+      document.getElementById('stageMenu').classList.remove('open');
+      if (cmd === 'fly') toggleFly(); else if (cmd === 'presets') openVault(); else if (cmd === 'skins') { const s = document.getElementById('skinSelect'); s.focus(); s.showPicker ? s.showPicker() : s.click(); }
+      else if (cmd === 'editor') emit('openSkinEditor', {}); else if (cmd === 'looks') openLookSlots(); else if (cmd === 'rooms') openRooms();
+      else if (cmd === 'full') { hoverPanel = 'stage'; toggleMaxPanel(); } else if (cmd === 'other') { hoverPanel = 'stage'; popOutPanel(); }
+    }
+    document.addEventListener('mousedown', (e) => { if (!e.target.closest('#stageMenu')) document.getElementById('stageMenu').classList.remove('open'); });
 
     // ===================== DISPLAY / VR CYCLE (Ctrl+Alt+V) =====================
     function cycleDisplay() {

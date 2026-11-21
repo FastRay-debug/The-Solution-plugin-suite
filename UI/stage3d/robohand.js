@@ -76,6 +76,8 @@ function setup() {
   root.scale.setScalar(0.78);
 
   // ---- motion ----
+  let mouse = { x: -1e4, y: -1e4 }, nearFor = 0, aside = 0;
+  window.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; }, { passive: true });
   let visible = false, raf = 0, last = performance.now(), grip = 0, gripTarget = 0, seq = [], pos = new THREE.Vector3(), target = new THREE.Vector3(), held = false;
   function toWorld(x, y) {
     const r = cv.getBoundingClientRect(), ndc = new THREE.Vector3((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1, 0.5).unproject(camera);
@@ -86,11 +88,12 @@ function setup() {
   function drawDisplay(t) {
     dctx.clearRect(0, 0, 256, 128); dctx.fillStyle = 'rgba(4,20,28,0.92)'; dctx.fillRect(0, 0, 256, 128);
     dctx.strokeStyle = '#38e1ff'; dctx.lineWidth = 3; dctx.strokeRect(3, 3, 250, 122);
-    dctx.fillStyle = '#7df3ff'; dctx.font = 'bold 21px monospace'; dctx.fillText('BILLET AUDIO', 14, 34);
-    dctx.font = 'bold 16px monospace'; dctx.fillStyle = held ? '#ffb35c' : '#38e1ff'; dctx.fillText(held ? 'DATA-LINK: LOCKED' : 'DATA-LINK: READY', 14, 58);
-    for (let i = 0; i < 14; i++) { const h = 8 + 30 * Math.abs(Math.sin(t * 3 + i * 0.7)); dctx.fillStyle = i % 4 ? '#22d3ee' : '#4ade80'; dctx.fillRect(14 + i * 16, 116 - h, 11, h); }
+    for (let i = 0; i < 14; i++) { const h = 8 + 44 * Math.abs(Math.sin(t * 3 + i * 0.7)); dctx.fillStyle = i % 4 ? '#22d3ee' : '#4ade80'; dctx.fillRect(14 + i * 16, 92 - h, 11, h); }
+    dctx.fillStyle = held ? '#ffb35c' : '#4ade80'; dctx.beginPath(); dctx.arc(232, 110, 5, 0, Math.PI * 2); dctx.fill();
+    dctx.fillStyle = '#7df3ff'; dctx.font = 'bold 15px monospace'; dctx.fillText('FAST RAY', 14, 114);     // where "Data Link" was
     dtex.needsUpdate = true;
   }
+
   function frame(now) {
     if (!visible) { raf = 0; return; }
     const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
@@ -104,7 +107,13 @@ function setup() {
       if (s.t >= (s.dur || 0)) seq.shift();
     }
     pos.lerp(target, Math.min(1, dt * 14));
-    root.position.copy(pos).add(new THREE.Vector3(0, Math.sin(t * 1.6) * 0.03, 0));
+    // Alive: if the mouse lingers near the hand for 0.6 s it moves aside (still holding whatever it holds).
+    { const p = pos.clone().project(camera), r = cv.getBoundingClientRect();
+      const sx = r.left + (p.x + 1) / 2 * r.width, sy = r.top + (1 - p.y) / 2 * r.height;
+      const near = Math.hypot(mouse.x - sx, mouse.y - sy) < 150 && seq.length === 0;
+      nearFor = near ? nearFor + dt : 0;
+      aside += ((nearFor > 0.6 || (aside > 0.05 && near)) ? 1 - aside : -aside) * Math.min(1, dt * 5); }
+    root.position.copy(pos).add(new THREE.Vector3(1.6 * aside, -1.1 * aside + Math.sin(t * 1.6) * 0.03, 0));
     const toward = Math.atan2(pos.y - restPoint().y + 6, pos.x - restPoint().x - 4);
     root.rotation.set(0.15 + Math.sin(t * 0.9) * 0.03, -0.35, toward - Math.PI / 2 + 0.2);
     grip += (gripTarget - grip) * Math.min(1, dt * 9);

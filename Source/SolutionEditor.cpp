@@ -186,6 +186,16 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("openSkinEditor", [this] (const juce::var&)
+           {
+               // The Skin Editor is its own program (separate installer). Look where it installs.
+               juce::Array<juce::File> candidates {
+                   juce::File::getSpecialLocation (juce::File::globalApplicationsDirectory).getChildFile ("Billet Audio/The Solution/Skin Editor/Skin Editor.exe"),
+                   juce::File::getSpecialLocation (juce::File::globalApplicationsDirectory).getChildFile ("The Solution/Skin Editor/Skin Editor.exe"),
+                   juce::File::getSpecialLocation (juce::File::globalApplicationsDirectory).getChildFile ("Billet Audio Skin Editor.app") };
+               for (auto& f : candidates) if (f.exists()) { f.startAsProcess(); return; }
+               emitToViews ("roomNotice", juce::var ("The Skin Editor isn't installed yet - it comes with the separate Skins & Skin Editor installer."));
+           })
            .withEventListener ("restoreSkipped", [this] (const juce::var&) { audioProcessor.restoreSkippedState(); sendParamState(); sendPresetList(); })
            .withEventListener ("panic", [this] (const juce::var& data)
            {
@@ -218,6 +228,21 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                {
                    SolutionDSP::NeuralCharacter::getModelsFolder().createDirectory();
                    SolutionDSP::NeuralCharacter::getModelsFolder().startAsProcess();
+               }
+               else if (cmd == "browse")      // pick a model file anywhere; it's copied into the models folder and loaded
+               {
+                   micFileChooser = std::make_unique<juce::FileChooser> ("Choose a neural Character model (RTNeural .json)", juce::File(), "*.json");
+                   micFileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                                [this] (const juce::FileChooser& fc)
+                   {
+                       const auto f = fc.getResult();
+                       if (! f.existsAsFile()) return;
+                       const auto dir = SolutionDSP::NeuralCharacter::getModelsFolder(); dir.createDirectory();
+                       const auto dest = dir.getChildFile (f.getFileName());
+                       if (dest != f) f.copyFileTo (dest);
+                       auto msg = audioProcessor.setCharacterModel (dest.getFileNameWithoutExtension());
+                       sendCharacterState (msg.isEmpty() ? "Loaded " + dest.getFileNameWithoutExtension() : msg);
+                   });
                }
                sendCharacterState (message);
            })
