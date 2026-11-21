@@ -8,7 +8,7 @@ class SolutionAudioProcessorEditor final : public juce::AudioProcessorEditor,
 {
 public:
     explicit SolutionAudioProcessorEditor (SolutionAudioProcessor&);
-    ~SolutionAudioProcessorEditor() override = default;
+    ~SolutionAudioProcessorEditor() override;
 
     void resized() override;
 
@@ -23,6 +23,12 @@ private:
     void sendAssistantState();
     void sendCharacterState (const juce::String& message = {});
     void sendRemoteState (const juce::String& error = {});
+    void sendScope();
+    void handleStage (const juce::String& type, const juce::var& data);
+    juce::dsp::FFT scopeFft { 11 };
+    std::vector<float> scopeL, scopeR, fftWork;
+    int scopeWrite = 0;
+    bool stageGestureOpen = false;
     bool assistantWasBusy = false;
     void handleAssistantCommand (const juce::var& data);
     int frameCounter = 0;

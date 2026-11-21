@@ -157,6 +157,10 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                            sendRoomResult();
                        });
                    })
+                   .withEventListener ("stageMove",    [this] (const juce::var& d) { handleStage ("move", d); })
+                   .withEventListener ("stageGesture", [this] (const juce::var& d) { handleStage ("gesture", d); })
+                   .withEventListener ("motionPath",   [this] (const juce::var& d) { handleStage ("path", d); })
+                   .withEventListener ("unmaskPair",   [this] (const juce::var& d) { handleStage ("unmask", d); })
                    .withEventListener ("monitorOff", [this] (const juce::var& data)
                    {
                        if ((bool) data.getProperty ("all", false)) audioProcessor.turnOffMonitoringEverywhere();
@@ -200,6 +204,7 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                    .withEventListener ("presetCommand", [this] (const juce::var& data) { handlePresetCommand (data); }))
 {
     addAndMakeVisible (webView);
+    audioProcessor.scopeTap.setEnabled (true);
     const auto escapedName = juce::URL::addEscapeChars (juce::String (SOLUTION_MODULE_NAME), true);
     const auto skinsFlag   = juce::String (skinsAvailable ? "1" : "0");
     webView.goToURL (juce::WebBrowserComponent::getResourceProviderRoot() + "?module=" + escapedName + "&skins=" + skinsFlag);
@@ -294,17 +299,165 @@ void SolutionAudioProcessorEditor::sendRackState()
         item->setProperty ("lufs",   slot.lufsShort.load());
         item->setProperty ("tp",     slot.truePeak.load());
         item->setProperty ("gr",     slot.gainReduct.load());
+        item->setProperty ("slot",   i);
+        item->setProperty ("az",     slot.posAz.load());
+        item->setProperty ("el",     slot.posEl.load());
+        item->setProperty ("dist",   slot.posDist.load());
+        item->setProperty ("width",  slot.posWidth.load());
+        item->setProperty ("tone",   slot.toneHz.load());
+        juce::Array<juce::var> bands;
+        for (auto& bnd : slot.bandDb) bands.add (std::round (bnd.load() * 10.0f) / 10.0f);
+        item->setProperty ("bands",  bands);
+        item->setProperty ("unmask", slot.unmaskRole.load());
         list.add (juce::var (item.get()));
     }
     juce::DynamicObject::Ptr payload = new juce::DynamicObject();
     payload->setProperty ("instances", list);
     payload->setProperty ("suiteGlue", bus.suiteGlue.load());
+    payload->setProperty ("selfSlot", audioProcessor.getRackSlot());
+    payload->setProperty ("animAz", audioProcessor.animAz.load());
+    payload->setProperty ("animEl", audioProcessor.animEl.load());
+    payload->setProperty ("animDist", audioProcessor.animDist.load());
+    {
+        const int room = (int) audioProcessor.apvts.getRawParameterValue ("listen_room")->load();
+        const auto& rooms = SolutionDSP::listeningRooms();
+        if (room > 0 && room <= (int) rooms.size() && rooms[(size_t) room - 1].length > 0.0f)
+        {
+            const auto& r = rooms[(size_t) room - 1];
+            juce::Array<juce::var> dims; dims.add (r.width); dims.add (r.length); dims.add (r.height);
+            payload->setProperty ("roomDims", dims);
+            payload->setProperty ("roomName", juce::String (r.name));
+        }
+    }
+    {
+        juce::Array<juce::var> path;
+        for (const auto& pt : audioProcessor.getMotionPath()) { juce::Array<juce::var> a; a.add (pt.az); a.add (pt.el); a.add (pt.dist); path.add (a); }
+        payload->setProperty ("path", path);
+    }
     payload->setProperty ("glueGr", audioProcessor.glueGainReductionDb.load());
     payload->setProperty ("duckGr", audioProcessor.duckGainReductionDb.load());
     juce::Array<juce::var> dips;
     for (auto& d : audioProcessor.unmaskDipDb) dips.add (std::round (d.load() * 10.0f) / 10.0f);
     payload->setProperty ("unmaskDips", dips);
     webView.emitEventIfBrowserIsVisible ("rack", juce::var (payload.get()));
+}
+
+SolutionAudioProcessorEditor::~SolutionAudioProcessorEditor()
+{
+    audioProcessor.scopeTap.setEnabled (false);
+    if (stageGestureOpen)
+        for (const char* id : { "stage_azimuth", "stage_elevation", "stage_distance", "stage_width" })
+            if (auto* q = audioProcessor.apvts.getParameter (id)) q->endChangeGesture();
+}
+
+void SolutionAudioProcessorEditor::handleStage (const juce::String& type, const juce::var& d)
+{
+    const int own = audioProcessor.getRackSlot();
+    const int slot = d.hasProperty ("slot") ? (int) d.getProperty ("slot", own) : own;
+    static constexpr const char* stageIds[] = { "stage_azimuth", "stage_elevation", "stage_distance", "stage_width" };
+
+    if (type == "gesture" && (slot == own || own < 0))
+    {
+        // One gesture per drag so the DAW records clean automation.
+        const bool begin = d.getProperty ("phase", "").toString() == "begin";
+        if (begin == stageGestureOpen) return;
+        for (const char* id : stageIds)
+            if (auto* q = audioProcessor.apvts.getParameter (id)) begin ? q->beginChangeGesture() : q->endChangeGesture();
+        stageGestureOpen = begin;
+    }
+    else if (type == "move")
+    {
+        static constexpr const char* keys[] = { "az", "el", "dist", "width" };
+        for (int k = 0; k < 4; ++k)
+        {
+            if (! d.hasProperty (keys[k])) continue;
+            const float v = (float) d.getProperty (keys[k], 0.0);
+            if (slot == own || own < 0)
+            {
+                if (auto* q = audioProcessor.apvts.getParameter (stageIds[k]))
+                {
+                    const auto& range = q->getNormalisableRange();
+                    const float n = q->convertTo0to1 (juce::jlimit (range.start, range.end, v));
+                    if (stageGestureOpen) q->setValueNotifyingHost (n);
+                    else { q->beginChangeGesture(); q->setValueNotifyingHost (n); q->endChangeGesture(); }
+                }
+            }
+            else
+                audioProcessor.requestParamOnSlot (slot, stageIds[k], v);
+        }
+    }
+    else if (type == "path")
+    {
+        std::vector<SolutionDSP::MotionPoint> pts;
+        if (auto* arr = d.getProperty ("points", {}).getArray())
+            for (const auto& p : *arr)
+                if (p.isArray() && p.size() >= 3)
+                    pts.push_back ({ (float) p[0], (float) p[1], (float) p[2] });
+        audioProcessor.setMotionPath (pts);
+        if (pts.size() >= 2) audioProcessor.setParamReal ("motion_on", 1.0f);
+    }
+    else if (type == "unmask")
+    {
+        // One click on a clash: the chosen track becomes the priority, the other makes room.
+        const int prio = (int) d.getProperty ("priority", -1), other = (int) d.getProperty ("other", -1);
+        auto& bus = audioProcessor.getRackBus();
+        if (! juce::isPositiveAndBelow (prio, SolutionDSP::RackLinkBus::maxSlots) || ! juce::isPositiveAndBelow (other, SolutionDSP::RackLinkBus::maxSlots)) return;
+        int group = bus.slots[(size_t) prio].group.load();
+        if (group <= 0) group = bus.slots[(size_t) other].group.load();
+        if (group <= 0)
+        {
+            bool used[5] = {};
+            for (const auto& sl : bus.slots) if (sl.active.load()) used[juce::jlimit (0, 4, sl.group.load())] = true;
+            group = 1; while (group < 4 && used[group]) ++group;
+        }
+        audioProcessor.requestParamOnSlot (prio, "link_group", (float) group);
+        audioProcessor.requestParamOnSlot (prio, "unmask_role", 1.0f);
+        audioProcessor.requestParamOnSlot (other, "link_group", (float) group);
+        audioProcessor.requestParamOnSlot (other, "unmask_role", 2.0f);
+        audioProcessor.pollSessionRequests();
+    }
+}
+
+void SolutionAudioProcessorEditor::sendScope()
+{
+    if (scopeL.empty()) { scopeL.assign (4096, 0.0f); scopeR.assign (4096, 0.0f); fftWork.assign (4096, 0.0f); }
+    audioProcessor.scopeTap.drain ([this] (const float* l, const float* r, int n)
+    {
+        for (int i = 0; i < n; ++i) { scopeL[(size_t) scopeWrite] = l[i]; scopeR[(size_t) scopeWrite] = r[i]; scopeWrite = (scopeWrite + 1) % 4096; }
+    });
+    auto at = [this] (const std::vector<float>& v, int back) { return v[(size_t) ((scopeWrite - back + 4096 * 2) % 4096)]; };
+
+    // Vectorscope: the latest 768 sample pairs (every 2nd), as (L, R).
+    juce::Array<juce::var> pts;
+    double sll = 0, srr = 0, slr = 0;
+    for (int i = 768; i > 0; i -= 2)
+    {
+        const float l = at (scopeL, i), r = at (scopeR, i);
+        pts.add (std::round (l * 1000.0f) / 1000.0f); pts.add (std::round (r * 1000.0f) / 1000.0f);
+        sll += l * l; srr += r * r; slr += l * r;
+    }
+    // Spectrum: 2048-point FFT of the mid signal, 72 log-spaced bands 20 Hz - 20 kHz.
+    std::fill (fftWork.begin(), fftWork.end(), 0.0f);
+    for (int i = 0; i < 2048; ++i)
+    {
+        const float w = 0.5f * (1.0f - std::cos (juce::MathConstants<float>::twoPi * i / 2047.0f));
+        fftWork[(size_t) i] = 0.5f * (at (scopeL, 2048 - i) + at (scopeR, 2048 - i)) * w;
+    }
+    scopeFft.performFrequencyOnlyForwardTransform (fftWork.data(), true);
+    const double fs = juce::jmax (1.0, audioProcessor.getSampleRate());
+    juce::Array<juce::var> spec;
+    for (int b = 0; b < 72; ++b)
+    {
+        const double f0 = 20.0 * std::pow (1000.0, b / 72.0), f1 = 20.0 * std::pow (1000.0, (b + 1) / 72.0);
+        const int k0 = juce::jlimit (1, 1023, (int) (f0 * 2048 / fs)), k1 = juce::jlimit (k0, 1023, (int) (f1 * 2048 / fs));
+        float m = 0.0f; for (int k = k0; k <= k1; ++k) m = std::max (m, fftWork[(size_t) k]);
+        spec.add (std::round (juce::Decibels::gainToDecibels (m / 512.0f, -90.0f) * 10.0f) / 10.0f);
+    }
+    juce::DynamicObject::Ptr o = new juce::DynamicObject();
+    o->setProperty ("lr", pts);
+    o->setProperty ("spec", spec);
+    o->setProperty ("corr", (sll + srr) > 1e-9 ? slr / (std::sqrt (sll * srr) + 1e-12) : 1.0);
+    webView.emitEventIfBrowserIsVisible ("scope", juce::var (o.get()));
 }
 
 void SolutionAudioProcessorEditor::sendRoomResult()
@@ -460,8 +613,10 @@ void SolutionAudioProcessorEditor::timerCallback()
 
     if (audioProcessor.consumeParamsChanged())
         sendParamState();
-    if (++frameCounter % 12 == 0)     // 5 times a second
+    if (++frameCounter % 6 == 0)      // 10 times a second (the 3D stage follows every track)
         sendRackState();
+    if (frameCounter % 2 == 0)        // real scopes at 30 fps
+        sendScope();
 
     juce::DynamicObject::Ptr payload = new juce::DynamicObject();
     payload->setProperty ("module",        juce::String (SOLUTION_MODULE_NAME));

@@ -127,7 +127,12 @@
       position: relative; display: flex; align-items: center; justify-content: center;
       cursor: grab; min-height: 0; overflow: hidden;
     }
-    .viewport:active { cursor: grabbing; }
+    .viewport:active { cursor: default; }
+    .stage-bar { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 3px; align-items: center; z-index: 5;
+                 background: rgba(5,7,10,0.72); border: 1px solid rgba(212,175,55,0.35); border-radius: 6px; padding: 3px 5px; backdrop-filter: blur(4px); }
+    .stage-bar button, .stage-bar select { font-size: 9px; padding: 2px 6px; }
+    .stage-bar button.active { color: #111; background: var(--gold, #D4AF37); }
+    .stage-sep { width: 1px; height: 14px; background: rgba(212,175,55,0.35); margin: 0 3px; }
     canvas { width: 100%; height: 100%; display: block; }
     .vp-badge {
       position: absolute; bottom: 7px; left: 9px; font-family: monospace; font-size: 9px;
@@ -393,11 +398,28 @@
     </div>
 
     <div class="center-col">
-      <div class="viewport" id="vp" onclick="cycleVizMode(event)">
+      <div class="viewport" id="vp">
         <div class="tach left"><div class="tach-needle" id="needleL"></div><div class="tach-lbl">IN / SUB</div></div>
         <div class="tach right"><div class="tach-needle" id="needleR"></div><div class="tach-lbl">OUT / AIR</div></div>
         <canvas id="stageCanvas" width="560" height="360"></canvas>
-        <div class="vp-badge" id="vizBadge">3D HOLOGRAM · CLICK TO CYCLE · SHIFT+SPACE: PRECISION</div>
+        <div class="stage-bar">
+          <button class="stage-mode active" onclick="setVizMode(0)" data-tip="3D stage: every Solution track in your session">3D</button>
+          <button class="stage-mode" onclick="setVizMode(1)" data-tip="Top view">TOP</button>
+          <button class="stage-mode" onclick="setVizMode(2)" data-tip="Real vectorscope (stereo image + phase)">VECTOR</button>
+          <button class="stage-mode" onclick="setVizMode(3)" data-tip="Real spectrum analyser">SPECTRUM</button>
+          <span class="stage-sep"></span>
+          <button id="pathBtn" onclick="togglePathDraw()" data-tip="Draw a motion path on the floor">✎ PATH</button>
+          <select onchange="if (this.value) presetPath(this.value); this.value = ''" data-tip="One-click motion shapes">
+            <option value="">SHAPES…</option><option value="orbit">Orbit</option><option value="figure8">Figure-8</option><option value="flyover">Fly-over</option>
+            <option value="pingpong">Ping-pong</option><option value="rise">Rise &amp; fall</option><option value="clear">Clear path</option>
+          </select>
+          <button id="motionBtn" onclick="toggleMotion()" data-tip="Play / stop the motion path (locked to your song's tempo)">▶ MOTION</button>
+          <select data-sync="motion_rate" onchange="bind('motion_rate', this.value, '', 1)" data-tip="One trip around the path takes...">
+            <option value="0">1/4 bar</option><option value="1">1/2 bar</option><option value="2">1 bar</option><option value="3">2 bars</option>
+            <option value="4" selected>4 bars</option><option value="5">8 bars</option><option value="6">16 bars</option>
+          </select>
+        </div>
+        <div class="vp-badge" id="vizBadge">3D STAGE</div>
       </div>
 
       <div class="meter-strip" id="meterStrip" onclick="openMeterMenu(event)" ondblclick="toggleMeterPop()" onwheel="wheelZoomMeter(event)" title="Click: Scale Menu · Wheel: Zoom · Double-Click: Expand">
@@ -493,7 +515,7 @@
 
   <div class="footer">
     <div style="display:flex;align-items:center;gap:6px;">
-      <span>OBJECT MIXER:</span>
+      <span>APPEARANCE:</span>
       <select onchange="document.documentElement.style.setProperty('--accent', this.value)">
         <option value="#F59E0B">Accent: Amber</option>
         <option value="#FF5E1A">Accent: Hugger Orange</option>
@@ -1034,7 +1056,7 @@
       precisionMode = !precisionMode;
       document.body.classList.toggle('precision-mode', precisionMode);
       document.getElementById('precBtn').classList.toggle('active', precisionMode);
-      document.getElementById('vizBadge').textContent = precisionMode ? 'SURGICAL PRECISION GRID · SHIFT+SPACE TO EXIT' : (VIZ_MODES[vizMode] + ' · CLICK TO CYCLE · SHIFT+SPACE: PRECISION');
+      updateVizBadge();
     }
 
     const CURSOR_MODES = [
@@ -1483,13 +1505,6 @@
     }
 
     const state = { stage_azimuth: 0, stage_elevation: 0, stage_depth: 0.25, stage_width: 1.0, rms: 0.14 };
-    let vizMode = 0;
-    const VIZ_MODES = ['3D HOLOGRAM', 'LISSAJOUS SPINDLE', 'SKYLIGHT HEX GRID'];
-    function cycleVizMode() {
-      if (precisionMode) return;
-      vizMode = (vizMode + 1) % VIZ_MODES.length;
-      document.getElementById('vizBadge').textContent = VIZ_MODES[vizMode] + ' · CLICK TO CYCLE · SHIFT+SPACE: PRECISION';
-    }
 
     function showValue(id, num, unit, mult = 1) {
       const el = document.getElementById('v-' + id);
@@ -1532,6 +1547,7 @@
       if (values.ultra_wide !== undefined && (values.ultra_wide > 0.001) !== uwOn) toggleUltraWide();
       if (values.binaural_mode !== undefined && on('binaural_mode') !== binauralOn) toggleBinaural();
       updateMonitorBadges();
+      if (typeof syncMotionUi === 'function') syncMotionUi();
     }
 
     function rmsToDb(r) { return r > 0.0001 ? Math.max(-60, 20 * Math.log10(r)) : -60; }
@@ -1565,6 +1581,7 @@
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
       window.__JUCE__.backend.addEventListener('roomNotice', (msg) => alert(msg));
+      window.__JUCE__.backend.addEventListener('scope', (m) => { window._scope = m; });
       window.__JUCE__.backend.addEventListener('alignResult', (msg) => { document.getElementById('alignMsg').textContent = msg; });
       window.__JUCE__.backend.addEventListener('roomList', (m) => { roomList = m || []; renderRooms(); });
       window.__JUCE__.backend.addEventListener('remoteState', (m) => { window._remote = m; renderRemote(); });
@@ -1744,74 +1761,400 @@
     }
     pollEmulatorMeters();
 
+    // ===================== 3D STAGE (real, interactive) =====================
+    let vizMode = 0;
+    const VIZ_MODES = ['3D STAGE', 'TOP VIEW', 'VECTORSCOPE', 'SPECTRUM'];
+    const VIZ_HINTS = ['drag orbs · ⇧ drag = height · scroll = width · dbl-click = centre · drag space = orbit',
+                       'drag orbs · scroll = width · dbl-click = centre',
+                       'real stereo image · tall = mono, wide = stereo',
+                       'real spectrum with peak hold'];
+    function updateVizBadge() { document.getElementById('vizBadge').textContent = precisionMode ? 'OSCILLOSCOPE · SHIFT+SPACE TO EXIT' : VIZ_MODES[vizMode] + ' · ' + VIZ_HINTS[vizMode]; }
+    function setVizMode(m) { vizMode = m; updateVizBadge(); document.querySelectorAll('.stage-mode').forEach((b, i) => b.classList.toggle('active', i === m)); }
+    function cycleVizMode() { setVizMode((vizMode + 1) % VIZ_MODES.length); }
     const cvs = document.getElementById('stageCanvas'), ctx = cvs.getContext('2d');
     const pcvs = document.getElementById('popScopeCanvas'), pctx = pcvs.getContext('2d');
-    let rot = 0;
-    function draw() {
-      ctx.clearRect(0, 0, cvs.width, cvs.height);
-      const cx = cvs.width / 2, cy = cvs.height * 0.54;
-      const r = 115 * (0.65 + state.stage_width * 0.25) * (1.0 + state.rms * 0.18);
-      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#F59E0B';
+    const cam = { yaw: 0, pitch: 0.48, zoom: 1 };
+    const STAGE_R = 7;                                                     // display radius of 40 m
+    const distToR = (d) => STAGE_R * Math.log(1 + Math.max(0.5, d)) / Math.log(41);
+    const rToDist = (r) => Math.max(0.5, Math.min(40, Math.exp(Math.max(0, Math.min(STAGE_R, r)) / STAGE_R * Math.log(41)) - 1));
+    const BAND_NAMES = ['100 Hz', '150 Hz', '220 Hz', '330 Hz', '500 Hz', '750 Hz', '1.1 kHz', '1.6 kHz', '2.4 kHz', '3.6 kHz', '5.4 kHz', '8 kHz'];
+    const V = { sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], mul: (a, s) => [a[0] * s, a[1] * s, a[2] * s],
+                dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+                norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; } };
+    let W = 560, H = 360, F = 400, basis = null;
+    let stageDrag = null, hoverObj = null, pathDraw = false, pathPts = [], clashHits = [];
+    const trails = {};
+    let peakHold = new Array(72).fill(-90);
+
+    function worldPos(az, el, dist) {                                     // az/el in degrees, distance in metres
+      const a = az * Math.PI / 180, e = el * Math.PI / 180, r = distToR(dist);
+      return [r * Math.cos(e) * Math.sin(a), r * Math.sin(e), r * Math.cos(e) * Math.cos(a)];
+    }
+    function mapRoomPoint(x, y, z) {                                       // metres -> display (same law as objects)
+      const d = Math.hypot(x, y, z) || 1e-6, s = distToR(d) / d;
+      return [x * s, y * s, z * s];
+    }
+    function updateCamera() {
+      const top = vizMode === 1, pitch = top ? 1.48 : cam.pitch, yaw = top ? 0 : cam.yaw;
+      const R = (top ? 12.5 : 8.6) / cam.zoom, cp = Math.cos(pitch), target = [0, top ? 0 : 0.5, top ? 0.4 : 1.8];
+      const pos = [target[0] - R * Math.sin(yaw) * cp, target[1] + R * Math.sin(pitch), target[2] - R * Math.cos(yaw) * cp];
+      const f = V.norm(V.sub(target, pos)), rgt = V.norm(V.cross([0, 1, 0], f)), up = V.cross(f, rgt);
+      basis = { pos, f, rgt, up };
+    }
+    function project(p) {
+      const v = V.sub(p, basis.pos), z = V.dot(v, basis.f);
+      if (z < 0.2) return null;
+      return { x: W / 2 + V.dot(v, basis.rgt) / z * F, y: H / 2 - V.dot(v, basis.up) / z * F, z, s: F / z };
+    }
+    function floorHit(mx, my) {                                            // mouse -> point on the floor (y = 0)
+      const dir = V.norm(V.add(V.add(basis.f, V.mul(basis.rgt, (mx - W / 2) / F)), V.mul(basis.up, -(my - H / 2) / F)));
+      if (dir[1] > -1e-4) return null;
+      const t = -basis.pos[1] / dir[1];
+      return V.add(basis.pos, V.mul(dir, t));
+    }
+    function toneColour(hz, alpha = 1) {
+      const t = Math.max(0, Math.min(1, Math.log((hz || 1000) / 60) / Math.log(8000 / 60)));
+      const hue = t < 0.1 ? t * 180 : 70 + (t - 0.1) / 0.9 * 200;        // red lows -> green mids -> blue/violet highs (gold is reserved for you)
+      return `hsla(${Math.round(hue)}, 85%, ${58 + t * 8}%, ${alpha})`;
+    }
+
+    function stageObjects() {
+      const m = window._rackState || {}, list = [];
+      (m.instances || []).forEach(o => { if (!o.self) list.push(Object.assign({}, o)); });
+      const own = (m.instances || []).find(o => o.self);
+      const moving = state.motion_on > 0.5 && m.animAz !== undefined;
+      list.push({ self: true, slot: m.selfSlot !== undefined ? m.selfSlot : -1, name: own ? own.name : '', module: own ? own.module : (params.get('module') || 'This module'),
+                  az: moving ? m.animAz : (state.stage_azimuth || 0), el: moving ? m.animEl : (state.stage_elevation || 0),
+                  dist: moving ? m.animDist : (state.stage_distance || 2), width: state.stage_width !== undefined ? state.stage_width : 1,
+                  tone: own ? own.tone : 1000, lufs: own ? own.lufs : -20, bands: own ? own.bands : null });
+      return list;
+    }
+
+    function findClashes(objs) {
+      const out = [];
+      for (let i = 0; i < objs.length; i++) for (let j = i + 1; j < objs.length; j++) {
+        const a = objs[i], b = objs[j];
+        if (!a.bands || !b.bands || a.lufs < -50 || b.lufs < -50) continue;
+        const va = V.norm(worldPos(a.az, a.el, 2)), vb = V.norm(worldPos(b.az, b.el, 2));
+        const angle = Math.acos(Math.max(-1, Math.min(1, V.dot(va, vb)))) * 180 / Math.PI;
+        const spatial = Math.max(0, 1 - angle / 30);
+        if (spatial <= 0) continue;
+        const pa = a.bands.map(d => Math.pow(10, d / 10)), pb = b.bands.map(d => Math.pow(10, d / 10));
+        let dot = 0, na = 0, nb = 0, best = 0, bi = 0;
+        for (let k = 0; k < pa.length; k++) { dot += pa[k] * pb[k]; na += pa[k] * pa[k]; nb += pb[k] * pb[k]; if (pa[k] * pb[k] > best) { best = pa[k] * pb[k]; bi = k; } }
+        const score = spatial * dot / (Math.sqrt(na * nb) || 1);
+        if (score > 0.55) out.push({ a, b, score, band: BAND_NAMES[bi] });
+      }
+      return out;
+    }
+
+    function drawGlowOrb(x, y, r, colour, self, t) {
+      const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r * 2.4);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(0.18, colour); g.addColorStop(0.45, colour.replace(/[\d.]+\)$/, '0.35)')); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 2.4, 0, Math.PI * 2); ctx.fill();
+      if (self) {
+        const pulse = 1 + 0.12 * Math.sin(t * 3);
+        ctx.strokeStyle = '#D4AF37'; ctx.lineWidth = 2; ctx.globalAlpha = 0.9;
+        ctx.beginPath(); ctx.arc(x, y, r * 1.35 * pulse, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+    }
+
+    function drawStage(t) {
+      updateCamera();
+      const objs = stageObjects(), m = window._rackState || {};
       const accent2 = getComputedStyle(document.documentElement).getPropertyValue('--accent2').trim() || '#38BDF8';
-      rot += 0.012;
+      const binaural = state.binaural_mode > 0.5;
 
-      if (precisionMode) {
-        ctx.strokeStyle = accent2; ctx.globalAlpha = 0.22; ctx.lineWidth = 1;
-        for (let x = 0; x < cvs.width; x += 28) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cvs.height); ctx.stroke(); }
-        for (let y = 0; y < cvs.height; y += 28) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cvs.width, y); ctx.stroke(); }
-        ctx.globalAlpha = 1; ctx.beginPath(); ctx.strokeStyle = accent; ctx.lineWidth = 2;
-        for (let x = 0; x < cvs.width; x += 4) { const y = cy + Math.sin(x * 0.03 + rot * 4) * (20 + state.rms * 95); x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
-        ctx.stroke();
-      } else {
-        ctx.save();
-        ctx.strokeStyle = accent2; ctx.globalAlpha = 0.18; ctx.lineWidth = 1;
-        for (let i = -5; i <= 5; i++) { ctx.beginPath(); ctx.moveTo(cx + i * 24, cy + 45); ctx.lineTo(cx + i * 75, cvs.height); ctx.stroke(); }
-        for (let j = 0; j < 5; j++) { const y = cy + 48 + j * j * 11; ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(cvs.width - 40, y); ctx.stroke(); }
-        ctx.restore();
+      // Floor: distance rings (metres) and direction spokes, fading into the distance.
+      [1, 2, 4, 8, 16, 32].forEach(d => {
+        const r = distToR(d); ctx.beginPath(); let first = true;
+        for (let a = 0; a <= 360; a += 6) { const p = project([r * Math.sin(a * Math.PI / 180), 0, r * Math.cos(a * Math.PI / 180)]); if (!p) { first = true; continue; } first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); first = false; }
+        ctx.strokeStyle = d === 2 ? 'rgba(212,175,55,0.35)' : 'rgba(56,189,248,0.16)'; ctx.lineWidth = d === 2 ? 1.4 : 1; ctx.stroke();
+        if (d === 2 || d === 8 || d === 32) { const lp = project([r * Math.sin(0.62), 0, r * Math.cos(0.62)]); if (lp) { ctx.fillStyle = 'rgba(148,163,184,0.45)'; ctx.font = '9px monospace'; ctx.fillText(d + ' m', lp.x + 3, lp.y - 2); } }
+      });
+      for (let a = 0; a < 360; a += 30) {
+        const p0 = project([0, 0, 0.001]), p1 = project([STAGE_R * Math.sin(a * Math.PI / 180), 0, STAGE_R * Math.cos(a * Math.PI / 180)]);
+        if (p0 && p1) { ctx.strokeStyle = 'rgba(56,189,248,0.09)'; ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke(); }
+      }
+      [['FRONT', 0], ['RIGHT', 90], ['BEHIND', 180], ['LEFT', -90]].forEach(([txt, a]) => {
+        const p = project([(STAGE_R + 0.5) * Math.sin(a * Math.PI / 180), 0, (STAGE_R + 0.5) * Math.cos(a * Math.PI / 180)]);
+        if (p) { ctx.fillStyle = 'rgba(212,175,55,0.75)'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.fillText(txt, p.x, p.y); ctx.textAlign = 'left'; }
+      });
 
-        for (let layer = 0; layer < 3; layer++) {
-          ctx.beginPath();
-          ctx.strokeStyle = layer === 1 ? accent : accent2;
-          ctx.globalAlpha = layer === 1 ? 0.92 : 0.48;
-          ctx.lineWidth = layer === 1 ? 2.4 : 1.3;
-          for (let x = 60; x <= cvs.width - 60; x += 4) {
-            const env = Math.sin(((x - 60) / (cvs.width - 120)) * Math.PI);
-            const y = cy - 12 + Math.sin(x * 0.035 + rot * (2 + layer) + layer) * (28 + state.rms * 95) * env;
-            x === 60 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-          }
-          ctx.stroke();
-        }
-
-        ctx.strokeStyle = accent; ctx.lineWidth = 1.2;
-        for (let i = 1; i <= 3; i++) {
-          ctx.globalAlpha = 0.28; ctx.beginPath();
-          ctx.ellipse(cx, cy, r * (i/3), r * (i/3) * (vizMode === 2 ? 0.30 : 0.46), rot * (i % 2 ? 0.25 : -0.25), 0, Math.PI * 2);
-          ctx.stroke();
-        }
-
-        if (safeZoneOn) {
-          ctx.save(); ctx.fillStyle = 'rgba(16, 185, 129, 0.12)'; ctx.strokeStyle = '#10B981'; ctx.lineWidth = 1;
-          ctx.fillRect(60, cy + 25, 140, 85); ctx.strokeRect(60, cy + 25, 140, 85);
-          ctx.fillStyle = '#10B981'; ctx.font = '10px monospace'; ctx.fillText('SUB SAFE ZONE 20-250 Hz', 66, cy + 40);
-          ctx.restore();
-        }
-        const az = (state.stage_azimuth || 0) * Math.PI / 180, el = (state.stage_elevation || 0) * Math.PI / 180;
-        const ox = cx + Math.sin(az) * r * 0.72, oy = cy - Math.sin(el) * r * 0.42;
-        ctx.globalAlpha = 0.35; ctx.fillStyle = accent2; ctx.beginPath(); ctx.arc(ox, oy, 18, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1; ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(ox, oy, 6, 0, Math.PI * 2); ctx.fill();
+      // Listening Room walls.
+      if (m.roomDims) {
+        const [rw, rl, rh] = m.roomDims, x0 = -rw / 2, x1 = rw / 2, z0 = -0.4 * rl, z1 = 0.6 * rl;
+        const c = [[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1], [x0, rh, z0], [x1, rh, z0], [x1, rh, z1], [x0, rh, z1]].map(q => project(mapRoomPoint(q[0], q[1] - 1.2, q[2])));
+        ctx.strokeStyle = 'rgba(212,175,55,0.28)'; ctx.lineWidth = 1;
+        [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]].forEach(([i, j]) => {
+          if (c[i] && c[j]) { ctx.beginPath(); ctx.moveTo(c[i].x, c[i].y); ctx.lineTo(c[j].x, c[j].y); ctx.stroke(); } });
+        ctx.fillStyle = 'rgba(212,175,55,0.8)'; ctx.font = '10px monospace'; ctx.textAlign = 'right'; ctx.fillText('🏛 ' + m.roomName, W - 12, H - 62); ctx.textAlign = 'left';
       }
 
+      // Listener: a head, or the full 360° sphere in headphone mode.
+      const head = project([0, 0.25, 0]);
+      if (binaural) {
+        const R = distToR(2);
+        ctx.strokeStyle = 'rgba(56,189,248,0.22)';
+        for (let lat = -60; lat <= 60; lat += 30) { ctx.beginPath(); let f = true;
+          for (let a = 0; a <= 360; a += 8) { const p = project(worldPos(a, lat, 2)); if (!p) { f = true; continue; } f ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); f = false; } ctx.stroke(); }
+        for (let lon = 0; lon < 180; lon += 30) { ctx.beginPath(); let f = true;
+          for (let e = -90; e <= 270; e += 8) { const az = e > 90 ? lon + 180 : lon, el = e > 90 ? 180 - e : e; const p = project(worldPos(az, el, 2)); if (!p) { f = true; continue; } f ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); f = false; } ctx.stroke(); }
+        ctx.fillStyle = 'rgba(56,189,248,0.85)'; ctx.font = 'bold 10px monospace'; ctx.fillText('🎧 360° HEADPHONE SPHERE', 12, H - 62);
+        void R;
+      }
+      if (head) {
+        const hr = Math.max(5, head.s * 0.28);
+        const hg = ctx.createRadialGradient(head.x, head.y, 1, head.x, head.y, hr * 1.6);
+        hg.addColorStop(0, 'rgba(229,231,235,0.95)'); hg.addColorStop(1, 'rgba(229,231,235,0)');
+        ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(head.x, head.y, hr * 1.6, 0, Math.PI * 2); ctx.fill();
+        const nose = project([0, 0.25, 0.45]); if (nose) { ctx.strokeStyle = 'rgba(229,231,235,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(head.x, head.y); ctx.lineTo(nose.x, nose.y); ctx.stroke(); }
+      }
+
+      // Motion path (saved one, or the one being drawn).
+      const path = pathDraw && pathPts.length ? pathPts : (m.path || []);
+      if (path.length > 1) {
+        ctx.save(); ctx.setLineDash([6, 5]); ctx.lineDashOffset = -t * 30;
+        ctx.strokeStyle = 'rgba(212,175,55,0.85)'; ctx.lineWidth = 2; ctx.shadowColor = '#D4AF37'; ctx.shadowBlur = 8;
+        ctx.beginPath(); let f = true;
+        path.concat(pathDraw ? [] : [path[0]]).forEach(pt => { const p = project(worldPos(pt[0], pt[1], pt[2])); if (!p) return; f ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); f = false; });
+        ctx.stroke(); ctx.restore();
+      }
+
+      // Clashes: same place + same frequencies.
+      const clashes = findClashes(objs);
+      clashHits = [];
+      const pendingBadges = [];
+      clashes.forEach(c => {
+        const pa = project(worldPos(c.a.az, c.a.el, c.a.dist)), pb = project(worldPos(c.b.az, c.b.el, c.b.dist));
+        if (!pa || !pb) return;
+        const pulse = 0.55 + 0.45 * Math.sin(t * 5);
+        ctx.strokeStyle = `rgba(239,68,68,${0.4 + 0.5 * pulse})`; ctx.lineWidth = 2 + 2 * pulse; ctx.shadowColor = '#EF4444'; ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke(); ctx.shadowBlur = 0;
+        const ra = Math.max(4, pa.s * 0.36), rb = Math.max(4, pb.s * 0.36);
+        pendingBadges.push({ x: (pa.x + pb.x) / 2, y: Math.min(pa.y - ra * 2.6, pb.y - rb * 2.6) - 4, label: `⚠ CLASH ${c.band} · CLICK TO UNMASK`, clash: c });
+      });
+
+      // Objects, far to near: floor shadow + width halo, height line, trail, glowing orb, label.
+      const labelRects = [];
+      const placeLabel = (text, x, y, bold, colour) => {
+        ctx.font = (bold ? 'bold ' : '') + '10px monospace';
+        const w = ctx.measureText(text).width + 10, h = 15;
+        let ry = y;
+        for (let tries = 0; tries < 6; tries++) {
+          const hit = labelRects.find(r => x - w / 2 < r.x + r.w && x + w / 2 > r.x && ry - h < r.y + r.h && ry > r.y);
+          if (!hit) break; ry = hit.y + hit.h + h + 1;
+        }
+        labelRects.push({ x: x - w / 2, y: ry - h, w, h });
+        ctx.fillStyle = 'rgba(5,7,10,0.72)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - w / 2, ry - h, w, h, 7) : ctx.rect(x - w / 2, ry - h, w, h); ctx.fill();
+        ctx.fillStyle = colour; ctx.textAlign = 'center'; ctx.fillText(text, x, ry - 4); ctx.textAlign = 'left';
+      };
+      const drawn = objs.map(o => ({ o, wp: worldPos(o.az, o.el, o.dist) })).map(d => Object.assign(d, { p: project(d.wp) })).filter(d => d.p).sort((a, b) => b.p.z - a.p.z);
+      drawn.forEach(({ o, wp, p }) => {
+        const colour = o.self ? 'rgba(245,158,11,1)' : toneColour(o.tone);
+        const floor = project([wp[0], 0, wp[2]]);
+        if (floor) {
+          const halo = Math.max(4, floor.s * (0.25 + 0.55 * Math.min(2, o.width)));
+          ctx.fillStyle = (o.self ? 'rgba(245,158,11,' : toneColour(o.tone, 1).replace(/[\d.]+\)$/, '')) + '0.16)';
+          ctx.beginPath(); ctx.ellipse(floor.x, floor.y, halo, halo * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = 'rgba(148,163,184,0.45)'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(floor.x, floor.y); ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.setLineDash([]);
+        }
+        const key = 's' + o.slot, tr = trails[key] = trails[key] || [];
+        tr.push([p.x, p.y]); if (tr.length > 26) tr.shift();
+        if (tr.length > 2 && Math.hypot(tr[0][0] - p.x, tr[0][1] - p.y) > 3) {
+          for (let i = 1; i < tr.length; i++) { ctx.strokeStyle = colour.replace(/[\d.]+\)$/, (i / tr.length * 0.5) + ')'); ctx.lineWidth = 3 * i / tr.length; ctx.beginPath(); ctx.moveTo(tr[i - 1][0], tr[i - 1][1]); ctx.lineTo(tr[i][0], tr[i][1]); ctx.stroke(); }
+        }
+        const loud = Math.max(0, Math.min(1, ((o.lufs || -60) + 50) / 44));
+        const r = Math.max(4, p.s * (0.16 + 0.2 * loud));
+        drawGlowOrb(p.x, p.y, r, colour, o.self, t);
+        o._screen = { x: p.x, y: p.y, r: Math.max(10, r * 1.4) };
+        o._label = { x: p.x, y: p.y + r * 1.5 + 16, text: (o.name || o.module || '').slice(0, 22), self: o.self };
+      });
+      // Labels last (nearest first, so they win the best spot), then clash badges clear of everything.
+      drawn.slice().reverse().forEach(({ o }) => { if (o._label) placeLabel(o._label.text, o._label.x, o._label.y, o.self, o.self ? '#F5D27A' : 'rgba(229,231,235,0.92)'); });
+      pendingBadges.forEach(b => {
+        ctx.font = 'bold 9px monospace'; const w = ctx.measureText(b.label).width + 12, h = 16;
+        let y = b.y;
+        for (let tries = 0; tries < 6; tries++) { const hit = labelRects.find(r => b.x - w / 2 < r.x + r.w && b.x + w / 2 > r.x && y - h < r.y + r.h && y > r.y); if (!hit) break; y = hit.y - 2; }
+        labelRects.push({ x: b.x - w / 2, y: y - h, w, h });
+        ctx.fillStyle = 'rgba(127,29,29,0.95)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(b.x - w / 2, y - h, w, h, 8) : ctx.rect(b.x - w / 2, y - h, w, h); ctx.fill();
+        ctx.strokeStyle = '#EF4444'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(b.label, b.x, y - 5); ctx.textAlign = 'left';
+        clashHits.push({ x: b.x - w / 2, y: y - h, w, h, clash: b.clash });
+      });
+      window._stageObjs = objs;
+
+      // Hover read-out.
+      if (hoverObj) {
+        const o = hoverObj, txt = `${o.name || o.module}  ·  ${Math.round(o.az)}°  ${o.el >= 0 ? '+' : ''}${Math.round(o.el)}° up  ·  ${(+o.dist).toFixed(1)} m  ·  width ${Math.round((o.width || 0) * 100)}%`;
+        ctx.font = '10px monospace'; const w = ctx.measureText(txt).width + 14;
+        ctx.fillStyle = 'rgba(5,7,10,0.85)'; ctx.fillRect(W / 2 - w / 2, 10, w, 18); ctx.strokeStyle = 'rgba(212,175,55,0.6)'; ctx.strokeRect(W / 2 - w / 2, 10, w, 18);
+        ctx.fillStyle = '#F5D27A'; ctx.textAlign = 'center'; ctx.fillText(txt, W / 2, 23); ctx.textAlign = 'left';
+      }
+      if (pathDraw) { ctx.fillStyle = 'rgba(212,175,55,0.95)'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center'; ctx.fillText('✎ DRAW A PATH ON THE FLOOR - release to start the motion', W / 2, 44); ctx.textAlign = 'left'; }
+    }
+
+    function drawVectorscope(t) {
+      const top = 62, bottom = H - 78, sc = window._scope, cx = W / 2, cy = (top + bottom) / 2, R = Math.min(W * 0.36, (bottom - top) / 2);
+      ctx.strokeStyle = 'rgba(56,189,248,0.18)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+      [[0, 'M'], [Math.PI / 4, 'R'], [-Math.PI / 4, 'L'], [Math.PI / 2, '+S']].forEach(([a, lab]) => {
+        ctx.beginPath(); ctx.moveTo(cx - Math.sin(a) * R, cy + Math.cos(a) * R); ctx.lineTo(cx + Math.sin(a) * R, cy - Math.cos(a) * R); ctx.stroke();
+        ctx.fillStyle = 'rgba(212,175,55,0.7)'; ctx.font = '10px monospace'; ctx.fillText(lab, cx + Math.sin(a) * (R + 6) - 4, cy - Math.cos(a) * (R + 6)); });
+      if (sc && sc.lr) {
+        let peak = 0.05; for (let i = 0; i < sc.lr.length; i++) peak = Math.max(peak, Math.abs(sc.lr[i]));
+        const k = R / Math.max(0.25, peak * 1.5) / Math.SQRT2;
+        ctx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < sc.lr.length; i += 2) {
+          const l = sc.lr[i], r = sc.lr[i + 1], x = cx + (r - l) * k, y = cy - (l + r) * k;
+          ctx.fillStyle = `rgba(56,189,248,${0.25 + 0.5 * i / sc.lr.length})`; ctx.fillRect(x, y, 2, 2);
+        }
+        ctx.globalCompositeOperation = 'source-over';
+        const c = sc.corr, bw = W * 0.36, bx = W / 2 - bw / 2, by = 30;
+        ctx.fillStyle = 'rgba(31,41,55,0.9)'; ctx.fillRect(bx, by, bw, 8);
+        ctx.fillStyle = c < 0 ? '#EF4444' : (c < 0.3 ? '#F59E0B' : '#10B981'); ctx.fillRect(bx + bw / 2, by, c * bw / 2, 8);
+        ctx.fillStyle = '#e5e7eb'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('PHASE CORRELATION ' + (c >= 0 ? '+' : '') + c.toFixed(2) + (c < 0 ? '  ⚠ will cancel in mono' : ''), W / 2, by + 22); ctx.textAlign = 'left';
+      }
+    }
+
+    function drawSpectrum() {
+      const sc = window._scope, x0 = 40, x1 = W - 16, y0 = 66, y1 = H - 92;
+      const fx = (f) => x0 + (Math.log10(f / 20) / 3) * (x1 - x0), dy = (db) => y0 + (-db / 90) * (y1 - y0);
+      ctx.strokeStyle = 'rgba(56,189,248,0.12)'; ctx.fillStyle = 'rgba(148,163,184,0.6)'; ctx.font = '9px monospace';
+      [30, 60, 120, 250, 500, 1000, 2000, 4000, 8000, 16000].forEach(f => { ctx.beginPath(); ctx.moveTo(fx(f), y0); ctx.lineTo(fx(f), y1); ctx.stroke(); ctx.fillText(f >= 1000 ? f / 1000 + 'k' : f, fx(f) - 8, y1 + 12); });
+      [-12, -24, -36, -48, -60, -72].forEach(d => { ctx.beginPath(); ctx.moveTo(x0, dy(d)); ctx.lineTo(x1, dy(d)); ctx.stroke(); ctx.fillText(d, 4, dy(d) + 3); });
+      if (safeZoneOn) { ctx.fillStyle = 'rgba(16,185,129,0.10)'; ctx.fillRect(fx(20), y0, fx(250) - fx(20), y1 - y0); ctx.fillStyle = '#10B981'; ctx.fillText('SUB SAFE ZONE 20-250 Hz', fx(22), y0 + 12); }
+      if (!sc || !sc.spec) return;
+      const pts = sc.spec.map((d, i) => [fx(20 * Math.pow(1000, (i + 0.5) / 72)), dy(Math.max(-90, Math.min(0, d)))]);
+      peakHold = peakHold.map((p, i) => Math.max(sc.spec[i], p - 0.6));
+      const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, 'rgba(245,158,11,0.55)'); g.addColorStop(1, 'rgba(56,189,248,0.04)');
+      ctx.beginPath(); ctx.moveTo(pts[0][0], y1);
+      pts.forEach((p, i) => { if (i === 0) ctx.lineTo(p[0], p[1]); else { const q = pts[i - 1]; ctx.quadraticCurveTo(q[0], q[1], (q[0] + p[0]) / 2, (q[1] + p[1]) / 2); } });
+      ctx.lineTo(pts[pts.length - 1][0], y1); ctx.closePath(); ctx.fillStyle = g; ctx.fill();
+      ctx.strokeStyle = '#F59E0B'; ctx.lineWidth = 1.8; ctx.shadowColor = '#F59E0B'; ctx.shadowBlur = 6; ctx.beginPath();
+      pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(229,231,235,0.5)'; ctx.lineWidth = 1; ctx.beginPath();
+      peakHold.forEach((d, i) => { const x = pts[i][0], y = dy(Math.max(-90, Math.min(0, d))); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
+    }
+
+    function drawOscilloscope(c2, w, h, colourL, colourR) {
+      const sc = window._scope; if (!sc || !sc.lr) return;
+      let peak = 0.05; for (let i = 0; i < sc.lr.length; i++) peak = Math.max(peak, Math.abs(sc.lr[i]));
+      const n = sc.lr.length / 2, k = (h * 0.42) / peak;
+      [[0, colourL], [1, colourR]].forEach(([ch, col]) => {
+        c2.strokeStyle = col; c2.lineWidth = 1.4; c2.beginPath();
+        for (let i = 0; i < n; i++) { const x = i / (n - 1) * w, y = h / 2 - sc.lr[i * 2 + ch] * k; i ? c2.lineTo(x, y) : c2.moveTo(x, y); }
+        c2.stroke(); });
+    }
+
+    function draw() {
+      const t = performance.now() / 1000;
+      const dpr = window.devicePixelRatio || 1, cw = cvs.clientWidth || 560, ch = cvs.clientHeight || 360;
+      if (cvs.width !== Math.round(cw * dpr) || cvs.height !== Math.round(ch * dpr)) { cvs.width = Math.round(cw * dpr); cvs.height = Math.round(ch * dpr); }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      W = cw; H = ch; F = H * 1.15;
+      ctx.clearRect(0, 0, W, H);
+      const bg = ctx.createRadialGradient(W / 2, H * 0.6, 10, W / 2, H * 0.6, Math.max(W, H) * 0.75);
+      bg.addColorStop(0, 'rgba(20,30,45,0.55)'); bg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      if (precisionMode) drawOscilloscope(ctx, W, H, '#F59E0B', '#38BDF8');
+      else if (vizMode <= 1) drawStage(t);
+      else if (vizMode === 2) drawVectorscope(t);
+      else drawSpectrum();
       if (document.getElementById('meterPop').classList.contains('open')) {
         pctx.clearRect(0, 0, pcvs.width, pcvs.height);
-        pctx.strokeStyle = accent2; pctx.lineWidth = 1.5; pctx.beginPath();
-        for (let x = 0; x < pcvs.width; x += 6) {
-          const y = pcvs.height / 2 + Math.sin(x * 0.05 + rot * 6) * (10 + state.rms * 42);
-          x === 0 ? pctx.moveTo(x, y) : pctx.lineTo(x, y);
-        }
-        pctx.stroke();
+        drawOscilloscope(pctx, pcvs.width, pcvs.height, getComputedStyle(document.documentElement).getPropertyValue('--accent2').trim() || '#38BDF8', 'rgba(245,158,11,0.8)');
       }
       requestAnimationFrame(draw);
     }
+
+    // ---------- interaction ----------
+    const emit = (name, data) => { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent(name, data); };
+    function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height)]; }
+    function hitObject(mx, my) {
+      let best = null, bd = 1e9;
+      (window._stageObjs || []).forEach(o => { if (!o._screen) return; const d = Math.hypot(o._screen.x - mx, o._screen.y - my); if (d < o._screen.r && d < bd) { bd = d; best = o; } });
+      return best;
+    }
+    function moveObject(o, change) {
+      Object.assign(o, change);
+      if (o.self) {
+        if (change.az !== undefined) { state.stage_azimuth = change.az; if (knobRegistry.stage_azimuth) { knobRegistry.stage_azimuth.set(change.az); showValue('stage_azimuth', change.az, '°', 1); } }
+        if (change.el !== undefined) { state.stage_elevation = change.el; if (knobRegistry.stage_elevation) { knobRegistry.stage_elevation.set(change.el); showValue('stage_elevation', change.el, '°', 1); } }
+        if (change.dist !== undefined) state.stage_distance = change.dist;
+        if (change.width !== undefined) { state.stage_width = change.width; if (knobRegistry.stage_width) { knobRegistry.stage_width.set(change.width); showValue('stage_width', change.width, '%', 100); } }
+      } else {
+        const inst = ((window._rackState || {}).instances || []).find(i => i.slot === o.slot); if (inst) Object.assign(inst, change);
+      }
+      emit('stageMove', Object.assign({ slot: o.slot }, change));
+    }
+
+    cvs.addEventListener('mousedown', (e) => {
+      if (precisionMode || vizMode > 1) return;
+      const [mx, my] = canvasPoint(e);
+      const hit = clashHits.find(c => mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h);
+      if (hit) { const a = hit.clash.a, b = hit.clash.b, pri = (a.lufs || -99) >= (b.lufs || -99) ? a : b, oth = pri === a ? b : a;
+                 emit('unmaskPair', { priority: pri.slot, other: oth.slot }); e.preventDefault(); return; }
+      if (pathDraw) { const p = floorHit(mx, my); if (p) { pathPts = []; stageDrag = { kind: 'path' }; addPathPoint(p); } e.preventDefault(); return; }
+      const o = hitObject(mx, my);
+      if (o) { stageDrag = { kind: 'object', o, sx: mx, sy: my, el0: o.el }; if (o.self) emit('stageGesture', { phase: 'begin' }); }
+      else stageDrag = { kind: 'orbit', sx: mx, sy: my, yaw0: cam.yaw, pitch0: cam.pitch };
+      e.preventDefault();
+    });
+    function addPathPoint(p) {
+      const r = Math.hypot(p[0], p[2]); if (r > STAGE_R) return;
+      const pt = [Math.atan2(p[0], p[2]) * 180 / Math.PI, 0, rToDist(r)];
+      const last = pathPts[pathPts.length - 1];
+      if (!last || Math.hypot(...V.sub(worldPos(...pt), worldPos(...last))) > 0.35) pathPts.push(pt);
+    }
+    window.addEventListener('mousemove', (e) => {
+      if (!stageDrag) { if (vizMode <= 1 && !precisionMode) { const [mx, my] = canvasPoint(e); hoverObj = (e.target === cvs) ? hitObject(mx, my) : null; cvs.style.cursor = hoverObj ? 'grab' : (pathDraw ? 'crosshair' : 'default'); } return; }
+      const [mx, my] = canvasPoint(e);
+      if (stageDrag.kind === 'orbit') { cam.yaw = stageDrag.yaw0 + (mx - stageDrag.sx) * 0.008; cam.pitch = Math.max(0.12, Math.min(1.45, stageDrag.pitch0 + (my - stageDrag.sy) * 0.006)); return; }
+      if (stageDrag.kind === 'path') { const p = floorHit(mx, my); if (p) addPathPoint(p); return; }
+      const o = stageDrag.o; cvs.style.cursor = 'grabbing'; hoverObj = o;
+      if (e.shiftKey) moveObject(o, { el: Math.max(-90, Math.min(90, stageDrag.el0 - (my - stageDrag.sy) * 0.6)) });
+      else { const p = floorHit(mx, my); if (p) moveObject(o, { az: Math.atan2(p[0], p[2]) * 180 / Math.PI, dist: rToDist(Math.hypot(p[0], p[2])) }); }
+    });
+    window.addEventListener('mouseup', () => {
+      if (!stageDrag) return;
+      if (stageDrag.kind === 'object' && stageDrag.o.self) emit('stageGesture', { phase: 'end' });
+      if (stageDrag.kind === 'path') {
+        let pts = pathPts.slice();
+        while (pts.length > 32) pts = pts.filter((_, i) => i % 2 === 0);
+        if (pts.length >= 3) { emit('motionPath', { points: pts }); state.motion_on = 1; syncMotionUi(); }
+        pathDraw = false; document.getElementById('pathBtn').classList.remove('active'); pathPts = [];
+      }
+      stageDrag = null;
+    });
+    cvs.addEventListener('wheel', (e) => {
+      if (precisionMode || vizMode > 1) return;
+      e.preventDefault(); e.stopPropagation();
+      const [mx, my] = canvasPoint(e), o = hitObject(mx, my);
+      if (o) moveObject(o, { width: Math.max(0, Math.min(2, (o.width || 1) + (e.deltaY < 0 ? 0.05 : -0.05))) });
+      else cam.zoom = Math.max(0.6, Math.min(2.5, cam.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
+    }, { passive: false });
+    cvs.addEventListener('dblclick', (e) => {
+      const [mx, my] = canvasPoint(e), o = hitObject(mx, my);
+      if (o) { if (o.self) emit('stageGesture', { phase: 'begin' }); moveObject(o, { az: 0, el: 0, dist: 2, width: 1 }); if (o.self) emit('stageGesture', { phase: 'end' }); }
+      else { cam.yaw = 0; cam.pitch = 0.48; cam.zoom = 1; }
+    });
+
+    // ---------- path presets & motion controls ----------
+    function presetPath(kind) {
+      const d = Math.max(1.5, state.stage_distance || 3), pts = [];
+      if (kind === 'orbit')    for (let a = 0; a < 360; a += 30) pts.push([a, 0, d]);
+      if (kind === 'figure8')  for (let i = 0; i < 16; i++) { const t = i / 16 * Math.PI * 2; pts.push([Math.sin(t) * 75, 0, Math.max(0.8, d + Math.sin(2 * t) * d * 0.6)]); }
+      if (kind === 'flyover')  [[-80, 0, d * 2], [-40, 25, d * 1.5], [0, 75, d], [40, 25, d * 1.5], [80, 0, d * 2], [180, 10, d * 3]].forEach(p => pts.push(p));
+      if (kind === 'pingpong') [[-70, 0, d], [0, 0, d * 1.2], [70, 0, d], [0, 0, d * 1.2]].forEach(p => pts.push(p));
+      if (kind === 'rise')     [[0, -30, d], [0, 0, d], [0, 45, d], [0, 85, d], [0, 45, d], [0, 0, d]].forEach(p => pts.push(p));
+      if (kind === 'clear') { emit('motionPath', { points: [] }); bind('motion_on', 0, '', 1); state.motion_on = 0; syncMotionUi(); return; }
+      emit('motionPath', { points: pts }); state.motion_on = 1; syncMotionUi();
+    }
+    function togglePathDraw() { pathDraw = !pathDraw; pathPts = []; document.getElementById('pathBtn').classList.toggle('active', pathDraw); if (pathDraw && vizMode > 1) setVizMode(0); }
+    function toggleMotion() { const on = !(state.motion_on > 0.5); bind('motion_on', on ? 1 : 0, '', 1); state.motion_on = on ? 1 : 0; syncMotionUi(); }
+    function syncMotionUi() { const b = document.getElementById('motionBtn'); if (b) { b.classList.toggle('active', state.motion_on > 0.5); b.textContent = state.motion_on > 0.5 ? '■ MOTION' : '▶ MOTION'; } }
+    setVizMode(0);
     draw();
   </script>
 </body>

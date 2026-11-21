@@ -19,6 +19,8 @@
 | Unmask | click **LK** | Priority track (vocal/kick) makes the rest of its group dip only where they collide |
 | Auto-Align | click **LK** | Fixes timing and polarity between mics on the same source with one click |
 | 115 Hz notch | Room panel | Off / On / Auto (engages only when 115 Hz builds up) |
+| 3D Stage | centre view | Every Solution track as a glowing orb: drag to move, Shift+drag height, scroll width, real distance, clash glow → one-click Unmask, motion paths synced to tempo, 360° sphere in headphone mode, real vectorscope and spectrum |
+| Safe Bounce | ★ PRO | Monitoring tools switch themselves off for offline bounces; red warning bar with one-click turn-off (every module) |
 
 ## Download & Install (Windows)
 
