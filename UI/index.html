@@ -140,6 +140,18 @@
     .diag.teach [data-teach]::after { content: attr(data-teach); position: absolute; right: 8px; top: 24px; z-index: 6; max-width: 250px; padding: 6px 9px; border-radius: 6px;
                font-size: 10.5px; line-height: 1.35; letter-spacing: 0.3px; text-transform: none; color: #ffe4c2; background: rgba(20,14,8,0.92); border: 1px solid #ff9d2e;
                box-shadow: 0 0 14px rgba(255,140,30,0.45); pointer-events: none; }
+    /* Beginner Mode: only the essentials on screen (settings stay as they are) */
+    body.beginner .knob-cell:has([data-param="stage_haas_itd"]), body.beginner .knob-cell:has([data-param="stage_ms_mid"]),
+    body.beginner .knob-cell:has([data-param="stage_ms_side"]), body.beginner .knob-cell:has([data-param="room_match_mix"]),
+    body.beginner .wing-actions, body.beginner .stage-bar select, body.beginner #pathBtn, body.beginner #motionBtn,
+    body.beginner .ribbon button[onclick^="openMatrix"], body.beginner .ribbon button[onclick^="openAssistant"], body.beginner .ribbon button[onclick^="openCharacter"],
+    body.beginner .ribbon button[onclick^="openRemote"], body.beginner .ribbon button[onclick^="openPro"], body.beginner .ribbon button[onclick^="toggleClassicOS"] { display: none !important; }
+    /* Modifier-Linked Focus: Shift-drag a knob and everything else steps back */
+    body.drag-focus .knob-cell:not(.focus-target), body.drag-focus .viewport, body.drag-focus .wing-actions, body.drag-focus .meter-strip { opacity: 0.18; transition: opacity 0.15s; }
+    body.drag-focus .focus-target { filter: drop-shadow(0 0 10px var(--gold)); }
+    .pr-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; padding: 7px 9px; margin-bottom: 5px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); }
+    .pr-row b { font-size: 12px; } .pr-row small { display: block; font-size: 10.5px; color: #94A3B8; }
+    .pr-row.pass { border-left: 3px solid #22c55e; } .pr-row.warn { border-left: 3px solid #f59e0b; } .pr-row.fail { border-left: 3px solid #ef4444; } .pr-row.info { border-left: 3px solid #38bdf8; }
     .fastray-btn { flex-shrink: 0; height: 38px; width: 126px; margin: -2px 6px -2px -2px; padding: 0; border: none; background: none; cursor: pointer;
                    position: relative; z-index: 6; transition: transform 0.12s, filter 0.12s; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.8)); }
     .fastray-btn img { width: 100%; height: 100%; display: block; border-radius: 6px; box-shadow: 0 0 0 1px rgba(200,205,212,0.35), 0 2px 6px rgba(0,0,0,0.7); }
@@ -623,6 +635,7 @@
           <label style="display:flex;gap:3px;align-items:center;white-space:nowrap;"><input type="checkbox" data-sync="infra_lift" onchange="bind('infra_lift', this.checked ? 1 : 0, '', 1)">▼ INFRA LIFT</label>
           <input type="range" min="0" max="12" step="0.1" data-sync="infra_lift_db" oninput="bind('infra_lift_db', +this.value, '', 1); document.getElementById('v-infra_lift_db').textContent = '+' + (+this.value).toFixed(1) + ' dB'" style="flex:1;min-width:40px;">
           <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
+          <label style="display:flex;gap:2px;align-items:center;" data-tip="WIDE: let the lift's skirt also fill 15-30 Hz. Off = true infrasonics only (the original trick). Shift+I"><input type="checkbox" data-sync="infra_lift_wide" onchange="bind('infra_lift_wide', this.checked ? 1 : 0, '', 1)">WIDE</label>
         </div>
         <button id="sculptBtn" onclick="toggleSculpt()" data-tip="Predictive Transient Sculpting">⚡ TRANSIENT SCULPT: OFF</button>
         <button id="binauralBtn" onclick="toggleBinaural()" data-tip="Headphones: hear the mix on virtual speakers around your head. Azimuth rotates, Elevation raises, Width spreads.">🎧 BINAURAL: OFF</button>
@@ -1068,7 +1081,7 @@
         </select>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <button id="midiLearnBtn" onclick="armMidiLearn('stage_depth')">🎹 MIDI LEARN (DEPTH)</button>
+        <button id="midiLearnBtn" onclick="flashHint('🎹 Right-click any knob, slider or switch (or hover it and press K), then move a control on your MIDI controller')">🎹 MIDI LEARN: right-click any control</button>
         <span id="midiStatus" style="font-family:monospace;font-size:11px;color:var(--mute);">CC: None</span>
       </div>
       <div style="font-family:monospace;font-size:11px;color:var(--accent2);" id="cvReadout">CV LFO: 0.00 · ENV: 0.00</div>
@@ -1106,8 +1119,8 @@
           <button onclick="toggleCeilingGuard()" data-tip="Engages or bypasses the universal -0.5 dBFS output safety ceiling">Toggle -0.5 dBFS Safety Guard</button>
 
           <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;margin-top:4px;">DISPLAY, DUAL-SCREEN &amp; VR</span>
-          <button onclick="if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();else document.exitFullscreen?.();" data-tip="Sends active plugin viewport to fullscreen or secondary monitor (Ctrl+~)">Dual-Display Fullscreen (Ctrl+~)</button>
-          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'VR Spatial Output: ON':'VR Spatial Output: OFF';" data-tip="Routes 3D soundstage coordinates to VR headset head-tracking output">VR Spatial Output: OFF</button>
+          <button onclick="document.getElementById('secretModal').classList.remove('open'); popOutPanel();" data-tip="Sends the panel under your mouse fullscreen to your other display (Ctrl+`); ` alone maximises it here">Fullscreen to Other Display (Ctrl+`)</button>
+          <button disabled style="opacity:0.45;cursor:default;" data-tip="Head tracking from your phone, OSC trackers, webcam, joystick or a VR headset - being built next">VR Head Tracking: coming next</button>
           <button onclick="togglePrecision()" data-tip="Real oscilloscope of the output (Shift+Space)">Oscilloscope (Shift+Space)</button>
           <button onclick="toggleClassicOS()" data-tip="Disables gradients and animations for ultra-low GPU/CPU load">Classic OS High-Contrast Mode</button>
         </div>
@@ -1119,29 +1132,41 @@
               <option value="0">Auto - scale with CPU load</option><option value="1">Locked 4x - always best</option><option value="2">Eco - always lightest</option>
             </select>
           </div>
-          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Lookahead Buffer: ON':'Lookahead Buffer: OFF';" data-tip="Predictive lookahead buffer for transient &amp; CPU spike protection (OFF by default)">Lookahead Buffer: OFF</button>
-          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'LAN DSP Offload: ACTIVE':'LAN DSP Offload: LOCAL';" data-tip="Offloads heavy oversampling across local network DSP nodes (AGridder-style)">LAN DSP Offload: LOCAL</button>
+          <button data-ptoggle="limiter_lookahead" data-label="Lookahead Limiter (5 ms)" data-def="0" data-tip="Gives the -0.5 dB ceiling limiter 5 ms to see peaks coming instead of 1.5 ms: smoother, more transparent on fast transients. Adds 3.5 ms latency (reported to your DAW). Ctrl+Alt+L">Lookahead Limiter (5 ms): OFF</button>
+          <button data-ptoggle="dc_guard" data-label="DC Guard" data-def="1" data-tip="Removes DC offset on the way in and any DC the processing creates on the way out (1 Hz blocker - even 7 Hz infrasonics pass). Leave it on. Ctrl+Alt+D">DC Guard: ON</button>
+          <button disabled style="opacity:0.45;cursor:default;" data-tip="Run the heavy processing on a Solution Node server on this PC or another computer on your network - being built">LAN / Local DSP Server: coming</button>
           <div class="ctrl" data-tip="Suite CPU load that makes Auto step quality down"><label>DQS CPU THRESHOLD <span id="v-dqs_threshold">80%</span></label><input type="range" data-sync="dqs_threshold" min="50" max="95" step="1" value="80" oninput="bind('dqs_threshold', this.value, '%', 1)"></div>
 
           <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;margin-top:4px;">WORKFLOW &amp; MASTERING</span>
-          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Beginner Mode: ON':'Beginner Mode: OFF';" data-tip="Simplifies UI to core macro controls for fast, distraction-free mixing">Beginner Mode: OFF</button>
-          <button id="secFocusBtn" onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Modifier-Linked Focus: ON':'Modifier-Linked Focus: OFF';" class="active" data-tip="Automatically isolates active spatial controls during fine modifier drags">Modifier-Linked Focus: ON</button>
-          <button id="secLearnBtn" onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Adaptive Learning Mode: ON':'Adaptive Learning Mode: OFF';" class="active" data-tip="Tracks parameter workflow tendencies to suggest smart macro layouts">Adaptive Learning Mode: ON</button>
-          <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'Pre-Render LUFS/Phase Pass: PASS':'Pre-Render LUFS/Phase Pass';" data-tip="Scans mix for LUFS loudness compliance and phase cancellation before export">Pre-Render LUFS/Phase Pass</button>
-          <select onchange="bind('global_mix', 1, '', 1)" data-tip="Select target speaker array or Dolby Atmos fold-down layout">
-            <option>Format Fold: Stereo (2.0)</option>
-            <option>Format Fold: Binaural Headphones</option>
-            <option>Format Fold: Quad (4.0)</option>
-            <option>Format Fold: Surround (5.1)</option>
-            <option>Format Fold: Atmos (5.1.2)</option>
-            <option>Format Fold: Atmos (5.1.4)</option>
-            <option>Format Fold: Atmos (7.1.2)</option>
-            <option>Format Fold: Atmos (7.1.4)</option>
-            <option>Format Fold: Atmos (9.1.6)</option>
-          </select>
+          <button id="beginnerBtn" onclick="toggleBeginner()" data-tip="Hides the advanced controls so only the essentials are on screen. Nothing is switched off - the settings stay as they are. U">Beginner Mode: OFF</button>
+          <button id="secFocusBtn" onclick="toggleModFocus()" class="active" data-tip="Hold Shift while dragging a knob for 5x finer control; everything else dims so you can focus on that one move. Ctrl+Alt+F">Modifier-Linked Focus: ON</button>
+          <button id="secLearnBtn" disabled style="opacity:0.45;cursor:default;" data-tip="Learns how you work (locally, never uploaded) and suggests - never changes - settings. Being built">Adaptive Learning: coming</button>
+          <button onclick="document.getElementById('secretModal').classList.remove('open'); openPreRender();" data-tip="Before you bounce: loudness and true peak against your target, phase, clipping, DC, overruns, and monitoring tools left on - with one-click fixes. E">Pre-Render Check (E)</button>
+          <button disabled style="opacity:0.45;cursor:default;" data-tip="Surround / Dolby Atmos output is a separate project (needs multichannel buses). The old menu here only moved the mix knob, so it was removed.">Surround / Atmos Output: planned</button>
         </div>
       </div>
       <button onclick="document.getElementById('secretModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
+  <div class="modal" id="preRenderModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:560px;max-height:600px;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+        <strong style="color:var(--gold);letter-spacing:0.1em;">PRE-RENDER CHECK</strong>
+        <select id="prTarget" onchange="renderPreRender()" style="font-size:11px;">
+          <option value="-14,-1">Streaming (Spotify, Apple, YouTube): -14 LUFS, -1 dBTP</option>
+          <option value="-9,-1">Loud master / club: -9 LUFS, -1 dBTP</option>
+          <option value="-16,-1">Podcast / spoken word: -16 LUFS, -1 dBTP</option>
+          <option value="-23,-1">Broadcast (EBU R128): -23 LUFS, -1 dBTP</option>
+        </select>
+      </div>
+      <div class="dg-hint" style="font-size:11px;margin-bottom:8px;">Play the whole song through once from the top, then read the results. Loudness and phase are measured on this plugin's output.</div>
+      <div id="prList"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button onclick="emit('resetLoudness', {}); window._phaseStats = null; renderPreRender(); flashHint('Measurements reset - play the song from the top')">RESET MEASUREMENTS</button>
+        <button onclick="renderPreRender()">RE-CHECK</button>
+        <button onclick="document.getElementById('preRenderModal').classList.remove('open')">CLOSE</button>
+      </div>
     </div>
   </div>
 
@@ -1164,6 +1189,11 @@
           <p><kbd>Tab</kbd> Select next sound (<kbd>Shift</kbd> = previous)</p>
           <p><kbd>`</kbd> Maximise the panel under the mouse (again = restore), like Premiere</p>
           <p><kbd>Ctrl</kbd>+<kbd>`</kbd> Send that panel fullscreen to your other display (<kbd>Esc</kbd> brings it back)</p>
+          <p><kbd>K</kbd> MIDI-learn the control under the mouse (or right-click any control)</p>
+          <p><kbd>U</kbd> Beginner Mode (essentials only) · <kbd>E</kbd> Pre-Render check · <kbd>J</kbd> Diagnostics · <kbd>Q</kbd> Billet Audio command hub</p>
+          <p><kbd>I</kbd> Infrasonic Lift on/off (The Bunker) · <kbd>Shift</kbd>+<kbd>I</kbd> WIDE (15-30 Hz)</p>
+          <p><kbd>Ctrl</kbd>+<kbd>.</kbd> Panic Reset this track · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> whole session</p>
+          <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd> Lookahead limiter · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> DC Guard · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> Modifier Focus · <kbd>Shift</kbd>-drag a knob = 5× finer</p>
           <p><kbd>Shift</kbd>+<kbd>F</kbd> Fly through the mix · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Q</kbd>/<kbd>E</kbd> down/up · click a creature to grab it</p>
           <p><kbd>←</kbd> <kbd>→</kbd> Move left / right</p>
           <p><kbd>↑</kbd> <kbd>↓</kbd> Nearer / farther · <kbd>Alt</kbd>+<kbd>↑↓</kbd> height</p>
@@ -1289,13 +1319,23 @@
         knobRegistry[param] = { set: (v) => renderKnob(v), unit, mult };
 
         let dragging = false, startY = 0, startVal = val;
-        el.addEventListener('mousedown', (e) => { dragging = true; activeDragParam = param; startY = e.clientY; startVal = val; e.preventDefault(); });
+        el.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
+          dragging = true; activeDragParam = param; startY = e.clientY; startVal = val; e.preventDefault();
+          if (e.shiftKey && modFocusOn) { document.body.classList.add('drag-focus'); el.closest('.knob-cell')?.classList.add('focus-target'); }
+        });
         window.addEventListener('mousemove', (e) => {
           if (!dragging) return;
-          const next = Math.max(min, Math.min(max, startVal + ((startY - e.clientY) / 140) * (max - min)));
+          const k = e.shiftKey ? 0.2 : 1;                      // Shift = 5x finer
+          if (k !== (el._k || 1)) { startY = e.clientY; startVal = val; el._k = k; }
+          const next = Math.max(min, Math.min(max, startVal + ((startY - e.clientY) / 140) * (max - min) * k));
           renderKnob(next); bind(param, next, unit, mult);
         });
-        window.addEventListener('mouseup', () => { if (dragging && activeDragParam === param) activeDragParam = null; dragging = false; });
+        window.addEventListener('mouseup', () => {
+          if (dragging && activeDragParam === param) activeDragParam = null;
+          if (dragging) { document.body.classList.remove('drag-focus'); document.querySelectorAll('.focus-target').forEach(x => x.classList.remove('focus-target')); }
+          dragging = false;
+        });
         el.addEventListener('wheel', (e) => {
           e.preventDefault();
           const next = Math.max(min, Math.min(max, val + (max - min) * (e.deltaY < 0 ? 0.03 : -0.03)));
@@ -1445,7 +1485,10 @@
       if (mod && k === 's') { e.preventDefault(); openVault(); setTimeout(() => document.getElementById('presetName').focus(), 50); return; }
       if (mod && k === '0') { e.preventDefault(); cam.yaw = 0; cam.pitch = 0.48; cam.zoom = 1; return; }
       if (mod && e.altKey && k === 'v') { e.preventDefault(); document.getElementById('secretModal').classList.add('open'); return; }
-      if (e.ctrlKey && e.code === 'Backquote') { e.preventDefault(); if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); return; }
+      if (mod && e.altKey && k === 'l') { e.preventDefault(); flipToggle('limiter_lookahead'); return; }
+      if (mod && e.altKey && k === 'd') { e.preventDefault(); flipToggle('dc_guard'); return; }
+      if (mod && e.altKey && k === 'f') { e.preventDefault(); toggleModFocus(); return; }
+      if (mod && (e.key === '.' || e.key === '>')) { e.preventDefault(); emit('panic', { all: e.shiftKey }); flashHint(e.shiftKey ? '🛑 PANIC RESET · whole session' : '🛑 PANIC RESET · this track'); return; }
       if (e.key === '?' || e.key === 'F1') { e.preventDefault(); openShortcuts(); return; }
       if (e.shiftKey && e.code === 'Space') { e.preventDefault(); togglePrecision(); return; }
       if (mod || (e.altKey && !e.key.startsWith('Arrow'))) return;
@@ -1482,6 +1525,13 @@
         v: () => openVault(),
         o: () => toggleClassicOS(),
         s: () => toggleSafeZone(),
+        k: () => learnHovered(),
+        u: () => toggleBeginner(),
+        e: () => openPreRender(),
+        j: () => openDiagnostics(),
+        q: () => toggleFastRayHub(),
+        i: () => { if (!/bunker/i.test(params.get('module') || '')) return flashHint('Infrasonic Lift lives in The Bunker');
+                   const id = shift ? 'infra_lift_wide' : 'infra_lift'; flipToggle(id); flashHint((shift ? 'Infrasonic Lift WIDE: ' : 'Infrasonic Lift: ') + (state[id] > 0.5 ? 'ON' : 'OFF')); },
       };
       if (act[k]) { e.preventDefault(); act[k](); }
     });
@@ -1933,6 +1983,7 @@
       if (values.ultra_wide !== undefined && (values.ultra_wide > 0.001) !== uwOn) toggleUltraWide();
       if (values.binaural_mode !== undefined && on('binaural_mode') !== binauralOn) toggleBinaural();
       updateMonitorBadges();
+      if (typeof refreshToggles === 'function') refreshToggles();
       if (typeof syncMotionUi === 'function') syncMotionUi();
     }
 
@@ -1946,7 +1997,9 @@
     if (window.__JUCE__ && window.__JUCE__.backend) {
       window.__JUCE__.backend.addEventListener('paramState', (m) => {
         if (m.values) { syncFromPlugin(m.values); window._paramValues = Object.assign(window._paramValues || {}, m.values); }
-        if (m.ui) { window._uiProps = Object.assign(window._uiProps || {}, m.ui); if (typeof renderMacros === 'function' && diagOpen) renderMacros(); }
+        if (m.ui) { window._uiProps = Object.assign(window._uiProps || {}, m.ui);
+          if (m.ui.beginner !== undefined) setBeginner(m.ui.beginner === '1', true);
+          if (m.ui.modFocus !== undefined) setModFocus(m.ui.modFocus !== '0', true); if (typeof renderMacros === 'function' && diagOpen) renderMacros(); }
         if (m.ui && m.ui.skin && SKINS[m.ui.skin]) {
           const sel = document.getElementById('skinSelect');
           if (sel) sel.value = m.ui.skin;
@@ -1981,6 +2034,7 @@
       window.__JUCE__.backend.emitEvent('uiReady', {});
       window.__JUCE__.backend.addEventListener('telemetry', (t) => {
         window._tele = t;
+        if (t.lufs > -60 && t.phase !== undefined) { const ps = window._phaseStats = window._phaseStats || { sum: 0, n: 0, min: 1 }; ps.sum += t.phase; ps.n++; ps.min = Math.min(ps.min, t.phase); }
         if (t.module) setModuleTitle(t.module);
         if (t.skinsEnabled !== undefined && t.skinsEnabled !== skinsEnabled) { skinsEnabled = !!t.skinsEnabled; updateSkinVisibility(); }
         document.getElementById('m-phase').textContent = (t.phase >= 0 ? '+' : '') + t.phase.toFixed(2);
@@ -2823,6 +2877,77 @@
       else if (cmd === 'diag') openDiagnostics();
       else if (cmd === 'keys') openShortcuts();
       else if (cmd === 'panic' || cmd === 'panicAll') { emit('panic', { all: cmd === 'panicAll' }); flashHint(cmd === 'panicAll' ? '🛑 PANIC RESET · every Solution plugin flushed' : '🛑 PANIC RESET · this track flushed'); }
+    }
+
+    // ---------- parameter toggle buttons (secret menu) ----------
+    function refreshToggles() {
+      document.querySelectorAll('[data-ptoggle]').forEach(b => {
+        const id = b.dataset.ptoggle, on = (state[id] !== undefined ? state[id] : +b.dataset.def) > 0.5;
+        b.classList.toggle('active', on); b.textContent = b.dataset.label + ': ' + (on ? 'ON' : 'OFF');
+      });
+    }
+    function flipToggle(id) {
+      const b = document.querySelector(`[data-ptoggle="${id}"]`), cur = state[id] !== undefined ? state[id] : (b ? +b.dataset.def : 0);
+      const on = !(cur > 0.5); state[id] = on ? 1 : 0; bind(id, on ? 1 : 0, '', 1); refreshToggles();
+      document.querySelectorAll(`[data-sync="${id}"]`).forEach(el => { if (el.type === 'checkbox') el.checked = on; });
+      if (b) flashHint(b.dataset.label + ': ' + (on ? 'ON' : 'OFF'));
+    }
+    document.querySelectorAll('[data-ptoggle]').forEach(b => b.addEventListener('click', () => flipToggle(b.dataset.ptoggle)));
+    refreshToggles();
+
+    // ---------- Beginner Mode / Modifier-Linked Focus ----------
+    let beginnerOn = false, modFocusOn = true;
+    function setBeginner(on, fromPlugin) {
+      beginnerOn = on; document.body.classList.toggle('beginner', on);
+      const b = document.getElementById('beginnerBtn'); if (b) { b.classList.toggle('active', on); b.textContent = 'Beginner Mode: ' + (on ? 'ON' : 'OFF'); }
+      if (!fromPlugin) { emit('setUiProp', { key: 'beginner', value: on ? '1' : '0' }); flashHint(on ? 'Beginner Mode: essentials only (U shows everything)' : 'All controls shown'); }
+    }
+    function toggleBeginner() { setBeginner(!beginnerOn); }
+    function setModFocus(on, fromPlugin) {
+      modFocusOn = on; const b = document.getElementById('secFocusBtn'); if (b) { b.classList.toggle('active', on); b.textContent = 'Modifier-Linked Focus: ' + (on ? 'ON' : 'OFF'); }
+      if (!fromPlugin) { emit('setUiProp', { key: 'modFocus', value: on ? '1' : '0' }); flashHint('Modifier-Linked Focus: ' + (on ? 'ON (Shift-drag a knob)' : 'OFF')); }
+    }
+    function toggleModFocus() { setModFocus(!modFocusOn); }
+
+    // ---------- MIDI Learn on every control ----------
+    let hoverLearnEl = null;
+    const learnIdOf = (el) => { const t = el && el.closest && el.closest('[data-param],[data-sync],[data-ptoggle]'); return t ? (t.dataset.param || t.dataset.sync || t.dataset.ptoggle) : null; };
+    document.addEventListener('mouseover', (e) => { hoverLearnEl = e.target; }, true);
+    document.addEventListener('contextmenu', (e) => { const id = learnIdOf(e.target); if (!id) return; e.preventDefault(); startLearn(id); });
+    function learnHovered() { const id = learnIdOf(hoverLearnEl); if (id) startLearn(id); else flashHint('Hover a knob, slider or switch, then press K to MIDI-learn it'); }
+    function startLearn(id) {
+      emit('midiLearn', { id });
+      const ms = document.getElementById('midiStatus'); if (ms) ms.textContent = 'Listening for CC → ' + id;
+      flashHint('🎹 MIDI LEARN: move a knob/fader on your controller for ' + id.replace(/_/g, ' ').toUpperCase());
+    }
+
+    // ---------- Pre-Render Check ----------
+    function openPreRender() { document.getElementById('preRenderModal').classList.add('open'); renderPreRender(); }
+    function renderPreRender() {
+      const t = window._tele || {}, [lufsT, tpT] = document.getElementById('prTarget').value.split(',').map(Number), rows = [];
+      const row = (cls, icon, title, detail, fix) => rows.push(`<div class="pr-row ${cls}"><span>${icon}</span><div><b>${title}</b><small>${detail}</small></div>${fix || ''}</div>`);
+      const mons = (t.monitorMask ? 1 : 0) + (t.sessionMonitors || 0);
+      if (mons) row('fail', '✖', 'Monitoring tools are on', `${mons} plugin(s) still have a listening room, binaural, A/B, Delta, mono check or room correction on. Bounces bypass them, but turn them off to hear what you'll export.`, `<button onclick="emit('monitorOff',{all:true}); setTimeout(renderPreRender, 400)">TURN ALL OFF</button>`);
+      else row('pass', '✔', 'Monitoring tools off', 'Nothing in the session is colouring what you hear.');
+      const li = t.lufsInt;
+      if (li === undefined || li < -69) row('info', '…', 'Loudness not measured yet', 'Play the song through from the top.');
+      else { const d = li - lufsT, cls = Math.abs(d) <= 1 ? 'pass' : Math.abs(d) <= 3 ? 'warn' : 'fail';
+        row(cls, cls === 'pass' ? '✔' : '!', `Integrated loudness ${li.toFixed(1)} LUFS (target ${lufsT})`, d > 1 ? `${d.toFixed(1)} LU too loud - the service will turn it down.` : d < -1 ? `${(-d).toFixed(1)} LU quieter than target.` : 'On target.'); }
+      const tp = t.truePeak;
+      if (tp !== undefined && tp > -69) { const cls = tp <= tpT ? 'pass' : 'fail'; row(cls, cls === 'pass' ? '✔' : '✖', `True peak ${tp.toFixed(1)} dBTP (max ${tpT})`, cls === 'pass' ? 'Safe from inter-sample clipping after encoding.' : 'Lower the output or the ceiling - encoders will clip this.'); }
+      const ps = window._phaseStats;
+      if (ps && ps.n > 30) { const avg = ps.sum / ps.n, cls = avg > 0.2 && ps.min > -0.5 ? 'pass' : avg > 0 ? 'warn' : 'fail';
+        row(cls, cls === 'pass' ? '✔' : '!', `Phase: average correlation ${avg.toFixed(2)} (lowest ${ps.min.toFixed(2)})`, cls === 'pass' ? 'Mono-compatible.' : 'Parts of the mix cancel in mono - check with Mono Check (Shift+M).'); }
+      const dcOn = state.dc_guard === undefined || state.dc_guard > 0.5;
+      const issues = [[t.diagClips, 'Input clipping', 'blocks hit 0 dBFS before this plugin - lower the track or use the input trim', 'warn'],
+                      [t.diagBad, 'Broken samples', 'NaN/Inf arrived and were silenced - a plugin before this one misbehaved', 'warn'],
+                      [t.diagPhase, 'Phase cancellation events', 'left and right fought for half a second or more', 'warn'],
+                      [t.diagOverloads, 'Audio overruns', 'blocks ran past real time - raise the buffer or let DQS help', 'warn'],
+                      [t.diagDc, 'DC offset on input', dcOn ? 'removed by DC Guard' : 'DC Guard is OFF - turn it on (Ctrl+Alt+D)', dcOn ? 'info' : 'fail']];
+      issues.forEach(([n, title, why, cls]) => { if (n) row(cls, '!', `${title}: ${n}`, why); });
+      if (!issues.some(([n]) => n)) row('pass', '✔', 'No clipping, broken samples, DC or overruns', 'Since this plugin loaded.');
+      const verdict = rows.some(r => r.includes('pr-row fail')) ? 'FAIL' : rows.some(r => r.includes('pr-row warn')) ? 'CHECK' : 'PASS';
+      document.getElementById('prList').innerHTML = `<div style="font-size:20px;margin-bottom:8px;color:${verdict === 'PASS' ? '#4ade80' : verdict === 'CHECK' ? '#fbbf24' : '#f87171'}">${verdict}</div>` + rows.join('');
     }
 
     // ---------- fullscreen panels ----------

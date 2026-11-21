@@ -206,14 +206,50 @@ namespace SolutionDSP
     };
 
     //==========================================================================
-    // Infrasonic Lift (The Bunker): a wide bell centred on 7.63 Hz whose skirt fills in 15-30 Hz,
-    // plus a 3 Hz guard so DC and sub-3 Hz drift never reach the speakers. Double precision:
+    // DC Guard: 1st-order DC blocker at ~1 Hz in double precision. Removes DC offset (and the slow drift
+    // asymmetric saturation creates) while leaving even 7 Hz infrasonics essentially untouched (-0.04 dB).
+    class DcGuard
+    {
+    public:
+        static constexpr double cornerHz = 1.0;
+        void prepare (double fs) { r = std::exp (-juce::MathConstants<double>::twoPi * cornerHz / fs); reset(); }
+        void reset() { for (auto& s : st) s = {}; dcEstimate = 0.0; }
+        void process (float* l, float* r_, int n)
+        {
+            float* ch[2] = { l, r_ };
+            double sum = 0.0;
+            for (int c = 0; c < 2; ++c)
+                if (ch[c] != nullptr)
+                    for (int i = 0; i < n; ++i)
+                    {
+                        const double x = ch[c][i], y = x - st[c].x1 + r * st[c].y1;
+                        st[c].x1 = x; st[c].y1 = y; sum += x - y;            // x - y = the DC it removed
+                        ch[c][i] = (float) y;
+                    }
+            const double blockDc = sum / std::max (1, 2 * n);
+            dcEstimate += 0.05 * (blockDc - dcEstimate);
+        }
+        double removedDc() const { return dcEstimate; }   // smoothed average offset being removed (linear)
+    private:
+        struct State { double x1 = 0.0, y1 = 0.0; };
+        State st[2];
+        double r = 0.9999, dcEstimate = 0.0;
+    };
+
+    //==========================================================================
+    // Infrasonic Lift (The Bunker): a bell centred on 7.63 Hz - narrow by default (true infrasonics only,
+    // 15-30 Hz left essentially alone), or wide so its skirt also fills in 15-30 Hz - plus a 3 Hz guard so DC and sub-3 Hz drift never reach the speakers. Double precision:
     // a 7.63 Hz biquad at 48-192 kHz is too close to z = 1 for float coefficients.
     class InfraLift
     {
     public:
-        static constexpr double centreHz = 7.63, q = 0.6, guardHz = 3.0;
+        static constexpr double centreHz = 7.63, narrowQ = 2.2, wideQ = 0.6, guardHz = 3.0;
         void prepare (double fs) { sampleRate = fs; lastDb = -1000.0f; reset(); }
+        void process (float* l, float* r, int n, float gainDb, bool wide)
+        {
+            if (wide != lastWide) { lastWide = wide; lastDb = -1000.0f; }
+            process (l, r, n, gainDb);
+        }
         void reset() { for (auto* b : { &bell[0], &bell[1], &guard[0], &guard[1] }) b->z1 = b->z2 = 0.0; }
         void process (float* l, float* r, int n, float gainDb)
         {
@@ -235,6 +271,7 @@ namespace SolutionDSP
         };
         void setCoefficients (float gainDb)
         {
+            const double q = lastWide ? wideQ : narrowQ;
             const double w = juce::MathConstants<double>::twoPi * centreHz / sampleRate, al = std::sin (w) / (2 * q), c = std::cos (w);
             const double A = std::pow (10.0, gainDb / 40.0), a0 = 1 + al / A;
             for (auto& b : bell) { const double z1 = b.z1, z2 = b.z2;
@@ -250,6 +287,7 @@ namespace SolutionDSP
         }
         double sampleRate = 48000.0;
         float lastDb = -1000.0f;
+        bool lastWide = false;
         BQ bell[2], guard[2];
     };
 

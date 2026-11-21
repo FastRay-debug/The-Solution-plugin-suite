@@ -109,9 +109,9 @@ namespace SolutionDSP
     class TruePeakLimiter
     {
     public:
-        void prepare (double sampleRate)
+        void prepare (double sampleRate, double lookaheadMs = 1.5)
         {
-            lookahead = std::max (1, (int) std::round (0.0015 * sampleRate));       // 1.5 ms
+            lookahead = std::max (1, (int) std::round (lookaheadMs * 0.001 * sampleRate));   // 1.5 ms, or 5 ms with Lookahead on
             releaseCoeff = 1.0f - std::exp (-1.0f / (float) (0.060 * sampleRate));   // 60 ms release
             minHistory.assign ((size_t) lookahead, 1.0f);
             dequeValue.assign ((size_t) lookahead + 2, 1.0f);

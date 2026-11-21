@@ -117,6 +117,7 @@ public:
     int getSessionMonitorCount() const;                          // other instances with monitoring tools on
     void turnOffMonitoring();                                    // message thread
     void turnOffMonitoringEverywhere();                          // every instance in the session
+    void applyPendingChanges() { handleUpdateNowIfNeeded(); }  // run queued message-thread work now (tests, offline hosts)
     // Billet Audio hub - Emergency Panic Reset: flush every tail/delay/filter/limiter, then fade back in.
     void panicReset();                                           // message thread
     void panicResetEverywhere();                                 // every Solution instance in the session
@@ -160,10 +161,13 @@ public:
         std::atomic<uint32_t> inputClips { 0 };   // blocks whose input hit 0 dBFS or above
         std::atomic<uint32_t> badSamples { 0 };   // blocks containing NaN/Inf (silenced to protect speakers)
         std::atomic<uint32_t> phaseEvents { 0 };  // half-second stretches of strong phase cancellation
+        std::atomic<uint32_t> dcEvents { 0 };     // times a DC offset showed up on the input (DC Guard removed it)
         std::atomic<float>    lastBlockLoad { 0.0f };
     } diag;
     float phaseBadSeconds = 0.0f;
-    SolutionDSP::InfraLift infraLift;       // The Bunker: infrasonic lift, just before the limiter
+    SolutionDSP::InfraLift infraLift;
+    SolutionDSP::DcGuard dcGuardIn, dcGuardOut;
+    bool inputDcFlag = false;       // The Bunker: infrasonic lift, just before the limiter
    #if ! SOLUTION_HEADLESS
     juce::SharedResourcePointer<SolutionDiag::DiagBridge> diagBridge;   // feeds the standalone Solution Utility
    #endif
@@ -196,7 +200,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 16;  // v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 17;  // v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -220,7 +224,13 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     static void migrateState (juce::ValueTree& state, int fromVersion);
-    void parameterChanged (const juce::String&, float) override { markParamsChanged(); }
+    void parameterChanged (const juce::String& id, float) override
+    {
+        markParamsChanged();
+        if (id == "limiter_lookahead") { lookaheadChanged = true; triggerAsyncUpdate(); }
+    }
+    std::atomic<bool> lookaheadChanged { false };
+    double limiterLookaheadMs() const { return apvts.getRawParameterValue ("limiter_lookahead")->load() > 0.5f ? 5.0 : 1.5; }
 
     std::atomic<bool> paramsChanged { true };
     int currentProgram = 0;
@@ -264,7 +274,17 @@ private:
     SolutionDSP::IntegerDelay restDelay;
     int lastStemMode = 0;
     std::atomic<bool> stemActive { false };
-    void handleAsyncUpdate() override { updateLatencyNow(); }
+    void handleAsyncUpdate() override
+    {
+        // Lookahead length changed: re-prepare the limiter while the host outputs silence, then report the new latency.
+        if (lookaheadChanged.exchange (false) && preparedSampleRate > 0.0)
+        {
+            suspendProcessing (true);
+            ceilingLimiter.prepare (preparedSampleRate, limiterLookaheadMs());
+            suspendProcessing (false);
+        }
+        updateLatencyNow();
+    }
     juce::AudioBuffer<float> measureOut;
     SolutionDSP::RoomAnalysis roomAnalysis;                      // message thread
     std::unique_ptr<SolutionDSP::RoomAnalysis> finishedAnalysis; // handed over from the worker

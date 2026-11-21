@@ -54,7 +54,7 @@ private:
     juce::Array<juce::var> diagLog;
     struct SlotCounts { uint32_t overloads = 0, errors = 0; bool seen = false; };
     std::array<SlotCounts, 64> lastSlotCounts {};
-    uint32_t lastClips = 0, lastBad = 0, lastPhase = 0; int lastPanic = 0;
+    uint32_t lastClips = 0, lastBad = 0, lastPhase = 0, lastDc = 0; int lastPanic = 0;
     struct PopoutWindow;
     std::unique_ptr<PopoutWindow> popout;      // declared after webView: closes first
 

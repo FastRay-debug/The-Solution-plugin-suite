@@ -29,6 +29,11 @@ SolutionAudioProcessor::SolutionAudioProcessor()
         "room_match_mix", "global_mix", "ultra_wide", "cv_mod_depth",
         "glue_amount", "link_duck_depth", "infra_lift_db"
     };
+    // MIDI Learn works on every control: append everything else after the classic set.
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (std::find (learnableParamIds.begin(), learnableParamIds.end(), ranged->getParameterID()) == learnableParamIds.end())
+                learnableParamIds.push_back (ranged->getParameterID());
 }
 
 SolutionAudioProcessor::~SolutionAudioProcessor()
@@ -52,7 +57,7 @@ void SolutionAudioProcessor::armMidiLearn (const juce::String& paramId)
             return;
         }
     }
-    learnArmedIndex.store (2, std::memory_order_relaxed); // Default to stage_depth
+    // Unknown id: leave MIDI Learn disarmed rather than grabbing some other control.
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::createParameterLayout()
@@ -82,6 +87,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "dqs_mode", 14 }, "Quality (DQS)",
                           juce::StringArray { "Auto", "Locked 4x (best)", "Eco (lightest)" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
+    // --- v17: DC Guard (on by default): ~1 Hz DC blocker on the input and right before the limiter
+    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "dc_guard", 17 }, "DC Guard", true));
+    // --- v17: Lookahead limiter (5 ms instead of 1.5 ms: smoother on fast transients, +3.5 ms latency)
+    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "limiter_lookahead", 17 }, "Lookahead Limiter", false));
+    // The Bunker: let the Infrasonic Lift's skirt also fill 15-30 Hz (off = true infrasonics only)
+    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "infra_lift_wide", 17 }, "Infrasonic Lift Wide (15-30 Hz)", false));
     // --- v16: The Bunker - Infrasonic Lift (boost centred on 7.63 Hz instead of cutting below 18 Hz)
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "infra_lift", 16 }, "Infrasonic Lift", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "infra_lift_db", 16 }, "Infrasonic Lift (dB)",
@@ -182,6 +193,8 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     preparedSampleRate = sampleRate;
     preparedBlockSize = samplesPerBlock;
     infraLift.prepare (sampleRate);
+    dcGuardIn.prepare (sampleRate);
+    dcGuardOut.prepare (sampleRate);
    #if ! SOLUTION_HEADLESS
     diagBridge->sampleRate = sampleRate;
    #endif
@@ -189,7 +202,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     moduleEngine.prepare (spec);
     dryCopy.setSize (2, samplesPerBlock, false, true, true);
     dryDelay.prepare (2, moduleEngine.getLatencySamples());
-    ceilingLimiter.prepare (sampleRate);
+    ceilingLimiter.prepare (sampleRate, limiterLookaheadMs());
     glue.prepare (sampleRate);
     roomCorrector.prepare (sampleRate);
     binaural.prepare (sampleRate);
@@ -368,6 +381,17 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         }
     }
 
+    // DC Guard (input): remove any DC offset before it can push the saturators off-centre.
+    const bool dcGuardOn = apvts.getRawParameterValue ("dc_guard")->load() > 0.5f;
+    if (dcGuardOn)
+    {
+        dcGuardIn.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples);
+        const double dc = std::abs (dcGuardIn.removedDc());
+        if (! inputDcFlag && dc > 0.001) { inputDcFlag = true; diag.dcEvents.fetch_add (1, std::memory_order_relaxed); }   // > -60 dBFS
+        else if (inputDcFlag && dc < 0.0005) inputDcFlag = false;
+    }
+    else { dcGuardIn.reset(); inputDcFlag = false; }
+
     // Input trim (gain staging into the module).
     trimInGain.setTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("trim_in_db")->load()));
     if (trimInGain.isSmoothing() || trimInGain.getTargetValue() != 1.0f)
@@ -528,6 +552,10 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const auto* dryL = dryCopy.getReadPointer (0);
     const auto* dryR = dryCopy.getReadPointer (1);
 
+    // DC Guard (output side): remove DC the processing created (asymmetric saturation does) from the
+    // processed signal only - the dry signal is already clean, so a 0% mix still changes nothing.
+    if (dcGuardOn && ! p.tapeCalTone) dcGuardOut.process (left, right, numSamples); else dcGuardOut.reset();
+
     if (! p.tapeCalTone)
         for (int i = 0; i < numSamples; ++i)
         {
@@ -572,7 +600,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // (so the boosted 7 Hz energy never drives distortion or pumping), before the true-peak limiter
     // (so the ceiling still holds).
     if (infraOn)
-        infraLift.process (left, right, numSamples, apvts.getRawParameterValue ("infra_lift_db")->load());
+        infraLift.process (left, right, numSamples, apvts.getRawParameterValue ("infra_lift_db")->load(),
+                           apvts.getRawParameterValue ("infra_lift_wide")->load() > 0.5f);
     else
         infraLift.reset();
 

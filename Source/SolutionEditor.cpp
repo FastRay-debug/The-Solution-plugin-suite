@@ -725,6 +725,12 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("analysing",     audioProcessor.isRoomAnalysing());
     payload->setProperty ("notchAuto",     audioProcessor.getAutoNotchDepth());
     payload->setProperty ("monitorMask",   audioProcessor.getMonitorMask());
+    payload->setProperty ("diagClips",     (int) audioProcessor.diag.inputClips.load());
+    payload->setProperty ("diagBad",       (int) audioProcessor.diag.badSamples.load());
+    payload->setProperty ("diagPhase",     (int) audioProcessor.diag.phaseEvents.load());
+    payload->setProperty ("diagOverloads", (int) audioProcessor.diag.overloads.load());
+    payload->setProperty ("diagDc",        (int) audioProcessor.diag.dcEvents.load());
+    payload->setProperty ("latency",       audioProcessor.getLatencySamples());
     payload->setProperty ("dqsLevel",      audioProcessor.dqsLevel.load());
     payload->setProperty ("dqsSuiteLoad",  audioProcessor.dqsSuiteLoad.load());
     payload->setProperty ("dqsOwnLoad",    audioProcessor.dqsOwnLoad.load());
@@ -779,6 +785,10 @@ void SolutionAudioProcessorEditor::updateDiagLog()
     if (clips > lastClips) add ("warn", "Input clipping on this track (" + juce::String ((int) (clips - lastClips)) + " blocks at or over 0 dBFS)");
     if (bad > lastBad)     add ("error", "Broken samples (NaN/Inf) arrived on this track and were silenced");
     if (phase > lastPhase) add ("warn", "Phase cancellation on this track: left and right are fighting (correlation below -0.3)");
+    const auto dcEv = d.dcEvents.load();
+    if (dcEv > lastDc) add ("info", "DC offset arrived on this track's input - DC Guard removed it"
+                                    + juce::String (audioProcessor.apvts.getRawParameterValue ("dc_guard")->load() > 0.5f ? "" : " (DC Guard is OFF!)"));
+    lastDc = dcEv;
     if (panic > lastPanic) add ("info", "Panic reset: every tail, delay and filter on this track was flushed");
     lastClips = clips; lastBad = bad; lastPhase = phase; lastPanic = panic;
 

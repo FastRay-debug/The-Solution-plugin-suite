@@ -1420,11 +1420,15 @@ static void testInfraLift()
     {
         InfraLift lift; lift.prepare (fs);
         float l[64] = {}, r[64] = {};
-        lift.process (l, r, 64, 6.0f);                      // sets the coefficients
-        const double g763 = 20 * std::log10 (lift.magnitudeAt (7.63)), g20 = 20 * std::log10 (lift.magnitudeAt (20.0)),
-                     g60 = 20 * std::log10 (lift.magnitudeAt (60.0)), g1k = 20 * std::log10 (lift.magnitudeAt (1000.0)), g1 = 20 * std::log10 (lift.magnitudeAt (1.0));
-        EXPECT (std::abs (g763 - 6.0) < 1.0, "%.0f Hz: +%.2f dB at 7.63 Hz (want ~+6)", fs, g763);
-        EXPECT (g20 > 1.0 && g20 < 5.5, "%.0f Hz: skirt lifts 20 Hz by %.2f dB", fs, g20);
+        auto db = [&] (double f) { return 20 * std::log10 (lift.magnitudeAt (f)); };
+        lift.process (l, r, 64, 6.0f, false);               // default: narrow, true infrasonics only
+        const double n763 = db (7.63), n15 = db (15.0), n20 = db (20.0), n30 = db (30.0);
+        EXPECT (std::abs (n763 - 6.0) < 1.0, "%.0f Hz narrow: +%.2f dB at 7.63 Hz (want ~+6)", fs, n763);
+        EXPECT (n15 < 1.2 && n20 < 0.6 && std::abs (n30) < 0.3, "%.0f Hz narrow: leaves 15-30 Hz alone (%.2f / %.2f / %.2f dB)", fs, n15, n20, n30);
+        lift.process (l, r, 64, 6.0f, true);                // WIDE: skirt fills 15-30 Hz
+        const double g763 = db (7.63), g20 = db (20.0), g60 = db (60.0), g1k = db (1000.0), g1 = db (1.0);
+        EXPECT (std::abs (g763 - 6.0) < 1.0, "%.0f Hz wide: +%.2f dB at 7.63 Hz (want ~+6)", fs, g763);
+        EXPECT (g20 > 1.0 && g20 < 5.5, "%.0f Hz wide: skirt lifts 20 Hz by %.2f dB", fs, g20);
         EXPECT (std::abs (g60) < 0.6 && std::abs (g1k) < 0.05, "%.0f Hz: leaves 60 Hz (%.2f) and 1 kHz (%.3f) alone", fs, g60, g1k);
         EXPECT (g1 < -6.0, "%.0f Hz: 3 Hz guard cuts 1 Hz (%.1f dB)", fs, g1);
     }
@@ -1448,6 +1452,62 @@ static void testInfraLift()
             for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < 512; ++i) finite = finite && std::isfinite (b.getSample (ch, i));
         }
         EXPECT (finite && peak <= juce::Decibels::decibelsToGain (-0.5f) * 1.02f, "+12 dB lift on a hot 9 Hz tone stays finite and under the ceiling (peak %.3f)", peak);
+    }
+    std::printf ("  done\n");
+}
+
+static void testLookaheadAndLearn()
+{
+    std::printf ("Lookahead limiter + MIDI Learn on every control\n");
+    SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
+    const int before = proc.getLatencySamples();
+    setParam (proc, "limiter_lookahead", 1.0f);
+    proc.applyPendingChanges();                    // the host's message loop would run this
+    const int after = proc.getLatencySamples();
+    EXPECT (after - before == (int) std::round (0.005 * 48000.0) - (int) std::round (0.0015 * 48000.0),
+            "lookahead adds exactly 3.5 ms of reported latency (%d -> %d)", before, after);
+    juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512); float peak = 0;
+    for (int k = 0; k < 40; ++k) { fillSine (b, 48000.0, 100.0, 2.0f, 0.0, k * 512); proc.processBlock (b, midi); peak = std::max (peak, b.getMagnitude (0, 512)); }
+    EXPECT (peak <= juce::Decibels::decibelsToGain (-0.5f) * 1.02f, "ceiling still holds with lookahead on (peak %.3f)", peak);
+
+    // Learn: arm the Infrasonic Lift amount (not in the old list) and move CC 21.
+    proc.armMidiLearn ("infra_lift_db");
+    juce::MidiBuffer cc; cc.addEvent (juce::MidiMessage::controllerEvent (1, 21, 64), 0);
+    proc.processBlock (b, cc);
+    juce::MidiBuffer cc2; cc2.addEvent (juce::MidiMessage::controllerEvent (1, 21, 127), 0);
+    proc.processBlock (b, cc2);
+    const float v = proc.apvts.getRawParameterValue ("infra_lift_db")->load();
+    EXPECT (std::abs (v - 12.0f) < 0.05f, "CC 21 learned onto Infrasonic Lift dB (now %.2f)", v);
+    std::printf ("  done\n");
+}
+
+static void testDcGuard()
+{
+    std::printf ("DC Guard\n");
+    {
+        DcGuard g; g.prepare (48000.0);
+        std::vector<float> l (48000 * 3), r (48000 * 3);
+        for (size_t i = 0; i < l.size(); ++i) { l[i] = 0.25f + 0.1f * (float) std::sin (2 * juce::MathConstants<double>::pi * 8.0 * (double) i / 48000.0); r[i] = l[i]; }   // 8 Hz: whole cycles per second
+        g.process (l.data(), r.data(), (int) l.size());
+        double mean = 0, peak = 0; const size_t from = l.size() - 48000;
+        for (size_t i = from; i < l.size(); ++i) { mean += l[i]; peak = std::max (peak, (double) std::abs (l[i])); }
+        mean /= 48000.0;
+        EXPECT (std::abs (mean) < 0.002, "0.25 DC offset removed (mean now %.4f)", mean);
+        EXPECT (std::abs (peak - 0.1) < 0.004, "8 Hz infrasonic content survives (peak %.4f, want 0.100)", peak);
+    }
+    {
+        // Through the plugin: DC on the input is gone at the output, and it's logged.
+        SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
+        juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512); double mean = 0;
+        for (int k = 0; k < 400; ++k)
+        {
+            fillSine (b, 48000.0, 220.0, 0.2f, 0.0, k * 512);
+            for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < 512; ++i) b.setSample (ch, i, b.getSample (ch, i) + 0.2f);
+            proc.processBlock (b, midi);
+            if (k >= 300) for (int i = 0; i < 512; ++i) mean += b.getSample (0, i);
+        }
+        mean /= 100.0 * 512.0;
+        EXPECT (std::abs (mean) < 0.003 && proc.diag.dcEvents.load() >= 1, "plugin output mean %.4f with 0.2 DC in, %u event(s) logged", mean, proc.diag.dcEvents.load());
     }
     std::printf ("  done\n");
 }
@@ -1521,6 +1581,8 @@ int main()
     testStageEngine();
     testDqs();
     testInfraLift();
+    testLookaheadAndLearn();
+    testDcGuard();
     testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
