@@ -2,6 +2,7 @@
 #include "SolutionEditor.h"
 #include "BinaryData.h"
 #include "Vendor.h"
+#include "HostTransport.h"
 
 #ifndef SOLUTION_BUNDLE_SKINS
 #define SOLUTION_BUNDLE_SKINS 1
@@ -82,6 +83,7 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                {
                    const auto paramId = obj->getProperty ("id").toString();
                    const float value  = static_cast<float> (obj->getProperty ("value"));
+                   if (voice != nullptr) (*voice)->noteActive (audioProcessor.getRackSlot());   // "the last plugin you touched"
                    if (auto* param = audioProcessor.apvts.getParameter (paramId))
                    {
                        audioProcessor.undoManager.beginNewTransaction (paramId);
@@ -183,6 +185,7 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                    else if (slot >= 0 && slot < (int) audioProcessor.getRackBus().slots.size()) audioProcessor.getRackBus().slots[(size_t) slot].panicRequest = true;
                }
            })
+           .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
            .withEventListener ("panic", [this] (const juce::var& data)
            {
                if ((bool) data.getProperty ("all", false)) audioProcessor.panicResetEverywhere();
@@ -431,6 +434,7 @@ void SolutionAudioProcessorEditor::sendRackState()
 
 SolutionAudioProcessorEditor::~SolutionAudioProcessorEditor()
 {
+    if (voice != nullptr) (*voice)->removeClient (this);     // the hub must never call a closed window
     audioProcessor.scopeTap.setEnabled (false);
     if (stageGestureOpen)
         for (const char* id : { "stage_azimuth", "stage_elevation", "stage_distance", "stage_width" })
@@ -838,4 +842,144 @@ void SolutionAudioProcessorEditor::exportDiagnostics (const juce::String& format
     const bool ok = file.replaceWithText (text);
     if (ok) file.revealToUser();
     emitToViews ("diagExported", ok ? juce::var (file.getFullPathName()) : juce::var ("Couldn't write to " + dir.getFullPathName()));
+}
+
+
+//==============================================================================
+// Voice control
+std::vector<SolutionVoice::ParamInfo> SolutionAudioProcessorEditor::voiceParamTable() const
+{
+    std::vector<SolutionVoice::ParamInfo> out;
+    for (auto* p : audioProcessor.getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
+            SolutionVoice::ParamInfo pi;
+            pi.id = r->getParameterID(); pi.name = r->getName (64);
+            pi.min = r->getNormalisableRange().start; pi.max = r->getNormalisableRange().end;
+            pi.isBool = dynamic_cast<juce::AudioParameterBool*> (r) != nullptr;
+            if (auto* ch = dynamic_cast<juce::AudioParameterChoice*> (r)) { pi.isChoice = true; pi.choices = ch->choices; }
+            // shown as % in the UI though stored 0-1 (or 0-2)
+            for (auto* id : { "stage_width", "global_mix", "stage_depth", "glue_amount", "room_match_mix", "ultra_wide", "smooth_amount", "phone_bass",
+                              "char_amount", "room_correct_amount", "cv_mod_depth", "regen_throttle" })
+                if (pi.id == id) pi.percentUnit = true;
+            out.push_back (pi);
+        }
+    return out;
+}
+
+void SolutionAudioProcessorEditor::handleVoice (const juce::var& data)
+{
+    const auto cmd = data.getProperty ("cmd", {}).toString();
+    if (cmd == "on")
+    {
+        if (voice == nullptr) voice = std::make_unique<juce::SharedResourcePointer<SolutionVoice::VoiceHub>>();
+        auto& hub = **voice;
+        hub.setParams (voiceParamTable());
+        hub.setWakeWordRequired (audioProcessor.getUiProperty ("voiceWake") != "0");
+        SolutionVoice::VoiceHub::Client c;
+        c.slot = audioProcessor.getRackSlot();
+        c.execute = [this] (const SolutionVoice::Command& k) { return executeVoice (k); };
+        c.notify = [this] (const juce::var& v) { emitToViews ("voiceHeard", v); };
+        const auto why = hub.addClient (this, c);
+        hub.noteActive (audioProcessor.getRackSlot());
+        emitToViews ("voiceState", juce::var (why.isEmpty() ? juce::String ("listening") : why));
+        if (why.isNotEmpty()) voice.reset();
+    }
+    else if (cmd == "off")
+    {
+        if (voice != nullptr) (*voice)->removeClient (this);
+        voice.reset();
+        emitToViews ("voiceState", juce::var ("off"));
+    }
+    else if (cmd == "wake")
+    {
+        const bool on = (bool) data.getProperty ("value", true);
+        audioProcessor.setUiProperty ("voiceWake", on ? "1" : "0");
+        if (voice != nullptr) (*voice)->setWakeWordRequired (on);
+    }
+    else if (cmd == "keys")
+    {
+        audioProcessor.setUiProperty ("voiceKeys", juce::JSON::toString (data.getProperty ("value", {}), true));
+    }
+    else if (cmd == "defaults")
+    {
+        const auto k = SolutionVoice::defaultTransportKeys (juce::PluginHostType().getHostDescription());
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("host", juce::String (juce::PluginHostType().getHostDescription()));
+        o->setProperty ("play", k.play); o->setProperty ("stop", k.stop); o->setProperty ("record", k.record); o->setProperty ("start", k.start); o->setProperty ("loop", k.loop);
+        o->setProperty ("saved", juce::JSON::parse (audioProcessor.getUiProperty ("voiceKeys")));
+        o->setProperty ("wake", audioProcessor.getUiProperty ("voiceWake") != "0");
+        emitToViews ("voiceDefaults", juce::var (o.get()));
+    }
+    else if (cmd == "try")       // typed test phrase from the Voice panel
+    {
+        if (voice != nullptr) (*voice)->simulate (data.getProperty ("text", {}).toString());
+    }
+}
+
+juce::String SolutionAudioProcessorEditor::executeVoice (const SolutionVoice::Command& c)
+{
+    using K = SolutionVoice::Command;
+    const int own = audioProcessor.getRackSlot();
+    const bool forMe = c.slot < 0 || c.slot == own;
+    auto uiAction = [this] (const juce::String& action, float value)
+    {
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("action", action); o->setProperty ("value", value);
+        emitToViews ("voiceUi", juce::var (o.get()));
+        return juce::String();
+    };
+    switch (c.kind)
+    {
+        case K::SetParam:
+        case K::NudgeParam:
+        {
+            auto* q = audioProcessor.apvts.getParameter (c.paramId);
+            if (q == nullptr) return "unknown control";
+            const auto range = q->getNormalisableRange();
+            float v = c.value;
+            if (c.kind == K::NudgeParam)
+            {
+                if (! forMe) return "say a value for other tracks, e.g. '... 80 percent'";
+                v = range.convertFrom0to1 (q->getValue()) + c.value * (range.end - range.start);
+            }
+            else if (v < -0.5f && (dynamic_cast<juce::AudioParameterBool*> (q) != nullptr || dynamic_cast<juce::AudioParameterChoice*> (q) != nullptr))
+            {
+                if (! forMe) v = range.end;                                  // can't read another track's switch: "toggle" = on
+                else if (auto* ch = dynamic_cast<juce::AudioParameterChoice*> (q)) v = (float) ((ch->getIndex() + 1) % ch->choices.size());
+                else v = q->getValue() > 0.5f ? range.start : range.end;
+            }
+            v = juce::jlimit (range.start, range.end, v);
+            if (forMe) audioProcessor.setParamReal (c.paramId, v);
+            else if (! audioProcessor.requestParamOnSlot (c.slot, c.paramId, v)) return "that track didn't answer";
+            return {};
+        }
+        case K::Transport:
+        {
+            const bool playing = audioProcessor.hostPlaying.load();
+            if ((c.action == "play" && playing) || (c.action == "stop" && ! playing)) return {};   // already there
+            const auto keys = SolutionVoice::defaultTransportKeys (juce::PluginHostType().getHostDescription());
+            const auto saved = juce::JSON::parse (audioProcessor.getUiProperty ("voiceKeys"));
+            const auto custom = saved.getProperty (c.action, {}).toString();
+            const auto key = custom.isNotEmpty() ? custom
+                           : c.action == "play" ? keys.play : c.action == "stop" ? keys.stop : c.action == "record" ? keys.record : c.action == "start" ? keys.start : keys.loop;
+            juce::String err;
+            if (! SolutionVoice::pressHostShortcut (key, getPeer() != nullptr ? getPeer()->getNativeHandle() : nullptr, err)) return err;
+            return {};
+        }
+        case K::Panic:
+            if (c.everywhere) audioProcessor.panicResetEverywhere();
+            else if (forMe) audioProcessor.panicReset();
+            else audioProcessor.getRackBus().slots[(size_t) c.slot].panicRequest = true;
+            return {};
+        case K::Ui:
+            if (c.action == "monitorsOff") { audioProcessor.turnOffMonitoringEverywhere(); return {}; }
+            if (! forMe) return "open that plugin's window to do that";
+            return uiAction (c.action, c.value);
+        case K::Macro:
+            if (! forMe) return "open that plugin's window to use its snapshots";
+            return uiAction (c.action == "store" ? "macroStore" : "macroRecall", c.value);
+        case K::None: break;
+    }
+    return "not a command I know";
 }

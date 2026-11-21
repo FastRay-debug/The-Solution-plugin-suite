@@ -512,6 +512,9 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     p.infraLift       = infraOn;
 
     // 3D stage: distance, and the motion path (locked to the host's bars when it's playing).
+    if (auto* ph = getPlayHead())                    // the host's transport state (voice control won't press "play" twice)
+        if (auto pos = ph->getPosition()) { hostPlaying.store (pos->getIsPlaying(), std::memory_order_relaxed); hostRecording.store (pos->getIsRecording(), std::memory_order_relaxed); }
+
     float stageDistance = apvts.getRawParameterValue ("stage_distance")->load();
     if (apvts.getRawParameterValue ("motion_on")->load() > 0.5f)
     {

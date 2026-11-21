@@ -156,6 +156,7 @@ public:
     std::atomic<float> dqsSuiteLoad { 0.0f }, dqsOwnLoad { 0.0f };
     std::atomic<float> voiceConfidence { 0.0f }, dialogueDuckDb { 0.0f };    // dialogue source / music ducking readouts
     std::atomic<int>   dialogueSources { 0 };
+    std::atomic<bool>  hostPlaying { false }, hostRecording { false };
 
     // Diagnostics: real events counted on the audio thread (the utility turns them into a log).
     struct DiagCounters

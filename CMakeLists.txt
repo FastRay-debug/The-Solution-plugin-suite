@@ -146,6 +146,12 @@ function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
             Source/RemoteControl.h
             Source/SystemMonitor.cpp
             Source/SystemMonitor.h
+            Source/SpeechInput.cpp
+            Source/SpeechInput.h
+            Source/HostTransport.cpp
+            Source/HostTransport.h
+            Source/VoiceHub.h
+            Source/VoiceCommands.h
             Source/SolutionEditor.cpp
             Source/SolutionEditor.h
     )

@@ -3,6 +3,7 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "SolutionProcessor.h"
 #include "SystemMonitor.h"
+#include "VoiceHub.h"
 
 class SolutionAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                            private juce::Timer
@@ -55,6 +56,11 @@ private:
     struct SlotCounts { uint32_t overloads = 0, errors = 0; bool seen = false; };
     std::array<SlotCounts, 64> lastSlotCounts {};
     uint32_t lastClips = 0, lastBad = 0, lastPhase = 0, lastDc = 0; int lastPanic = 0;
+    // Voice control (one hub per DAW process; this editor executes what's meant for it).
+    std::unique_ptr<juce::SharedResourcePointer<SolutionVoice::VoiceHub>> voice;
+    void handleVoice (const juce::var& data);
+    juce::String executeVoice (const SolutionVoice::Command& cmd);
+    std::vector<SolutionVoice::ParamInfo> voiceParamTable() const;
     struct PopoutWindow;
     std::unique_ptr<PopoutWindow> popout;      // declared after webView: closes first
 

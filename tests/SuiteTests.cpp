@@ -11,6 +11,7 @@
 #include "../Source/ModuleEngines.h"
 #include "../Source/SolutionProcessor.h"
 #include "../Source/SystemMonitor.h"
+#include "../Source/VoiceCommands.h"
 #include <atomic>
 #include <complex>
 #include <cstdio>
@@ -1591,6 +1592,61 @@ static void testDialogueAndTransients()
     std::printf ("  done\n");
 }
 
+static void testVoiceParser()
+{
+    std::printf ("Voice command parser\n");
+    using namespace SolutionVoice;
+    SolutionAudioProcessor proc;
+    Parser vp;
+    for (auto* p : proc.getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
+            ParamInfo pi; pi.id = r->getParameterID(); pi.name = r->getName (64);
+            pi.min = r->getNormalisableRange().start; pi.max = r->getNormalisableRange().end;
+            pi.isBool = dynamic_cast<juce::AudioParameterBool*> (r) != nullptr;
+            if (auto* ch = dynamic_cast<juce::AudioParameterChoice*> (r)) { pi.isChoice = true; pi.choices = ch->choices; }
+            pi.percentUnit = pi.id == "stage_width" || pi.id == "global_mix" || pi.id == "stage_depth" || pi.id == "glue_amount";
+            vp.params.push_back (pi);
+        }
+    vp.targets = { { "the bunker", 3 }, { "bunker", 3 }, { "lead vocal", 5 }, { "the stage", 1 } };
+    struct Case { const char* said; Command::Kind kind; const char* what; float value; int slot; };
+    const Case cases[] = {
+        { "Solution play", Command::Transport, "play", 0, -1 },
+        { "solution stop", Command::Transport, "stop", 0, -1 },
+        { "solution go to the beginning", Command::Transport, "start", 0, -1 },
+        { "solution record", Command::Transport, "record", 0, -1 },
+        { "solution panic everything", Command::Panic, "", 0, -1 },
+        { "solution width one hundred and twenty percent", Command::SetParam, "stage_width", 1.2f, -1 },
+        { "solution lead vocal width 80 percent", Command::SetParam, "stage_width", 0.8f, 5 },
+        { "solution azimuth minus thirty", Command::SetParam, "stage_azimuth", -30.0f, -1 },
+        { "solution bunker infra lift on", Command::SetParam, "infra_lift", 1.0f, 3 },
+        { "solution the bunker infrasonic lift eight point five db", Command::SetParam, "infra_lift_db", 8.5f, 3 },
+        { "solution dc guard off", Command::SetParam, "dc_guard", 0.0f, -1 },
+        { "solution lookahead on", Command::SetParam, "limiter_lookahead", 1.0f, -1 },
+        { "solution transient attack sixty", Command::SetParam, "transient_attack", 60.0f, -1 },
+        { "solution duck depth minus nine", Command::SetParam, "dialogue_duck_db", -9.0f, -1 },
+        { "solution more width", Command::NudgeParam, "stage_width", 0.1f, -1 },
+        { "solution recall three", Command::Macro, "recall", 3.0f, -1 },
+        { "solution snapshot two", Command::Macro, "store", 2.0f, -1 },
+        { "solution a b", Command::Ui, "ab", 0, -1 },
+        { "solution full screen", Command::Ui, "fullscreen", 0, -1 },
+        { "solution next preset", Command::Ui, "nextPreset", 0, -1 },
+        { "solution turn the monitors off", Command::Ui, "monitorsOff", 0, -1 },
+        { "play", Command::None, "", 0, -1 },                         // no wake word: ignored
+        { "solution what's for lunch", Command::None, "", 0, -1 },   // nonsense: ignored
+    };
+    int ok = 0;
+    for (auto& cs : cases)
+    {
+        const auto c = vp.parse (cs.said);
+        const juce::String what = c.kind == Command::SetParam || c.kind == Command::NudgeParam ? c.paramId : c.action;
+        const bool good = c.kind == cs.kind && what == cs.what && (cs.kind != Command::SetParam && cs.kind != Command::NudgeParam && cs.kind != Command::Macro || std::abs (c.value - cs.value) < 1e-3f) && c.slot == cs.slot;
+        EXPECT (good, "'%s' -> kind %d '%s' %.3f slot %d", cs.said, (int) c.kind, what.toRawUTF8(), c.value, c.slot);
+        ok += good;
+    }
+    std::printf ("  %d/%d phrases understood correctly, vocabulary %d words\n", ok, (int) std::size (cases), vp.vocabulary().size());
+}
+
 static void testDiagnostics()
 {
     std::printf ("Diagnostics: real counters + real system readings\n");
@@ -1663,6 +1719,7 @@ int main()
     testLookaheadAndLearn();
     testDcGuard();
     testDialogueAndTransients();
+    testVoiceParser();
     testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;

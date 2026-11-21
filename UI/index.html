@@ -152,6 +152,13 @@
     .pr-row { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; padding: 7px 9px; margin-bottom: 5px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); }
     .pr-row b { font-size: 12px; } .pr-row small { display: block; font-size: 10.5px; color: #94A3B8; }
     .pr-row.pass { border-left: 3px solid #22c55e; } .pr-row.warn { border-left: 3px solid #f59e0b; } .pr-row.fail { border-left: 3px solid #ef4444; } .pr-row.info { border-left: 3px solid #38bdf8; }
+    .voice-btn { flex-shrink: 0; width: 30px; height: 28px; margin-right: 6px; border-radius: 50%; border: 1px solid rgba(220,226,235,0.35);
+                 background: radial-gradient(circle at 40% 35%, #3a4150, #11151c); color: #e5e7eb; cursor: pointer; font-size: 14px; padding: 0; }
+    .voice-btn.listening { border-color: #ef4444; box-shadow: 0 0 0 0 rgba(239,68,68,0.7); animation: voicePulse 1.6s infinite; background: radial-gradient(circle at 40% 35%, #7f1d1d, #2b0a0a); }
+    @keyframes voicePulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); } 70% { box-shadow: 0 0 0 9px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
+    #voiceCaption { position: fixed; top: 54px; left: 50%; transform: translateX(-50%) translateY(-8px); z-index: 960; padding: 7px 14px; border-radius: 18px;
+                    background: rgba(5,7,10,0.9); border: 1px solid rgba(239,68,68,0.5); color: #e5e7eb; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; white-space: nowrap; }
+    #voiceCaption.show { opacity: 1; transform: translateX(-50%); }
     .fastray-btn { flex-shrink: 0; height: 38px; width: 126px; margin: -2px 6px -2px -2px; padding: 0; border: none; background: none; cursor: pointer;
                    position: relative; z-index: 6; transition: transform 0.12s, filter 0.12s; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.8)); }
     .fastray-btn img { width: 100%; height: 100%; display: block; border-radius: 6px; box-shadow: 0 0 0 1px rgba(200,205,212,0.35), 0 2px 6px rgba(0,0,0,0.7); }
@@ -413,6 +420,7 @@
 </head>
 <body>
   <div id="fsBadge"></div>
+  <div id="voiceCaption"></div>
   <div id="diagOverlay" class="diag" data-panel="diag">
     <div class="dg-head">
       <button class="fastray-btn dg-badge" onclick="toggleFastRayHub(event)" data-tip="Billet Audio command hub"></button>
@@ -508,6 +516,7 @@
       <button onclick="frHub('panicAll')" class="fr-danger"><b>🛑 Panic Reset · whole session</b><span>Every Solution plugin in the session at once</span></button>
       <button class="fr-util" onclick="frHub('keys')"><b>⌨ Shortcuts &amp; Manual</b><span>Everything the keyboard can do</span></button>
     </div>
+    <button id="voiceBtn" class="voice-btn" onclick="toggleVoice()" oncontextmenu="event.preventDefault(); openVoiceSettings();" title="Voice control (Shift+V) · right-click for settings">🎤</button>
     <div class="ribbon-title" id="moduleTitle"><span id="secretTrigger" onclick="openSecretMenu(event)" title="Secret Menu" style="cursor:pointer;">T</span><span id="moduleTitleRest" onclick="toggleCalTone()" title="Click title for Tape Calibration Tone (-18 dBFS)">HE SOLUTION · SUITE MODULE</span></div>
     <div class="skin-bar">
       <select id="skinSelect" onchange="applySkin(this.value)" title="Select from 50 /cars & /places skins">
@@ -1181,6 +1190,32 @@
     </div>
   </div>
 
+  <div class="modal" id="voiceModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:600px;max-height:620px;overflow-y:auto;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">🎤 VOICE CONTROL</strong>
+      <div class="dg-hint" style="font-size:11px;margin:6px 0 10px;">Offline Windows speech recognition - nothing leaves your computer, and it only listens while the 🎤 is red. Start every command with <b>"Solution"</b>.</div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-bottom:8px;"><input type="checkbox" id="voiceWake" checked onchange="emit('voice', { cmd: 'wake', value: this.checked })"> Require the wake word "Solution" (recommended - normal studio talk won't trigger anything)</label>
+      <div style="font-size:12px;color:var(--gold);margin:8px 0 4px;">DAW TRANSPORT KEYS · <span id="voiceHost">your DAW</span></div>
+      <div class="dg-hint" style="font-size:11px;margin-bottom:6px;">Plugins can't press play directly, so voice brings your DAW to the front and presses its own shortcut. Blank = the default shown. Examples: Space, Ctrl+R, F9, Home, NumpadMultiply.</div>
+      <div style="display:grid;grid-template-columns:110px 1fr;gap:5px 8px;font-size:12px;align-items:center;">
+        <span>Play</span><input id="vk-play"><span>Stop</span><input id="vk-stop"><span>Record</span><input id="vk-record"><span>Go to start</span><input id="vk-start"><span>Loop</span><input id="vk-loop">
+      </div>
+      <button style="margin-top:8px;" onclick="saveVoiceKeys()">SAVE KEYS</button>
+      <div style="font-size:12px;color:var(--gold);margin:12px 0 4px;">THINGS YOU CAN SAY</div>
+      <div style="font-size:11.5px;line-height:1.6;color:#cbd5e1;">
+        <b>Transport:</b> play · stop · record · go to start · loop<br>
+        <b>Any control:</b> "width 120 percent" · "azimuth minus 30" · "depth 50" · "infra lift 8 dB" · "lookahead on" · "dc guard off" · "attack 60" · "more width" · "less glue"<br>
+        <b>Another track:</b> start with its name or module - "lead vocal width 80 percent" · "bunker infra lift on"<br>
+        <b>Snapshots:</b> "snapshot 2" (store) · "recall 2"<br>
+        <b>Listening:</b> A B · delta · mono check · next room · previous room · rooms<br>
+        <b>Screens:</b> full screen · diagnostics · fly · presets · next preset · beginner mode · pre render check · help · close<br>
+        <b>Safety:</b> panic · panic everything · monitors off<br>
+        <b>Change your mind:</b> "never mind" / "cancel"
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;"><input id="voiceTry" placeholder='Type a phrase to test, e.g. "solution width 80 percent"' style="flex:1;" onkeydown="if(event.key==='Enter'){emit('voice',{cmd:'try',text:this.value});this.value='';}"><button onclick="document.getElementById('voiceModal').classList.remove('open')">CLOSE</button></div>
+    </div>
+  </div>
+
   <div class="modal" id="manualModal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box" style="width:720px;max-height:560px;overflow-y:auto;">
       <strong style="color:var(--gold);letter-spacing:0.1em;">THE SOLUTION · KEYBOARD SHORTCUTS</strong>
@@ -1200,6 +1235,7 @@
           <p><kbd>Tab</kbd> Select next sound (<kbd>Shift</kbd> = previous)</p>
           <p><kbd>`</kbd> Maximise the panel under the mouse (again = restore), like Premiere</p>
           <p><kbd>Ctrl</kbd>+<kbd>`</kbd> Send that panel fullscreen to your other display (<kbd>Esc</kbd> brings it back)</p>
+          <p><kbd>Shift</kbd>+<kbd>V</kbd> Voice control on/off (say "Solution …" - right-click 🎤 for the command list and DAW transport keys)</p>
           <p><kbd>K</kbd> MIDI-learn the control under the mouse (or right-click any control)</p>
           <p><kbd>N</kbd> Duck under dialogue · <kbd>Shift</kbd>+<kbd>N</kbd> mark this track as dialogue · <kbd>Shift</kbd>+<kbd>S</kbd> Transient Shaper</p>
           <p><kbd>U</kbd> Beginner Mode (essentials only) · <kbd>E</kbd> Pre-Render check · <kbd>J</kbd> Diagnostics · <kbd>Q</kbd> Billet Audio command hub</p>
@@ -1491,6 +1527,7 @@
       if (typing) return;
       const k = e.key.toLowerCase();
       if (e.shiftKey && !mod && k === 'f') { e.preventDefault(); toggleFly(); return; }
+      if (e.shiftKey && !mod && k === 'v') { e.preventDefault(); toggleVoice(); return; }
       // --- universal (every app) ---
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
       if (mod && k === 'y') { e.preventDefault(); doRedo(); return; }
@@ -2899,6 +2936,60 @@
       else if (cmd === 'diag') openDiagnostics();
       else if (cmd === 'keys') openShortcuts();
       else if (cmd === 'panic' || cmd === 'panicAll') { emit('panic', { all: cmd === 'panicAll' }); flashHint(cmd === 'panicAll' ? '🛑 PANIC RESET · every Solution plugin flushed' : '🛑 PANIC RESET · this track flushed'); }
+    }
+
+    // ===================== VOICE CONTROL =====================
+    let voiceOn = false;
+    function toggleVoice() {
+      voiceOn = !voiceOn;
+      emit('voice', { cmd: voiceOn ? 'on' : 'off' });
+      setVoiceButton(voiceOn ? 'starting' : 'off');
+      if (!window.__JUCE__) { voiceOn = false; setVoiceButton('off'); flashHint('Voice control works inside the plugin (Windows)'); }
+    }
+    function setVoiceButton(st) {
+      const b = document.getElementById('voiceBtn'); if (!b) return;
+      b.classList.toggle('active', st === 'listening'); b.classList.toggle('listening', st === 'listening');
+      b.title = st === 'listening' ? 'Voice control ON - say "Solution ..." (Shift+V to stop)' : 'Voice control (Shift+V)';
+    }
+    function showVoiceCaption(heard, did, ok) {
+      const c = document.getElementById('voiceCaption');
+      c.innerHTML = `<span style="opacity:.7">🎤 "${escapeHtml(heard)}"</span>` + (did ? ` → <b style="color:${ok ? '#4ade80' : '#fbbf24'}">${escapeHtml(did)}</b>` : '');
+      c.classList.add('show'); clearTimeout(showVoiceCaption.t); showVoiceCaption.t = setTimeout(() => c.classList.remove('show'), 3500);
+    }
+    function closeTopThing() {
+      if (window.gl3d && window.gl3d.flying) return toggleFly();
+      if (typeof diagOpen !== 'undefined' && diagOpen && !IS_UTILITY) return closeDiagnostics();
+      if (document.querySelector('.panel-max')) return setMaxPanel(null);
+      document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+    }
+    if (window.__JUCE__ && window.__JUCE__.backend) {
+      window.__JUCE__.backend.addEventListener('voiceState', (st) => {
+        if (st === 'listening') { voiceOn = true; setVoiceButton('listening'); flashHint('🎤 Listening - start with "Solution", e.g. "Solution play"'); }
+        else if (st === 'off') { voiceOn = false; setVoiceButton('off'); }
+        else { voiceOn = false; setVoiceButton('off'); flashHint('🎤 ' + st); }
+      });
+      window.__JUCE__.backend.addEventListener('voiceHeard', (v) => { if (v.heard && (v.did || v.ok)) showVoiceCaption(v.heard, v.did, v.ok); });
+      window.__JUCE__.backend.addEventListener('voiceUi', (v) => {
+        const A = {
+          ab: () => toggleParamBtn('ab_bypass'), delta: () => toggleParamBtn('delta_listen'), mono: () => toggleMonoCheck(),
+          fullscreen: () => popOutPanel(), diag: () => openDiagnostics(), fly: () => toggleFly(), close: () => closeTopThing(),
+          presets: () => openVault(), nextPreset: () => stepPreset(1), prevPreset: () => stepPreset(-1),
+          nextRoom: () => stepRoom(1), prevRoom: () => stepRoom(-1), rooms: () => openRooms(), beginner: () => toggleBeginner(),
+          prerender: () => openPreRender(), help: () => openShortcuts(), hub: () => toggleFastRayHub(),
+          macroStore: () => macro(Math.round(v.value), true), macroRecall: () => macro(Math.round(v.value), false),
+        };
+        if (A[v.action]) A[v.action]();
+      });
+      window.__JUCE__.backend.addEventListener('voiceDefaults', (d) => {
+        document.getElementById('voiceHost').textContent = d.host || 'your DAW';
+        ['play', 'stop', 'record', 'start', 'loop'].forEach(k => { const el = document.getElementById('vk-' + k); el.placeholder = d[k] || 'none'; el.value = (d.saved && d.saved[k]) || ''; });
+        document.getElementById('voiceWake').checked = d.wake !== false;
+      });
+    }
+    function openVoiceSettings() { emit('voice', { cmd: 'defaults' }); document.getElementById('voiceModal').classList.add('open'); }
+    function saveVoiceKeys() {
+      const v = {}; ['play', 'stop', 'record', 'start', 'loop'].forEach(k => { const x = document.getElementById('vk-' + k).value.trim(); if (x) v[k] = x; });
+      emit('voice', { cmd: 'keys', value: v }); flashHint('Voice transport keys saved');
     }
 
     // ---------- parameter toggle buttons (secret menu) ----------
