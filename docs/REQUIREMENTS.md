@@ -39,7 +39,8 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ✅ Head tracking for binaural: OSC trackers + phone apps (GyrOSC, ZIG SIM, Sensors2OSC; IEM/SPARTA ypr/quaternion), phone remote page sensors, gamepad/joystick; recentre Ctrl+Alt+H; 3D head follows
 - ✅ Drone telemetry: flight-log CSV (lat/lon/alt) becomes a sound's motion path
 - ☐ Webcam face tracking; native VR headset (OpenXR) output
-- ☐ Adaptive Learning (suggest only, local); AI Analyze extensions
+- ✅ Adaptive Learning (suggest only, local file): your usual values per module, "you usually adjust B after A", favourite controls → macro keys; Apply / Not now / Never; on/off, what it learned, forget everything
+- ☐ AI Analyze extensions
 - ☐ LAN / local DSP server (AudioGridder-style)
 - ☐ Voice: choose the microphone source
 - ☐ MIDI controller presets for major manufacturers + auto-setup wizard; joystick mapping for any control

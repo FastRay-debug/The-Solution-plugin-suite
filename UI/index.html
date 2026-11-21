@@ -264,6 +264,9 @@
     #voiceCaption { position: fixed; top: 54px; left: 50%; transform: translateX(-50%) translateY(-8px); z-index: 960; padding: 7px 14px; border-radius: 18px;
                     background: rgba(5,7,10,0.9); border: 1px solid rgba(239,68,68,0.5); color: #e5e7eb; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; white-space: nowrap; }
     #voiceCaption.show { opacity: 1; transform: translateX(-50%); }
+    #learnChip { position: fixed; left: 14px; bottom: 46px; z-index: 958; max-width: 520px; display: none; align-items: center; gap: 6px; padding: 7px 9px; border-radius: 10px;
+                 background: rgba(10,14,22,0.96); border: 1px solid var(--accent); box-shadow: 0 8px 22px rgba(0,0,0,0.7); font-size: 11.5px; color: #e5e7eb; }
+    #learnChip.show { display: flex; } #learnChip span { flex: 1; } #learnChip button { font-size: 10px; padding: 3px 7px; }
     .fastray-btn { flex-shrink: 0; height: 38px; width: 126px; margin: -2px 6px -2px -2px; padding: 0; border: none; background: none; cursor: pointer;
                    position: relative; z-index: 6; transition: transform 0.12s, filter 0.12s; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.8)); }
     .fastray-btn img { width: 100%; height: 100%; display: block; border-radius: 6px; box-shadow: 0 0 0 1px rgba(200,205,212,0.35), 0 2px 6px rgba(0,0,0,0.7); }
@@ -537,6 +540,7 @@
 <body>
   <div id="fsBadge"></div>
   <div id="voiceCaption"></div>
+  <div id="learnChip"><span></span><button onclick="suggestionAnswer('apply')">APPLY</button><button onclick="suggestionAnswer('later')">NOT NOW</button><button onclick="suggestionAnswer('never')">NEVER</button></div>
   <div id="stageMenu">
     <button onclick="stageMenu('fly')">✈ Enter the 3D world (double-click)</button>
     <button onclick="stageMenu('skins')">🎨 Skins…</button>
@@ -1301,7 +1305,7 @@
           <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;margin-top:4px;">WORKFLOW &amp; MASTERING</span>
           <button id="beginnerBtn" onclick="toggleBeginner()" data-tip="Hides the advanced controls so only the essentials are on screen. Nothing is switched off - the settings stay as they are. U">Beginner Mode: OFF</button>
           <button id="secFocusBtn" onclick="toggleModFocus()" class="active" data-tip="Hold Shift while dragging a knob for 5x finer control; everything else dims so you can focus on that one move. Ctrl+Alt+F">Modifier-Linked Focus: ON</button>
-          <button id="secLearnBtn" disabled style="opacity:0.45;cursor:default;" data-tip="Learns how you work (locally, never uploaded) and suggests - never changes - settings. Being built">Adaptive Learning: coming</button>
+          <button id="secLearnBtn" class="active" onclick="setLearning(!LEARN.on)" oncontextmenu="event.preventDefault(); openLearning();" data-tip="Learns how you work (stays on this computer) and suggests - never changes - settings. Right-click: what it learned / forget">Adaptive Learning: ON</button>
           <button onclick="document.getElementById('secretModal').classList.remove('open'); openPreRender();" data-tip="Before you bounce: loudness and true peak against your target, phase, clipping, DC, overruns, and monitoring tools left on - with one-click fixes. E">Pre-Render Check (E)</button>
           <button disabled style="opacity:0.45;cursor:default;" data-tip="Surround / Dolby Atmos output is a separate project (needs multichannel buses). The old menu here only moved the mix knob, so it was removed.">Surround / Atmos Output: planned</button>
         </div>
@@ -1384,6 +1388,15 @@
     </div>
   </div>
   <input type="file" id="flightFile" accept=".csv,.txt" style="display:none" onchange="loadFlightLog(this)">
+
+  <div class="modal" id="learnModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:520px;max-height:600px;overflow-y:auto;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">💡 ADAPTIVE LEARNING</strong>
+      <div class="dg-hint" style="font-size:11px;margin:6px 0 10px;">It watches which values you settle on and which controls you use together, then suggests - it never changes anything by itself. Everything stays on this computer.</div>
+      <div id="learnList"></div>
+      <div style="display:flex;gap:6px;margin-top:10px;"><button onclick="forgetLearning()">FORGET EVERYTHING</button><button onclick="document.getElementById('learnModal').classList.remove('open')">CLOSE</button></div>
+    </div>
+  </div>
 
   <div class="modal" id="manualModal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box" style="width:720px;max-height:560px;overflow-y:auto;">
@@ -2180,6 +2193,7 @@
     function bind(id, val, unit, mult = 1) {
       const num = parseFloat(val);
       state[id] = num;
+      if (typeof learnTouch === 'function') learnTouch(id, num);
       showValue(id, num, unit, mult);
       if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('setParam', { id: id, value: num });
     }
@@ -2236,6 +2250,7 @@
           if (m.ui.beginner !== undefined) setBeginner(m.ui.beginner === '1', true);
           if (m.ui.keymap) { try { customKeys = JSON.parse(m.ui.keymap) || {}; } catch (e) {} }
           if (m.ui.looks) { try { looks = JSON.parse(m.ui.looks) || []; } catch (e) {} }
+          if (m.ui.learnOn !== undefined) setLearning(m.ui.learnOn !== '0', true);
           if (m.ui.headOn !== undefined && (m.ui.headOn === '1') !== headOn) { setHeadOn(m.ui.headOn === '1', true); emit('head', { cmd: 'enable', on: headOn }); }
           if (m.ui.oscPort && +m.ui.oscPort > 0 && !window._oscRestored) { window._oscRestored = true; document.getElementById('oscPortIn').value = m.ui.oscPort; setOscPort(m.ui.oscPort); }
           if (m.ui.themeLocal !== undefined) { themeLocal = m.ui.themeLocal === '1'; document.getElementById('themeLocal').checked = themeLocal; }
@@ -3398,6 +3413,76 @@
         flashHint('✈ Flight path loaded: ' + pts.length + ' points - the sound now flies the drone route');
       };
       reader.readAsText(f); input.value = '';
+    }
+
+    // ===================== ADAPTIVE LEARNING (suggest only, never changes anything by itself) =====================
+    // Learns from how you work: the values you settle on per module, which controls you use together, and your
+    // most-used controls. Stored only on this computer (your user folder). Suggestions appear as a small chip.
+    const LEARN = { on: true, data: { v: 1, modules: {} }, dirty: false, lastTouch: {}, pending: {}, snoozed: {}, never: {}, shown: null };
+    const learnModule = () => (params.get('module') || 'module').toLowerCase();
+    function learnBucket() { const m = learnModule(); return LEARN.data.modules[m] = LEARN.data.modules[m] || { params: {}, pairs: {} }; }
+    // Called for every change you make (not automation or presets).
+    function learnTouch(id, value) {
+      if (!LEARN.on || !isFinite(value) || id.startsWith('ab_') || id === 'delta_listen') return;
+      const b = learnBucket(), now = Date.now(), p = b.params[id] = b.params[id] || { edits: 0, settles: 0, mean: 0, m2: 0 };
+      p.edits++;
+      // co-use: what else did you touch in the last 10 s?
+      Object.entries(LEARN.lastTouch).forEach(([other, t]) => { if (other !== id && now - t < 10000) { const k = other + '>' + id; b.pairs[k] = (b.pairs[k] || 0) + 1; } });
+      LEARN.lastTouch[id] = now;
+      // a value counts as "settled" if you leave it alone for 2.5 s
+      clearTimeout(LEARN.pending[id]);
+      LEARN.pending[id] = setTimeout(() => { const v = state[id]; if (!isFinite(v)) return; p.settles++; const d = v - p.mean; p.mean += d / p.settles; p.m2 += d * (v - p.mean); LEARN.dirty = true; }, 2500);
+      LEARN.dirty = true;
+      setTimeout(() => suggestAfter(id), 3000);
+    }
+    function learnSuggestions(justTouched) {
+      const b = learnBucket(), out = [];
+      // 1. your usual value (lots of evidence, consistent, and different from now)
+      Object.entries(b.params).forEach(([id, p]) => {
+        if (p.settles < 6) return;
+        const sd = Math.sqrt(p.m2 / Math.max(1, p.settles - 1)), cur = state[id], span = Math.abs(p.mean) + sd + 1e-6;
+        if (!isFinite(cur) || sd / span > 0.25 || Math.abs(cur - p.mean) < Math.max(sd * 1.5, Math.abs(p.mean) * 0.08 + 0.02)) return;
+        out.push({ key: 'usual:' + id, text: `Your usual ${paramLabel(id)} here is ${fmtVal(id, p.mean)} (now ${fmtVal(id, cur)})`, apply: () => { bind(id, p.mean, '', 1); syncFromPlugin({ [id]: p.mean }); } });
+      });
+      // 2. you usually follow A with B
+      if (justTouched) Object.entries(b.pairs).forEach(([k, n]) => {
+        const [a, c] = k.split('>'); if (a !== justTouched || n < 5) return;
+        const pa = b.params[a], pc = b.params[c]; if (!pa || !pc || n / pa.edits < 0.6 || !pc.settles) return;
+        out.push({ key: 'pair:' + k, text: `You usually adjust ${paramLabel(c)} after ${paramLabel(a)} - set it to your usual ${fmtVal(c, pc.mean)}?`, apply: () => { bind(c, pc.mean, '', 1); syncFromPlugin({ [c]: pc.mean }); } });
+      });
+      // 3. pin your favourites
+      const fav = Object.entries(b.params).sort((x, y) => y[1].edits - x[1].edits).slice(0, 3);
+      if (fav.length === 3 && fav[2][1].edits >= 25) out.push({ key: 'fav', text: `Your most-used controls here: ${fav.map(f => paramLabel(f[0])).join(', ')}. Put them on macro keys?`, apply: () => openShortcutManager() });
+      return out.filter(sug => !LEARN.never[sug.key] && !(LEARN.snoozed[sug.key] > Date.now()));
+    }
+    function suggestAfter(id) { if (!LEARN.on || LEARN.shown) return; const s = learnSuggestions(id)[0]; if (s) showSuggestion(s); }
+    function showSuggestion(s) {
+      LEARN.shown = s; const el = document.getElementById('learnChip');
+      el.querySelector('span').textContent = '💡 ' + s.text; el.classList.add('show');
+    }
+    function suggestionAnswer(how) {
+      const s = LEARN.shown; document.getElementById('learnChip').classList.remove('show'); LEARN.shown = null; if (!s) return;
+      if (how === 'apply') { s.apply(); flashHint('Applied - nothing else changed'); }
+      else if (how === 'never') { LEARN.never[s.key] = 1; LEARN.data.never = LEARN.never; LEARN.dirty = true; }
+      else LEARN.snoozed[s.key] = Date.now() + 30 * 60000;
+    }
+    const paramLabel = (id) => (document.querySelector(`[data-param="${id}"]`)?.closest('.knob-cell')?.querySelector('.knob-lbl')?.textContent || id.replace(/^stage_/, '').replace(/_/g, ' ')).toLowerCase();
+    function fmtVal(id, v) { const k = knobRegistry[id]; if (k) return (v * (k.mult || 1)).toFixed(k.mult === 100 ? 0 : 1) + (k.unit || ''); return (Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(0)); }
+    function setLearning(on, fromPlugin) {
+      LEARN.on = on; const b = document.getElementById('secLearnBtn'); if (b) { b.classList.toggle('active', on); b.textContent = 'Adaptive Learning: ' + (on ? 'ON' : 'OFF'); }
+      if (!fromPlugin) { emit('setUiProp', { key: 'learnOn', value: on ? '1' : '0' }); flashHint('Adaptive Learning ' + (on ? 'on - suggestions only, stays on this computer' : 'off')); }
+    }
+    function openLearning() {
+      const b = learnBucket(), rows = Object.entries(b.params).sort((x, y) => y[1].edits - x[1].edits).slice(0, 12)
+        .map(([id, p]) => `<div class="pr-row info"><span>•</span><div><b>${paramLabel(id)}</b><small>${p.edits} edits · usual ${p.settles ? fmtVal(id, p.mean) : '—'}</small></div></div>`).join('');
+      document.getElementById('learnList').innerHTML = rows || '<div class="dg-hint">Nothing learned yet for this module - just work as usual.</div>';
+      document.getElementById('learnModal').classList.add('open');
+    }
+    function forgetLearning() { LEARN.data = { v: 1, modules: {} }; LEARN.never = {}; emit('learn', { cmd: 'forget' }); openLearning(); flashHint('Forgot everything Adaptive Learning knew'); }
+    setInterval(() => { if (LEARN.dirty) { LEARN.dirty = false; emit('learn', { cmd: 'save', module: learnModule(), data: JSON.stringify(learnBucket()), never: JSON.stringify(LEARN.never) }); } }, 15000);
+    if (window.__JUCE__ && window.__JUCE__.backend) {
+      window.__JUCE__.backend.addEventListener('learnData', (d) => { try { const all = JSON.parse(d || '{}'); if (all.modules) LEARN.data = all; LEARN.never = all.never || {}; } catch (e) {} });
+      setTimeout(() => emit('learn', { cmd: 'load' }), 500);
     }
 
     // ===================== LOOKS: the OS button cycles your favourite looks =====================

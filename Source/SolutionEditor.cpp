@@ -195,6 +195,27 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("learn", [this] (const juce::var& d)
+           {
+               // Adaptive Learning profile: one file per user, shared by every module (never leaves this computer).
+               const auto file = SolutionVendor::userFolder ("Learning").getChildFile ("profile.json");
+               const auto cmd = d.getProperty ("cmd", {}).toString();
+               if (cmd == "load") emitToViews ("learnData", juce::var (file.loadFileAsString()));
+               else if (cmd == "forget") file.deleteFile();
+               else if (cmd == "save")
+               {
+                   const auto module = d.getProperty ("module", {}).toString().retainCharacters ("abcdefghijklmnopqrstuvwxyz ");
+                   auto all = juce::JSON::parse (file);
+                   if (! all.isObject()) all = juce::var (new juce::DynamicObject());
+                   auto modules = all.getProperty ("modules", {});
+                   if (! modules.isObject()) { modules = juce::var (new juce::DynamicObject()); all.getDynamicObject()->setProperty ("modules", modules); }
+                   modules.getDynamicObject()->setProperty (module, juce::JSON::parse (d.getProperty ("data", {}).toString()));
+                   all.getDynamicObject()->setProperty ("never", juce::JSON::parse (d.getProperty ("never", {}).toString()));
+                   all.getDynamicObject()->setProperty ("v", 1);
+                   file.getParentDirectory().createDirectory();
+                   file.replaceWithText (juce::JSON::toString (all, true));
+               }
+           })
            .withEventListener ("head", [this] (const juce::var& d)
            {
                auto& ht = *audioProcessor.headTracker;
