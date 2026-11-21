@@ -45,7 +45,7 @@ private:
     void emitToViews (const juce::Identifier& name, const juce::var& value);
     void handleFullscreen (const juce::var& data);
     juce::String baseUrl() const;
-    // Diagnostic Utility (Fast Ray hub): real system + session readings while the panel is open.
+    // Diagnostic Utility (Billet Audio hub): real system + session readings while the panel is open.
     void sendDiagnostics();
     void updateDiagLog();
     void exportDiagnostics (const juce::String& format);

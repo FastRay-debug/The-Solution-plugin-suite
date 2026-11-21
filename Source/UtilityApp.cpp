@@ -1,4 +1,4 @@
-// The Solution Utility - standalone Diagnostic Utility (Fast Ray hub) for the whole computer.
+// The Solution Utility - standalone Diagnostic Utility (Billet Audio hub) for the whole computer.
 // Shows real system/GPU readings plus every Solution plugin in every running DAW (they report to it
 // over 127.0.0.1 - see DiagBridge.h). Uses the same page as the plugins, in utility mode.
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -165,7 +165,7 @@ public:
 private:
     struct MainWindow final : public juce::DocumentWindow
     {
-        MainWindow() : DocumentWindow ("The Solution Utility - Fast Ray Media", juce::Colour (0xff05070d), DocumentWindow::allButtons)
+        MainWindow() : DocumentWindow ("The Solution Utility - Billet Audio", juce::Colour (0xff05070d), DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
             setContentOwned (new UtilityComponent(), false);

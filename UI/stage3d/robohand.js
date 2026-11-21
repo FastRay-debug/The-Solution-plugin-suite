@@ -1,4 +1,4 @@
-// The Solution - Fast Ray's robotic hand for the Diagnostic Utility (three.js).
+// The Solution - Billet Audio's robotic hand for the Diagnostic Utility (three.js).
 // window.roboHand.grab(fromX, fromY, toX, toY) reaches to a screen point, grips, and carries to another.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -59,7 +59,7 @@ function setup() {
       const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, L, 14), si ? satin : carbon); seg.position.y = L / 2; parent.add(seg);
       thumbJoints.push(parent); const next = new THREE.Group(); next.position.y = L; parent.add(next); parent = next; });
     parent.add(new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 10), metal)); }
-  // wrist + forearm with the Fast Ray data-link display
+  // wrist + forearm with the data-link display
   const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.5, 28), metal); wrist.position.y = -0.72; hand.add(wrist);
   const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.62, 7, 28), carbon); forearm.position.y = -4.4; hand.add(forearm);
   [-1.4, -2.6].forEach(y => { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.05, 10, 32), metal); ring.rotation.x = Math.PI / 2; ring.position.y = y; hand.add(ring);
@@ -86,7 +86,7 @@ function setup() {
   function drawDisplay(t) {
     dctx.clearRect(0, 0, 256, 128); dctx.fillStyle = 'rgba(4,20,28,0.92)'; dctx.fillRect(0, 0, 256, 128);
     dctx.strokeStyle = '#38e1ff'; dctx.lineWidth = 3; dctx.strokeRect(3, 3, 250, 122);
-    dctx.fillStyle = '#7df3ff'; dctx.font = 'bold 24px monospace'; dctx.fillText('FAST RAY', 14, 34);
+    dctx.fillStyle = '#7df3ff'; dctx.font = 'bold 21px monospace'; dctx.fillText('BILLET AUDIO', 14, 34);
     dctx.font = 'bold 16px monospace'; dctx.fillStyle = held ? '#ffb35c' : '#38e1ff'; dctx.fillText(held ? 'DATA-LINK: LOCKED' : 'DATA-LINK: READY', 14, 58);
     for (let i = 0; i < 14; i++) { const h = 8 + 30 * Math.abs(Math.sin(t * 3 + i * 0.7)); dctx.fillStyle = i % 4 ? '#22d3ee' : '#4ade80'; dctx.fillRect(14 + i * 16, 116 - h, 11, h); }
     dtex.needsUpdate = true;

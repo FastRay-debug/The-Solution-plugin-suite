@@ -75,7 +75,7 @@ namespace SolutionDSP
         // from another instance to switch them all off.
         std::atomic<int>   monitorMask { 0 };
         std::atomic<bool>  monitorOffRequest { false };
-        std::atomic<bool>  panicRequest { false };      // Fast Ray hub: Emergency Panic Reset from another instance
+        std::atomic<bool>  panicRequest { false };      // Billet Audio hub: Emergency Panic Reset from another instance
 
         std::atomic<float> cpuLoad { 0.0f };             // this instance's share of the real-time budget (0..1)
         std::atomic<uint32_t> overloads { 0 }, errors { 0 };   // diagnostics counters

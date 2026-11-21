@@ -1,4 +1,5 @@
 #pragma once
+#include "Vendor.h"
 
 #include <juce_dsp/juce_dsp.h>
 #include <RTNeural/RTNeural.h>
@@ -8,8 +9,8 @@
 // Neural "Character" stage: runs an RTNeural model (e.g. a capture of a tape machine, tube preamp
 // or console channel) on the module's processed signal. Models are RTNeural / Keras-style JSON
 // files in a shared Models folder:
-//   Windows: %APPDATA%\Fast Ray Media\The Solution\Models
-//   macOS:   ~/Library/Application Support/Fast Ray Media/The Solution/Models
+//   Windows: %APPDATA%\Billet Audio\The Solution\Models
+//   macOS:   ~/Library/Application Support/Billet Audio/The Solution/Models
 // Loading happens off the audio thread; the audio thread swaps models without blocking or freeing.
 namespace SolutionDSP
 {
@@ -25,12 +26,7 @@ namespace SolutionDSP
 
         static juce::File getModelsFolder()
         {
-           #if JUCE_MAC
-            const juce::String sub ("Application Support/Fast Ray Media/The Solution/Models");
-           #else
-            const juce::String sub ("Fast Ray Media/The Solution/Models");
-           #endif
-            return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile (sub);
+            return SolutionVendor::userFolder ("Models");
         }
 
         static juce::StringArray listModels()

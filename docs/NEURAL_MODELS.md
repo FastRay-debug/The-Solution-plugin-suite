@@ -7,8 +7,8 @@ machine, tube preamp, console channel, compressor colour — on the module's sou
 
 Put model files (`.json`) in the shared Models folder (the panel's **📂 MODELS FOLDER** button opens it):
 
-- Windows: `%APPDATA%\Fast Ray Media\The Solution\Models`
-- macOS: `~/Library/Application Support/Fast Ray Media/The Solution/Models`
+- Windows: `%APPDATA%\Billet Audio\The Solution\Models`
+- macOS: `~/Library/Application Support/Billet Audio/The Solution/Models`
 
 Every module sees the same folder. The chosen model is saved with your session.
 

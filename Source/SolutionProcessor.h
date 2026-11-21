@@ -117,7 +117,7 @@ public:
     int getSessionMonitorCount() const;                          // other instances with monitoring tools on
     void turnOffMonitoring();                                    // message thread
     void turnOffMonitoringEverywhere();                          // every instance in the session
-    // Fast Ray hub - Emergency Panic Reset: flush every tail/delay/filter/limiter, then fade back in.
+    // Billet Audio hub - Emergency Panic Reset: flush every tail/delay/filter/limiter, then fade back in.
     void panicReset();                                           // message thread
     void panicResetEverywhere();                                 // every Solution instance in the session
     std::atomic<int> panicCount { 0 };

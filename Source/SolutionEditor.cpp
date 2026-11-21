@@ -1,6 +1,7 @@
 #include "SolutionProcessor.h"
 #include "SolutionEditor.h"
 #include "BinaryData.h"
+#include "Vendor.h"
 
 #ifndef SOLUTION_BUNDLE_SKINS
 #define SOLUTION_BUNDLE_SKINS 1
@@ -53,20 +54,15 @@ namespace
 
 juce::File SolutionAudioProcessorEditor::findSharedSkinsFolder()
 {
-   #if JUCE_MAC
-    const juce::String subPath ("Application Support/Fast Ray Media/The Solution/Skins");
-   #else
-    const juce::String subPath ("Fast Ray Media/The Solution/Skins");
-   #endif
-
-    // Per-user install first, then the machine-wide one
-    // (Windows: %APPDATA% then %ProgramData%; macOS: ~/Library then /Library).
-    for (auto location : { juce::File::userApplicationDataDirectory, juce::File::commonApplicationDataDirectory })
-    {
-        const auto dir = juce::File::getSpecialLocation (location).getChildFile (subPath);
-        if (dir.isDirectory() && dir.getNumberOfChildFiles (juce::File::findFiles, "*.jpg") > 0)
-            return dir;
-    }
+    // Per-user install first, then the machine-wide one (Windows: %APPDATA% then %ProgramData%;
+    // macOS: ~/Library then /Library). Folders from builds before the Billet Audio rename still work.
+    for (auto vendor : { SolutionVendor::name, SolutionVendor::legacyName })
+        for (auto location : { juce::File::userApplicationDataDirectory, juce::File::commonApplicationDataDirectory })
+        {
+            const auto dir = juce::File::getSpecialLocation (location).getChildFile (SolutionVendor::prefix() + vendor + "/The Solution/Skins");
+            if (dir.isDirectory() && dir.getNumberOfChildFiles (juce::File::findFiles, "*.jpg") > 0)
+                return dir;
+        }
     return {};
 }
 

@@ -8,6 +8,7 @@
  #endif
  #include <windows.h>
  #include <pdh.h>
+ #include <pdhmsg.h>
  #include <psapi.h>
  #pragma comment (lib, "pdh.lib")
 #elif defined (__APPLE__)

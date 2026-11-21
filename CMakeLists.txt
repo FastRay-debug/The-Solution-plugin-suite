@@ -107,8 +107,8 @@ endforeach()
 function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
     string(TOLOWER "${TARGET_NAME}" _lower_target)
     juce_add_plugin(${TARGET_NAME}
-        COMPANY_NAME                "Fast Ray Media"
-        COMPANY_COPYRIGHT           "Fast Ray Media"
+        COMPANY_NAME                "Billet Audio"
+        COMPANY_COPYRIGHT           "Billet Audio"
         BUNDLE_ID                   "com.fastraymedia.thesolution.${_lower_target}"   # fixed: hosts key presets/sessions on it
         IS_SYNTH                    FALSE
         NEEDS_MIDI_INPUT            TRUE
@@ -203,7 +203,7 @@ add_solution_module(TheScope   Scp1 "The Scope"   "com.fastraymedia.thesolution.
 # 3b. The Solution Utility - standalone Diagnostic Utility (system + every Solution plugin in every DAW)
 juce_add_gui_app(SolutionUtility
     PRODUCT_NAME      "Solution Utility"
-    COMPANY_NAME      "Fast Ray Media"
+    COMPANY_NAME      "Billet Audio"
     BUNDLE_ID         "com.fastraymedia.thesolution.utility"
     NEEDS_WEB_BROWSER TRUE
     ICON_BIG          "${CMAKE_CURRENT_SOURCE_DIR}/UI/icon.png"
