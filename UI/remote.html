@@ -40,6 +40,7 @@
   <div id="main" class="hidden">
     <div class="card meters"><span>LUFS <b id="mLufs">—</b></span><span>TP <b id="mTp">—</b></span><span>GR <b id="mGr">—</b></span></div>
     <div class="card"><select id="presets" onchange="if (this.value) post('/api/preset', { name: this.value })"></select></div>
+    <div class="card"><div class="toggle">Head tracking (binaural follows this phone) <input type="checkbox" id="headSw" onchange="toggleHead(this.checked)"></div><div class="sub" id="headMsg" style="margin:4px 0 0;">Wear the phone on your headphones or hold it in front of you, then switch on.</div></div>
     <div class="card" id="params"></div>
     <div class="err" id="mainErr"></div>
   </div>
@@ -130,6 +131,17 @@
       document.getElementById('mainErr').textContent = '';
     } catch (e) { document.getElementById('mainErr').textContent = 'Lost connection - is the plugin still open?'; }
     setTimeout(poll, 400);
+  }
+  // Phone motion sensors -> head yaw/pitch (some phones only allow this on secure pages).
+  let headTimer = null, lastPose = null, yaw0 = null;
+  function onOrient(e) { if (e.alpha == null) return; const yaw = -(e.alpha || 0), pitch = (e.beta || 0) - 90; if (yaw0 === null) yaw0 = yaw; lastPose = { yaw: ((yaw - yaw0 + 540) % 360) - 180, pitch: Math.max(-80, Math.min(80, pitch)) }; }
+  async function toggleHead(on) {
+    const msg = document.getElementById('headMsg');
+    if (!on) { window.removeEventListener('deviceorientation', onOrient); clearInterval(headTimer); headTimer = null; msg.textContent = 'Off.'; return; }
+    try { if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) { const p = await DeviceOrientationEvent.requestPermission(); if (p !== 'granted') throw new Error('denied'); } } catch (e) { msg.textContent = 'This phone blocked its motion sensors for this page. Use the GyrOSC / ZIG SIM / Sensors2OSC app instead (see the plugin\'s Head Tracking panel).'; document.getElementById('headSw').checked = false; return; }
+    if (!window.isSecureContext) msg.textContent = 'Trying... if nothing moves in the plugin, your phone needs a secure page - use an OSC app instead.';
+    yaw0 = null; window.addEventListener('deviceorientation', onOrient);
+    headTimer = setInterval(() => { if (lastPose) post('/api/head', lastPose); }, 60);
   }
   if (token) showMain();
 </script>

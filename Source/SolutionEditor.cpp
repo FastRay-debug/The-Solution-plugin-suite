@@ -186,6 +186,20 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("head", [this] (const juce::var& d)
+           {
+               auto& ht = *audioProcessor.headTracker;
+               const auto cmd = d.getProperty ("cmd", {}).toString();
+               if (cmd == "enable") { ht.enabled = (bool) d.getProperty ("on", false); audioProcessor.setUiProperty ("headOn", ht.enabled ? "1" : "0"); }
+               else if (cmd == "osc")
+               {
+                   const int port = (int) d.getProperty ("port", 0);
+                   if (! ht.listenOsc (port)) emitToViews ("roomNotice", juce::var ("Couldn't listen for OSC on port " + juce::String (port) + " - another app may be using it."));
+                   audioProcessor.setUiProperty ("oscPort", juce::String (port));
+               }
+               else if (cmd == "recenter") ht.recenter();
+               else if (cmd == "pose") ht.setPose ((float) d.getProperty ("yaw", 0.0), (float) d.getProperty ("pitch", 0.0), (int) d.getProperty ("src", 3));
+           })
            .withEventListener ("theme", [this] (const juce::var& d)
            {
                const auto id = d.getProperty ("id", {}).toString().retainCharacters ("abcdefghijklmnopqrstuvwxyz");
@@ -772,6 +786,15 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("diagOverloads", (int) audioProcessor.diag.overloads.load());
     payload->setProperty ("diagDc",        (int) audioProcessor.diag.dcEvents.load());
     payload->setProperty ("vanilla",       audioProcessor.vanillaLoaded.load());
+    {
+        auto& ht = *audioProcessor.headTracker;
+        payload->setProperty ("headOn", ht.enabled.load());
+        payload->setProperty ("headFresh", ht.isFresh());
+        payload->setProperty ("headYaw", ht.yaw());
+        payload->setProperty ("headPitch", ht.pitch());
+        payload->setProperty ("headSource", ht.source());
+        payload->setProperty ("oscPort", ht.getOscPort());
+    }
     payload->setProperty ("voice",         audioProcessor.voiceConfidence.load());
     payload->setProperty ("dialogueDuckDb", audioProcessor.dialogueDuckDb.load());
     payload->setProperty ("dialogueSources", audioProcessor.dialogueSources.load());

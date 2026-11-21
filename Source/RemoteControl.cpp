@@ -179,6 +179,15 @@ void RemoteServer::handle (juce::StreamingSocket& s)
         return respond (s, 200, "application/json", "{\"ok\":true}");
     }
 
+    if (method == "POST" && path == "/api/head")
+    {
+        const auto json = juce::JSON::parse (body);
+        const float yaw = (float) json.getProperty ("yaw", 0.0), pitch = (float) json.getProperty ("pitch", 0.0);
+        if (! std::isfinite (yaw) || ! std::isfinite (pitch)) return respond (s, 400, "application/json", "{\"error\":\"yaw and pitch needed\"}");
+        if (host.setHead) host.setHead (yaw, pitch);
+        return respond (s, 200, "application/json", "{\"ok\":true}");
+    }
+
     if (method == "POST" && path == "/api/preset")
     {
         const auto name = juce::JSON::parse (body).getProperty ("name", {}).toString();

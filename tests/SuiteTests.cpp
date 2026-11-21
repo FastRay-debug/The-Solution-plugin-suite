@@ -1647,6 +1647,39 @@ static void testVoiceParser()
     std::printf ("  %d/%d phrases understood correctly, vocabulary %d words\n", ok, (int) std::size (cases), vp.vocabulary().size());
 }
 
+static void testHeadTracking()
+{
+    std::printf ("Head tracking (OSC / phone / gamepad)\n");
+    HeadTracker ht;
+    ht.handle (juce::OSCMessage ("/SceneRotator/ypr", 30.0f, -10.0f, 0.0f));
+    EXPECT (std::abs (ht.yaw() - 30.0f) < 0.01f && std::abs (ht.pitch() + 10.0f) < 0.01f && ht.isFresh(), "IEM ypr degrees (%.1f, %.1f)", ht.yaw(), ht.pitch());
+    ht.handle (juce::OSCMessage ("/head/ypr", 0.5f, 0.2f, 0.0f));                           // radians
+    EXPECT (std::abs (ht.yaw() - 28.65f) < 0.1f, "radians converted (%.2f)", ht.yaw());
+    const float a = juce::MathConstants<float>::pi / 4.0f;                                 // 90 degree yaw quaternion (w x y z)
+    ht.handle (juce::OSCMessage ("/SceneRotator/quaternions", std::cos (a), 0.0f, 0.0f, std::sin (a)));
+    EXPECT (std::abs (ht.yaw() - 90.0f) < 0.5f, "quaternion yaw (%.2f)", ht.yaw());
+    ht.handle (juce::OSCMessage ("/gyrosc/gyro", 0.1f, 0.0f, 1.0f));                         // GyrOSC: pitch roll yaw
+    EXPECT (std::abs (ht.yaw() - 57.3f) < 0.2f && std::abs (ht.pitch() - 5.73f) < 0.1f, "GyrOSC order (%.1f, %.1f)", ht.yaw(), ht.pitch());
+    ht.recenter();
+    EXPECT (std::abs (ht.yaw()) < 0.01f && std::abs (ht.pitch()) < 0.01f, "recenter zeroes the pose");
+
+    // Binaural: a source straight ahead is centred; turn your head 90 deg right and it moves to your left ear.
+    SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
+    setParam (proc, "binaural_mode", 1.0f);
+    auto lr = [&] (float yaw) {
+        proc.headTracker->enabled = true; proc.headTracker->setPose (yaw, 0, 1);
+        juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512); double el = 0, er = 0;
+        for (int k = 0; k < 60; ++k) { fillSine (b, 48000.0, 1000.0, 0.2f, 0.0, k * 512); proc.processBlock (b, midi);
+            if (k > 30) for (int i = 0; i < 512; ++i) { el += b.getSample (0, i) * b.getSample (0, i); er += b.getSample (1, i) * b.getSample (1, i); } }
+        return 10 * std::log10 (el / er);
+    };
+    proc.headTracker->recenter();
+    const double ahead = lr (0.0f), right = lr (90.0f), left = lr (-90.0f);
+    std::printf ("  L-R balance: head ahead %.1f dB, turned right %.1f dB, turned left %.1f dB\n", ahead, right, left);
+    EXPECT (std::abs (ahead) < 1.5 && right > 4.0 && left < -4.0, "turning your head moves the mix the other way");
+    proc.headTracker->enabled = false;
+}
+
 static void testDiagnostics()
 {
     std::printf ("Diagnostics: real counters + real system readings\n");
@@ -1720,6 +1753,7 @@ int main()
     testDcGuard();
     testDialogueAndTransients();
     testVoiceParser();
+    testHeadTracking();
     testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;

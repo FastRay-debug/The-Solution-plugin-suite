@@ -421,6 +421,8 @@ function init() {
     bars.forEach(x => x.material.color.setHex(a)); if (dome) dome.material.color.setHex(b);
   };
   gl3d.setTheme(document.documentElement.getAttribute('data-theme') || '');
+  // Your head in the 3D view turns with the real one (head tracking).
+  gl3d.setHead = (yawDeg, pitchDeg) => { you.rotation.y = -yawDeg * Math.PI / 180; head.rotation.x = -pitchDeg * Math.PI / 180 * 0.6; };
 
   // ---------- main loop ----------
   let clashes = [], last = performance.now(), frames = 0, fpsT = 0, slowFor = 0, lastHoldSend = 0;

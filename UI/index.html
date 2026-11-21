@@ -754,7 +754,7 @@
           <span class="stage-sep"></span>
           <button id="pathBtn" onclick="togglePathDraw()" data-tip="Draw a motion path on the floor (P)">✎ PATH</button>
           <select onchange="if (this.value) presetPath(this.value); this.value = ''" data-tip="One-click motion shapes">
-            <option value="">SHAPES…</option><option value="orbit">Orbit</option><option value="figure8">Figure-8</option><option value="flyover">Fly-over</option>
+            <option value="">SHAPES…</option><option value="drone">✈ Drone flight log…</option><option value="orbit">Orbit</option><option value="figure8">Figure-8</option><option value="flyover">Fly-over</option>
             <option value="pingpong">Ping-pong</option><option value="rise">Rise &amp; fall</option><option value="clear">Clear path</option>
           </select>
           <button id="motionBtn" onclick="toggleMotion()" data-tip="Play / stop the motion path, locked to your song's tempo (Shift+P)">▶ MOTION</button>
@@ -1281,7 +1281,7 @@
 
           <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;margin-top:4px;">DISPLAY, DUAL-SCREEN &amp; VR</span>
           <button onclick="document.getElementById('secretModal').classList.remove('open'); popOutPanel();" data-tip="Sends the panel under your mouse fullscreen to your other display (Ctrl+`); ` alone maximises it here">Fullscreen to Other Display (Ctrl+`)</button>
-          <button disabled style="opacity:0.45;cursor:default;" data-tip="Head tracking from your phone, OSC trackers, webcam, joystick or a VR headset - being built next">VR Head Tracking: coming next</button>
+          <button onclick="document.getElementById('secretModal').classList.remove('open'); openHeadTracking();" data-tip="Head tracking for binaural: OSC trackers, phone apps, the phone remote page, gamepad. Ctrl+Alt+H recentres">🎧 Head Tracking…</button>
           <button onclick="togglePrecision()" data-tip="Real oscilloscope of the output (Shift+Space)">Oscilloscope (Shift+Space)</button>
           <button onclick="toggleClassicOS()" data-tip="Disables gradients and animations for ultra-low GPU/CPU load">Classic OS High-Contrast Mode</button>
         </div>
@@ -1365,6 +1365,25 @@
       <div id="keysList"></div>
     </div>
   </div>
+
+  <div class="modal" id="headModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:560px;max-height:620px;overflow-y:auto;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">🎧 HEAD TRACKING</strong>
+      <div class="dg-hint" style="font-size:11px;margin:6px 0 10px;">With binaural headphones on, turn your head and the mix stays put in the room around you - like real speakers.</div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:13px;"><input type="checkbox" id="headOn" onchange="setHeadOn(this.checked)"> Follow my head (turns Binaural on)</label>
+      <div id="headLive" style="margin:8px 0;font-size:12px;"></div>
+      <button onclick="recenterHead()">⟲ RECENTRE - I'm facing the front (Ctrl+Alt+H)</button>
+      <div style="font-size:12px;color:var(--gold);margin:12px 0 4px;">OSC TRACKERS &amp; PHONE APPS</div>
+      <div style="display:flex;gap:6px;align-items:center;font-size:12px;">Port <input id="oscPortIn" type="number" value="9000" style="width:80px;"> <button onclick="setOscPort(document.getElementById('oscPortIn').value)">LISTEN</button> <button onclick="setOscPort(0)">STOP</button> <span id="oscState" class="dg-hint">off</span></div>
+      <div class="dg-hint" style="font-size:11px;margin-top:4px;line-height:1.5;">Works with head trackers that send OSC yaw/pitch/roll or quaternions (IEM SceneRotator / SPARTA format), and phone apps: <b>GyrOSC</b> (iPhone), <b>ZIG SIM</b> (iPhone/Android), <b>Sensors2OSC</b> (Android). Point the app at this computer's IP and the port above. VR headsets with an OSC bridge work the same way.</div>
+      <div style="font-size:12px;color:var(--gold);margin:12px 0 4px;">PHONE (NO APP)</div>
+      <div class="dg-hint" style="font-size:11px;">Open the 📱 remote on your phone and switch on "Head tracking". Some phones only allow motion sensors on secure pages - if it says so, use one of the apps above.</div>
+      <div style="font-size:12px;color:var(--gold);margin:12px 0 4px;">GAMEPAD / JOYSTICK</div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:12px;"><input type="checkbox" onchange="padHead = this.checked"> Steer my "head" with the left stick (both triggers = recentre)</label>
+      <button style="margin-top:12px;" onclick="document.getElementById('headModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+  <input type="file" id="flightFile" accept=".csv,.txt" style="display:none" onchange="loadFlightLog(this)">
 
   <div class="modal" id="manualModal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box" style="width:720px;max-height:560px;overflow-y:auto;">
@@ -1687,6 +1706,7 @@
       if (mod && !e.altKey && k === 's') { e.preventDefault(); openVault(); setTimeout(() => document.getElementById('presetName').focus(), 50); return; }
       if (mod && k === '0') { e.preventDefault(); cam.yaw = 0; cam.pitch = 0.48; cam.zoom = 1; return; }
       if (mod && e.altKey && k === 'v') { e.preventDefault(); cycleDisplay(); return; }
+      if (mod && e.altKey && k === 'h') { e.preventDefault(); recenterHead(); return; }
       if (mod && e.altKey && k === 't') { e.preventDefault(); cycleTheme(e.shiftKey ? -1 : 1); return; }
       if (mod && e.altKey && k === 's') { e.preventDefault(); document.getElementById('secretModal').classList.add('open'); return; }
       if (mod && e.shiftKey && k === 'k') { e.preventDefault(); openShortcutManager(); return; }
@@ -2212,6 +2232,8 @@
           if (m.ui.beginner !== undefined) setBeginner(m.ui.beginner === '1', true);
           if (m.ui.keymap) { try { customKeys = JSON.parse(m.ui.keymap) || {}; } catch (e) {} }
           if (m.ui.looks) { try { looks = JSON.parse(m.ui.looks) || []; } catch (e) {} }
+          if (m.ui.headOn !== undefined && (m.ui.headOn === '1') !== headOn) { setHeadOn(m.ui.headOn === '1', true); emit('head', { cmd: 'enable', on: headOn }); }
+          if (m.ui.oscPort && +m.ui.oscPort > 0 && !window._oscRestored) { window._oscRestored = true; document.getElementById('oscPortIn').value = m.ui.oscPort; setOscPort(m.ui.oscPort); }
           if (m.ui.themeLocal !== undefined) { themeLocal = m.ui.themeLocal === '1'; document.getElementById('themeLocal').checked = themeLocal; }
           if (m.ui.theme !== undefined && (m.ui.theme || '') !== (document.documentElement.getAttribute('data-theme') || '')) applyTheme(m.ui.theme, 'init');
           if (m.ui.lamps) lampSrc = m.ui.lamps.split(',').slice(0, 4);
@@ -2254,6 +2276,7 @@
       window.__JUCE__.backend.emitEvent('uiReady', {});
       window.__JUCE__.backend.addEventListener('telemetry', (t) => {
         window._tele = t;
+        if (t.headOn !== undefined) updateHeadReadout(t);
         if (t.vanilla !== undefined) document.getElementById('vanillaBanner').style.display = t.vanilla ? 'block' : 'none';
         if (t.voice !== undefined) {
           const led = document.getElementById('voiceLed');
@@ -2830,6 +2853,7 @@
 
     // ---------- path presets & motion controls ----------
     function presetPath(kind) {
+      if (kind === 'drone') { importFlightLog(); return; }
       const d = Math.max(1.5, state.stage_distance || 3), pts = [];
       if (kind === 'orbit')    for (let a = 0; a < 360; a += 30) pts.push([a, 0, d]);
       if (kind === 'figure8')  for (let i = 0; i < 16; i++) { const t = i / 16 * Math.PI * 2; pts.push([Math.sin(t) * 75, 0, Math.max(0.8, d + Math.sin(2 * t) * d * 0.6)]); }
@@ -3219,6 +3243,8 @@
       ['macroBank', 'Ctrl+Shift+M', 'Macro bank (20 slots)', () => { openDiagnostics(); toggleMacroBank(true); }],
       ['looks', 'Ctrl+Shift+O', 'Look slots (OS button)', () => openLookSlots()],
       ['theme', 'Ctrl+Alt+T', 'Next 3D hardware theme (whole session)', () => cycleTheme(1)],
+      ['headRecenter', 'Ctrl+Alt+H', 'Head tracking: recentre', () => recenterHead()],
+      ['headPanel', '', 'Head tracking panel', () => openHeadTracking()],
       ...Array.from({ length: 20 }, (_, i) => ['macro' + (i + 1), '', 'Recall macro ' + (i + 1), () => macro(i + 1, false)]),
     ];
     let customKeys = {};                                   // action id -> combo (only the ones the user changed)
@@ -3294,6 +3320,70 @@
       const x = e.clientX / innerWidth - 0.5, y = e.clientY / innerHeight - 0.5, r = document.documentElement.style;
       r.setProperty('--tilt-y', (x * 2.2).toFixed(2) + 'deg'); r.setProperty('--tilt-x', (-y * 1.6).toFixed(2) + 'deg');
     }, { passive: true });
+
+    // ===================== HEAD TRACKING (binaural follows your head) =====================
+    let headOn = false, padHead = false, padYaw = 0, padPitch = 0;
+    function openHeadTracking() { document.getElementById('headModal').classList.add('open'); }
+    function setHeadOn(on, fromPlugin) {
+      headOn = on; document.getElementById('headOn').checked = on;
+      if (!fromPlugin) { emit('head', { cmd: 'enable', on }); if (on && !(state.binaural_mode > 0.5)) toggleBinaural(); flashHint('Head tracking ' + (on ? 'ON - turn your head, the mix stays put' : 'off')); }
+    }
+    function setOscPort(port) { emit('head', { cmd: 'osc', port: +port || 0 }); }
+    function recenterHead() { padYaw = 0; padPitch = 0; emit('head', { cmd: 'recenter' }); flashHint('Head tracking: recentred - you are facing the front'); }
+    // Gamepad / joystick as a head: left stick turns and tilts, both triggers recentre.
+    function pollPadHead() {
+      if (padHead && navigator.getGamepads && !(window.gl3d && window.gl3d.flying)) {
+        const g = Array.from(navigator.getGamepads()).find(Boolean);
+        if (g) {
+          const dz = (v) => Math.abs(v) < 0.12 ? 0 : v;
+          padYaw = Math.max(-180, Math.min(180, padYaw + dz(g.axes[0] || 0) * 3));
+          padPitch = Math.max(-80, Math.min(80, padPitch - dz(g.axes[1] || 0) * 2));
+          if (g.buttons[6] && g.buttons[7] && g.buttons[6].pressed && g.buttons[7].pressed) { padYaw = 0; padPitch = 0; }
+          emit('head', { cmd: 'pose', yaw: padYaw, pitch: padPitch, src: 3 });
+        }
+      }
+      setTimeout(pollPadHead, 33);
+    }
+    pollPadHead();
+    function updateHeadReadout(t) {
+      const el = document.getElementById('headLive'); if (!el) return;
+      const srcName = ['—', 'OSC tracker', 'phone page', 'gamepad'][t.headSource || 0] || '—';
+      el.innerHTML = t.headFresh ? `<b style="color:#4ade80">● ${srcName}</b> · yaw ${(+t.headYaw).toFixed(0)}° · pitch ${(+t.headPitch).toFixed(0)}°` : '<span style="color:var(--mute)">○ no head data yet</span>';
+      document.getElementById('oscState').textContent = t.oscPort ? 'listening on port ' + t.oscPort : 'off';
+      if (window.gl3d && window.gl3d.setHead) window.gl3d.setHead(t.headOn && t.headFresh ? t.headYaw : 0, t.headOn && t.headFresh ? t.headPitch : 0);
+    }
+
+    // ===================== DRONE FLIGHT LOG -> MOTION PATH =====================
+    // Reads a flight log CSV (DJI / Litchi / Airdata style: latitude, longitude, altitude columns). The first
+    // fix is "you"; every later fix becomes a point of the sound's motion path (direction, distance, height).
+    function importFlightLog() { document.getElementById('flightFile').click(); }
+    function flightLogToPath(text) {
+      const lines = text.split(/\r?\n/).filter(l => l.trim()); if (lines.length < 3) return null;
+      const head = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z_()]/g, ''));
+      const col = (...names) => head.findIndex(h => names.some(n => h === n || h.startsWith(n)));
+      const iLat = col('latitude', 'lat', 'osd.latitude'), iLon = col('longitude', 'lon', 'lng', 'osd.longitude'), iAlt = col('altitude(m)', 'altitude', 'alt', 'height', 'osd.height');
+      if (iLat < 0 || iLon < 0) return null;
+      const rows = lines.slice(1).map(l => l.split(',')).map(c => [+c[iLat], +c[iLon], iAlt >= 0 ? +c[iAlt] : 0]).filter(r => isFinite(r[0]) && isFinite(r[1]) && (r[0] || r[1]));
+      if (rows.length < 3) return null;
+      const [lat0, lon0, alt0] = rows[0], mPerLat = 111320, mPerLon = 111320 * Math.cos(lat0 * Math.PI / 180);
+      let pts = rows.map(([la, lo, al]) => { const e = (lo - lon0) * mPerLon, n = (la - lat0) * mPerLat, h = (al - alt0) || 0, d = Math.hypot(e, n);
+        return { az: Math.atan2(e, n) * 180 / Math.PI, d, h }; });
+      const far = Math.max(1, ...pts.map(p => Math.hypot(p.d, p.h))), scale = 30 / far;          // fit the whole flight inside 30 m
+      pts = pts.map(p => [p.az, Math.max(-60, Math.min(85, Math.atan2(p.h, Math.max(0.5, p.d)) * 180 / Math.PI)), Math.max(0.6, Math.min(40, Math.hypot(p.d, p.h) * scale))]);
+      while (pts.length > 32) pts = pts.filter((_, i) => i % 2 === 0);
+      return pts;
+    }
+    function loadFlightLog(input) {
+      const f = input.files && input.files[0]; if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const pts = flightLogToPath(String(reader.result));
+        if (!pts) { flashHint('That file has no latitude/longitude columns I can read'); return; }
+        emit('motionPath', { points: pts }); state.motion_on = 1; bind('motion_on', 1, '', 1); syncMotionUi();
+        flashHint('✈ Flight path loaded: ' + pts.length + ' points - the sound now flies the drone route');
+      };
+      reader.readAsText(f); input.value = '';
+    }
 
     // ===================== LOOKS: the OS button cycles your favourite looks =====================
     // Click = next favourite look. Click and hold = look slots (empty ones show + to save the current look).

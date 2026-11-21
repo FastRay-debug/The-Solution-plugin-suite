@@ -184,6 +184,7 @@ function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
             RTNeural
             juce::juce_audio_utils
             juce::juce_dsp
+            juce::juce_osc
             juce::juce_gui_extra
         PUBLIC
             juce::juce_recommended_config_flags
@@ -248,5 +249,6 @@ if(SOLUTION_BUILD_TESTS)
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_dsp
+        juce::juce_osc
         juce::juce_recommended_config_flags)
 endif()

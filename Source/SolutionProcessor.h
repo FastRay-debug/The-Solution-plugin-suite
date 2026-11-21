@@ -11,6 +11,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "ModuleEngines.h"
 #include "Dialogue.h"
+#include "HeadTracker.h"
 #include "PresetManager.h"
 #include "Metering.h"
 #include "Dynamics.h"
@@ -182,6 +183,7 @@ public:
     float phaseBadSeconds = 0.0f;
     SolutionDSP::InfraLift infraLift;
     SolutionDSP::DcGuard dcGuardIn, dcGuardOut;
+    juce::SharedResourcePointer<SolutionDSP::HeadTracker> headTracker;      // binaural follows your head
     SolutionDSP::VoiceDetector voiceDetector;
     SolutionDSP::DialogueDucker dialogueDucker;
     SolutionDSP::TransientShaper transientShaper;

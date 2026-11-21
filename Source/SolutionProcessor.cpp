@@ -548,7 +548,16 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // Binaural mode places the sound around the head itself, so the engine's pan/Haas steps aside.
     const bool binauralOn = apvts.getRawParameterValue ("binaural_mode")->load() > 0.5f;
-    const float binauralAz = p.azimuthDeg, binauralWidth = p.width;
+    float binauralAz = p.azimuthDeg, binauralEl = p.elevationDeg;
+    const float binauralWidth = p.width;
+    if (headTracker->enabled.load (std::memory_order_relaxed) && headTracker->isFresh())
+    {
+        // Turn your head right and the mix stays put: sources move left relative to you.
+        binauralAz -= headTracker->yaw();
+        while (binauralAz > 180.0f) binauralAz -= 360.0f;
+        while (binauralAz < -180.0f) binauralAz += 360.0f;
+        binauralEl = juce::jlimit (-90.0f, 90.0f, binauralEl - headTracker->pitch());
+    }
     if (binauralOn) { p.azimuthDeg = 0.0f; p.haasMs = 0.0f; }
 
     if (stemListen)
@@ -671,7 +680,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (! p.tapeCalTone)
         listeningRoom.process (left, right, numSamples, bouncing ? -1 : static_cast<int> (apvts.getRawParameterValue ("listen_room")->load()) - 1);
     if (binauralOn && ! p.tapeCalTone)
-        binaural.process (left, right, numSamples, binauralAz, p.elevationDeg, binauralWidth);
+        binaural.process (left, right, numSamples, binauralAz, binauralEl, binauralWidth);
 
     // Measured room correction (for your monitoring chain).
     roomCorrector.process (left, right, numSamples,
@@ -863,6 +872,7 @@ bool SolutionAudioProcessor::startRemote (const juce::String& bindAddress)
         }
     };
     host.loadPreset = [this] (const juce::String& name) { presets.loadPreset (name); };
+    host.setHead = [this] (float yaw, float pitch) { headTracker->setPose (yaw, pitch, 2); };   // phone page sensors (any thread)
     host.runOnMessageThread = [this] (std::function<void()> fn)
     {
         if (remoteExecutor) { remoteExecutor (std::move (fn)); return; }
