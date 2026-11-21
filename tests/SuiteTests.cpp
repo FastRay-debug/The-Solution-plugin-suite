@@ -1241,6 +1241,50 @@ static void testAutoAlign()
     std::printf ("  done\n");
 }
 
+static void testSafeBounce()
+{
+    std::printf ("== Safe Bounce / monitoring warnings\n");
+    const double fs = 48000.0; const int bs = 512;
+    juce::MidiBuffer midi;
+    auto render = [&] (bool monitorsOn, bool offline, bool safeBounce)
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (fs, bs);
+        proc.setNonRealtime (offline);
+        setParam (proc, "safe_bounce", safeBounce ? 1.0f : 0.0f);
+        if (monitorsOn) { setParam (proc, "ab_bypass", 1.0f); setParam (proc, "listen_room", 11.0f); setParam (proc, "stream_preview", 1.0f); setParam (proc, "room_correct_on", 1.0f); }
+        juce::Random rnd (8); juce::AudioBuffer<float> all (2, bs * 200);
+        for (int k = 0; k < 200; ++k)
+        {
+            juce::AudioBuffer<float> b (2, bs);
+            for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < bs; ++i) b.setSample (ch, i, 0.2f * (rnd.nextFloat() * 2 - 1));
+            proc.processBlock (b, midi);
+            for (int ch = 0; ch < 2; ++ch) all.copyFrom (ch, k * bs, b, ch, 0, bs);
+        }
+        return std::pair<juce::AudioBuffer<float>, int> { all, proc.getMonitorMask() };
+    };
+    auto maxDiff = [] (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b) {
+        float d = 0; for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < a.getNumSamples(); ++i) d = std::max (d, std::abs (a.getSample (ch, i) - b.getSample (ch, i))); return d; };
+
+    const auto clean = render (false, true, true), forgot = render (true, true, true);
+    EXPECT (maxDiff (clean.first, forgot.first) == 0.0f, "offline bounce with monitoring tools left on should be identical to a clean bounce (diff %g)", maxDiff (clean.first, forgot.first));
+    EXPECT ((forgot.second & SolutionAudioProcessor::monitorAutoBypassMask) != 0, "monitoring tools should still be reported (for the warning)");
+    const auto noSafety = render (true, true, false), live = render (true, false, true);
+    EXPECT (maxDiff (clean.first, noSafety.first) > 1e-3f, "with Safe Bounce off the tools should stay active");
+    EXPECT (maxDiff (clean.first, live.first) > 1e-3f, "during normal playback the tools must work");
+
+    // One click: this module, and every module in the session.
+    SolutionAudioProcessor a, b; a.prepareToPlay (fs, bs); b.prepareToPlay (fs, bs);
+    setParam (a, "delta_listen", 1.0f); setParam (b, "listen_room", 5.0f); setParam (b, "ab_bypass", 1.0f);
+    juce::AudioBuffer<float> buf (2, bs); buf.clear(); a.processBlock (buf, midi); buf.clear(); b.processBlock (buf, midi);
+    EXPECT (a.getSessionMonitorCount() == 1, "module A should see that one other module has monitoring on");
+    a.turnOffMonitoringEverywhere();
+    b.pollSessionRequests();
+    buf.clear(); a.processBlock (buf, midi); buf.clear(); b.processBlock (buf, midi);
+    EXPECT ((a.getMonitorMask() & SolutionAudioProcessor::monitorAutoBypassMask) == 0 && (b.getMonitorMask() & SolutionAudioProcessor::monitorAutoBypassMask) == 0,
+            "TURN ALL OFF IN EVERY MODULE didn't clear everything (A %d, B %d)", a.getMonitorMask(), b.getMonitorMask());
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -1261,6 +1305,7 @@ int main()
     testListeningRooms();
     testUnmask();
     testAutoAlign();
+    testSafeBounce();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

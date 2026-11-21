@@ -342,6 +342,13 @@
       <span onclick="openRack()" style="cursor:pointer" data-tip="Rack Link: every Solution module in this session">LK <b id="m-links" style="color:var(--accent2)">1</b></span>
     </div>
   </div>
+  <div id="monBanner" style="display:none;position:relative;z-index:40;margin:0 8px;padding:5px 10px;border:1px solid #EF4444;border-radius:4px;background:rgba(127,29,29,0.92);color:#fff;font-size:11px;align-items:center;gap:10px;">
+    <span>⚠ <b>MONITORING ON</b> - <span id="monList"></span>. Safe Bounce switches these off for offline bounces; for real-time bounces, turn them off first.</span>
+    <span style="margin-left:auto;display:flex;gap:6px;">
+      <button onclick="monitorOff(false)" style="background:#fff;color:#7f1d1d;font-weight:700;">TURN ALL OFF</button>
+      <button onclick="monitorOff(true)" data-tip="Every Solution module in this session">IN EVERY MODULE</button>
+    </span>
+  </div>
 
   <div class="main">
     <div class="wing">
@@ -634,6 +641,7 @@
       <strong style="color:var(--gold);letter-spacing:0.1em;">★ PRO TRICKS</strong>
       <div id="monWarn" style="display:none;font-size:11px;color:#EF4444;border:1px solid #EF4444;border-radius:4px;padding:4px 6px;">MONITORING MODE ON - turn off A/B, Δ, Streaming Preview and Listening Rooms before you bounce.</div>
 
+      <label style="font-size:11px;"><input type="checkbox" data-sync="safe_bounce" checked onchange="bind('safe_bounce', this.checked ? 1 : 0, '', 1)"> SAFE BOUNCE - automatically bypass A/B, Δ, Streaming Preview, Listening Rooms, Room Correction and Stem SOLO during offline bounces</label>
       <div style="font-size:11px;color:var(--accent2);margin-top:4px;">GAIN STAGING</div>
       <div style="display:flex;gap:6px;align-items:center;">
         <button onclick="window.__JUCE__ && window.__JUCE__.backend.emitEvent('autoStage', {})" data-tip="Listens for 3 s, then sets Input Trim so the module is driven at about -18 dBFS (the analog sweet spot) and Output Trim to keep your level">🎚 AUTO GAIN STAGE</button>
@@ -1322,6 +1330,17 @@
       tourTimer = setInterval(step, parseFloat(document.getElementById('tourSecs').value) * 1000);
       document.getElementById('tourBtn').textContent = '■ STOP TOUR';
     }
+    function monitorOff(all) { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('monitorOff', { all }); }
+    function updateMonitorBanner(mask, others) {
+      const names = [[1, 'A/B'], [2, 'Δ Delta'], [4, 'Streaming Preview'], [8, 'Listening Room'], [16, 'Room Correction'], [32, 'Stem SOLO'], [64, 'Calibration Tone']]
+        .filter(([b]) => mask & b).map(([, n]) => n);
+      if (others > 0) names.push(others + ' other module' + (others > 1 ? 's' : '') + ' in this session');
+      if (mask & 128) names.push('🎧 Binaural (fine if you want a headphone mix)');
+      const show = (mask & 127) || others > 0;
+      const b = document.getElementById('monBanner');
+      b.style.display = show ? 'flex' : 'none';
+      document.getElementById('monList').textContent = names.join(', ');
+    }
     function openPro() { document.getElementById('proModal').classList.add('open'); }
     function toggleParamBtn(id) { const on = !(state[id] > 0.5); bind(id, on ? 1 : 0, '', 1); updateMonitorBadges(); }
     function updateMonitorBadges() {
@@ -1580,6 +1599,7 @@
           if (t.streaming) document.getElementById('streamTable').innerHTML = '<tr style="color:var(--accent2)"><th align=left>SERVICE</th><th align=left>TARGET</th><th align=left>THEY WOULD</th></tr>' +
             t.streaming.map(x => `<tr><td>${escapeHtml(x.name)}</td><td>${x.target} LUFS</td><td>${Math.abs(x.gain) < 0.05 ? 'leave it' : (x.gain < 0 ? 'turn it DOWN ' + (-x.gain).toFixed(1) + ' dB' : 'turn it UP ' + x.gain.toFixed(1) + ' dB')}</td></tr>`).join('');
         }
+        if (t.monitorMask !== undefined) updateMonitorBanner(t.monitorMask, t.sessionMonitors || 0);
         if (t.notchAuto !== undefined) {
           const led = document.getElementById('notchLed'), mode = document.querySelector('[data-sync="mode_notch"]').value;
           led.textContent = mode === '2' ? (t.notchAuto > 0.05 ? '● -' + (t.notchAuto * 2.85).toFixed(1) + ' dB' : 'idle') : (mode === '1' ? '● -2.9 dB' : 'off');

@@ -69,6 +69,11 @@ namespace SolutionDSP
         std::atomic<bool>  alignRequest { false };
         std::atomic<float> alignRequestDelaySamples { 0.0f };
         std::atomic<bool>  alignRequestInvert { false };
+
+        // Monitoring-tool safety: which listening aids are on here (bitmask), and a request
+        // from another instance to switch them all off.
+        std::atomic<int>   monitorMask { 0 };
+        std::atomic<bool>  monitorOffRequest { false };
         juce::String trackName;                       // message thread only
     };
 
@@ -98,6 +103,7 @@ namespace SolutionDSP
                     s.lufsShort = -70.0f; s.truePeak = -70.0f; s.gainReduct = 0.0f; s.unmaskRole = 0;
                     for (auto& b : s.bandDb) b = -100.0f;
                     s.alignRole = 0; s.alignRingEnd = -1; s.alignRequest = false;
+                    s.monitorMask = 0; s.monitorOffRequest = false;
                     return i;
                 }
             }

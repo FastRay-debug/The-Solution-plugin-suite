@@ -157,6 +157,11 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                            sendRoomResult();
                        });
                    })
+                   .withEventListener ("monitorOff", [this] (const juce::var& data)
+                   {
+                       if ((bool) data.getProperty ("all", false)) audioProcessor.turnOffMonitoringEverywhere();
+                       else                                         audioProcessor.turnOffMonitoring();
+                   })
                    .withEventListener ("alignNow", [this] (const juce::var&)
                    {
                        webView.emitEventIfBrowserIsVisible ("alignResult", juce::var (audioProcessor.alignNow()));
@@ -475,6 +480,8 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("captureProgress", audioProcessor.getRoomCaptureProgress());
     payload->setProperty ("analysing",     audioProcessor.isRoomAnalysing());
     payload->setProperty ("notchAuto",     audioProcessor.getAutoNotchDepth());
+    payload->setProperty ("monitorMask",   audioProcessor.getMonitorMask());
+    payload->setProperty ("sessionMonitors", audioProcessor.getSessionMonitorCount());
     payload->setProperty ("abMatch",       audioProcessor.abMatchDb.load());
     payload->setProperty ("smoothDb",      audioProcessor.smoothDb.load());
     payload->setProperty ("guardDb",       audioProcessor.guardDb.load());

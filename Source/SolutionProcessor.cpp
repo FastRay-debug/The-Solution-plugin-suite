@@ -78,6 +78,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v12: Safe Bounce - monitoring tools switch themselves off during offline bounces
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "safe_bounce", 12 }, "Safe Bounce (auto-bypass monitoring tools)", true));
     // --- v11: Auto-Align (time + polarity between mics on the same source)
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "align_role", 11 }, "Auto-Align Role",
                           juce::StringArray { "Off", "Reference", "Align to reference" }, 0));
@@ -214,6 +216,23 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (dryCopy.getNumSamples() < numSamples)
         dryCopy.setSize (2, numSamples, false, false, true);
 
+    // Safe Bounce: during an offline render the monitoring tools step aside (settings are kept).
+    const bool bouncing = isNonRealtime() && apvts.getRawParameterValue ("safe_bounce")->load() > 0.5f;
+    auto monitorOn = [&] (const char* id) { return apvts.getRawParameterValue (id)->load() > 0.5f; };
+    {
+        int mask = 0;
+        if (monitorOn ("ab_bypass"))       mask |= monAB;
+        if (monitorOn ("delta_listen"))    mask |= monDelta;
+        if (monitorOn ("stream_preview"))  mask |= monStream;
+        if (monitorOn ("listen_room"))     mask |= monRoom;
+        if (monitorOn ("room_correct_on")) mask |= monCorrection;
+        if (monitorOn ("stem_listen") && apvts.getRawParameterValue ("stem_focus")->load() > 0.5f) mask |= monStemSolo;
+        if (monitorOn ("tape_cal_tone"))   mask |= monCalTone;
+        if (monitorOn ("binaural_mode"))   mask |= monBinaural;
+        monitorMask.store (mask, std::memory_order_relaxed);
+        if (rackSlot >= 0) rackLinkBus->slots[(size_t) rackSlot].monitorMask.store (mask, std::memory_order_relaxed);
+    }
+
     // Auto-Align: share the raw input (timeline-stamped) and apply this track's alignment.
     {
         const int alignRole = static_cast<int> (apvts.getRawParameterValue ("align_role")->load());
@@ -321,7 +340,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         lastStemMode = stemMode;
     }
     const bool stemOn = stemMode != 0 && stemRest.getNumSamples() >= numSamples;
-    const bool stemListen = stemOn && apvts.getRawParameterValue ("stem_listen")->load() > 0.5f;
+    const bool stemListen = stemOn && monitorOn ("stem_listen") && ! bouncing;
     if (stemOn)
     {
         stemSplitter.process (buffer.getWritePointer (0), buffer.getWritePointer (1),
@@ -353,7 +372,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     p.wetMix          = apvts.getRawParameterValue ("global_mix")->load();
     p.transientSculpt = apvts.getRawParameterValue ("transient_sculpt")->load() > 0.5f;
     p.ultraWide       = apvts.getRawParameterValue ("ultra_wide")->load();
-    p.tapeCalTone     = apvts.getRawParameterValue ("tape_cal_tone")->load() > 0.5f;
+    p.tapeCalTone     = monitorOn ("tape_cal_tone") && ! bouncing;
     p.cvModDepth      = apvts.getRawParameterValue ("cv_mod_depth")->load();
     p.clipperShape    = static_cast<int> (apvts.getRawParameterValue ("clipper_shape")->load());
     p.regenThrottle   = apvts.getRawParameterValue ("regen_throttle")->load();
@@ -435,8 +454,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     abMatcher.measure (left, right, dryL, dryR, numSamples);
     const float matchDb = abMatcher.update (numSamples);
     abMatchDb.store (matchDb, std::memory_order_relaxed);
-    const bool deltaOn = apvts.getRawParameterValue ("delta_listen")->load() > 0.5f && ! p.tapeCalTone;
-    const bool abOn = apvts.getRawParameterValue ("ab_bypass")->load() > 0.5f && ! p.tapeCalTone;
+    const bool deltaOn = monitorOn ("delta_listen") && ! p.tapeCalTone && ! bouncing;
+    const bool abOn = monitorOn ("ab_bypass") && ! p.tapeCalTone && ! bouncing;
     if (deltaOn)
         for (int i = 0; i < numSamples; ++i) { left[i] -= dryL[i]; right[i] -= dryR[i]; }
     else if (abOn)
@@ -447,14 +466,14 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // Monitoring stages (after A/B and Delta so both sides are heard the same way).
     if (! p.tapeCalTone)
-        listeningRoom.process (left, right, numSamples, static_cast<int> (apvts.getRawParameterValue ("listen_room")->load()) - 1);
+        listeningRoom.process (left, right, numSamples, bouncing ? -1 : static_cast<int> (apvts.getRawParameterValue ("listen_room")->load()) - 1);
     if (binauralOn && ! p.tapeCalTone)
         binaural.process (left, right, numSamples, binauralAz, p.elevationDeg, binauralWidth);
 
     // Measured room correction (for your monitoring chain).
     roomCorrector.process (left, right, numSamples,
                            apvts.getRawParameterValue ("room_correct_amount")->load(),
-                           apvts.getRawParameterValue ("room_correct_on")->load() > 0.5f && ! p.tapeCalTone);
+                           monitorOn ("room_correct_on") && ! p.tapeCalTone && ! bouncing);
 
     // Output trim.
     trimOutGain.setTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("trim_out_db")->load()));
@@ -485,7 +504,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         assistant.tap.push (left, right, numSamples);     // Mix Assistant listens to the final output
 
         // Streaming preview: play it back the way a service's loudness normalisation would.
-        const int service = static_cast<int> (apvts.getRawParameterValue ("stream_preview")->load());
+        const int service = bouncing ? 0 : static_cast<int> (apvts.getRawParameterValue ("stream_preview")->load());
         float previewDb = 0.0f;
         if (service > 0)
             previewDb = SolutionDSP::streamingGainDb (SolutionDSP::streamingServices()[(size_t) (service - 1)],
@@ -625,6 +644,32 @@ juce::String SolutionAudioProcessor::setCharacterModel (const juce::String& mode
         return error.isNotEmpty() ? error : "Couldn't load " + modelName;
     character.setModel (std::move (model));
     return {};
+}
+
+int SolutionAudioProcessor::getSessionMonitorCount() const
+{
+    int count = 0;
+    for (int i = 0; i < SolutionDSP::RackLinkBus::maxSlots; ++i)
+        if (i != rackSlot && rackLinkBus->slots[(size_t) i].active.load() && (rackLinkBus->slots[(size_t) i].monitorMask.load() & monitorAutoBypassMask) != 0)
+            ++count;
+    return count;
+}
+
+void SolutionAudioProcessor::turnOffMonitoring()
+{
+    for (const char* id : { "ab_bypass", "delta_listen", "stream_preview", "listen_room", "room_correct_on", "stem_listen", "tape_cal_tone" })
+        if (auto* q = apvts.getParameter (id); q != nullptr && q->getValue() != 0.0f)
+        {
+            q->beginChangeGesture(); q->setValueNotifyingHost (0.0f); q->endChangeGesture();
+        }
+}
+
+void SolutionAudioProcessor::turnOffMonitoringEverywhere()
+{
+    for (int i = 0; i < SolutionDSP::RackLinkBus::maxSlots; ++i)
+        if (i != rackSlot && rackLinkBus->slots[(size_t) i].active.load())
+            rackLinkBus->slots[(size_t) i].monitorOffRequest = true;     // each picks it up on its own timer
+    turnOffMonitoring();
 }
 
 juce::String SolutionAudioProcessor::alignNow()

@@ -104,6 +104,20 @@ public:
     int getAutoGainStageState() const { return autoStageState.load(); }   // 0 idle, 1 listening
     std::atomic<float> abMatchDb { 0.0f }, smoothDb { 0.0f }, guardDb { 0.0f }, streamGainDb { 0.0f };
 
+    // Monitoring tools (A/B, Delta, streaming preview, rooms, room correction, stem solo, cal tone).
+    enum MonitorBits { monAB = 1, monDelta = 2, monStream = 4, monRoom = 8, monCorrection = 16, monStemSolo = 32, monCalTone = 64, monBinaural = 128 };
+    static constexpr int monitorAutoBypassMask = 127;           // everything except binaural (may be intended)
+    int getMonitorMask() const { return monitorMask.load(); }
+    int getSessionMonitorCount() const;                          // other instances with monitoring tools on
+    void turnOffMonitoring();                                    // message thread
+    void turnOffMonitoringEverywhere();                          // every instance in the session
+    void pollSessionRequests()                                   // requests from other instances (timer, message thread)
+    {
+        pollAlignRequests();
+        if (rackSlot >= 0 && rackLinkBus->slots[(size_t) rackSlot].monitorOffRequest.exchange (false))
+            turnOffMonitoring();
+    }
+
     // Auto-Align (message thread): measure against the group's reference and fix timing/polarity.
     juce::String alignNow();
     void pollAlignRequests();                  // applies a request from another instance (timer)
@@ -132,7 +146,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 11;  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 12;  // v12: Safe Bounce  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -178,7 +192,8 @@ private:
     SolutionDSP::Unmask unmask;
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> alignDelayLine { 4096 };
     long long ownTimeline = 0;
-    void timerCallback() override { pollAlignRequests(); }
+    std::atomic<int> monitorMask { 0 };
+    void timerCallback() override { pollSessionRequests(); }
 public:
     std::array<std::atomic<float>, SolutionDSP::Unmask::numBands> unmaskDipDb {};
 private:
