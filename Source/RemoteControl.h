@@ -20,6 +20,7 @@ namespace SolutionDSP
             std::function<void (const juce::String&, float)> setParam;           // called on the message thread
             std::function<void (const juce::String&)> loadPreset;                // called on the message thread
             std::function<void (float, float)> setHead;                          // head yaw/pitch in degrees (any thread)
+            std::function<void (const juce::String&, const juce::MemoryBlock&, const juce::String&, const juce::String&)> saveSkin;   // message thread
             std::function<void (std::function<void()>)> runOnMessageThread;
         };
 

@@ -1578,7 +1578,11 @@
     updateSkinVisibility();
 
     function applySkin(key, fromPlugin) {
-      if (!skinsEnabled) return;
+      if (!skinsEnabled && !String(key).startsWith('custom_')) return;
+      if (!fromPlugin && document.documentElement.hasAttribute('data-theme')) {     // a photo skin needs the theme face out of the way (this plugin only)
+        themeLocal = true; const tl = document.getElementById('themeLocal'); if (tl) tl.checked = true;
+        emit('setUiProp', { key: 'themeLocal', value: '1' }); applyTheme('', 'init'); emit('theme', { id: '', local: true });
+      }
       if (!fromPlugin && window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('setUiProp', { key: 'skin', value: key });
       const s = SKINS[key] || SKINS.lincoln69;
       const r = document.documentElement.style;
@@ -2259,6 +2263,17 @@
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
       window.__JUCE__.backend.addEventListener('roomNotice', (msg) => flashHint(msg));
+      // Skin Studio: skins sent from a phone (any plugin) show up in every plugin's skin list.
+      window.__JUCE__.backend.addEventListener('customSkins', (list) => {
+        const sel = document.getElementById('skinSelect'); if (!sel || !Array.isArray(list)) return;
+        let grp = document.getElementById('customSkinGroup');
+        if (!grp) { grp = document.createElement('optgroup'); grp.id = 'customSkinGroup'; grp.label = 'Your skins (Skin Studio)'; sel.insertBefore(grp, sel.firstChild); }
+        grp.innerHTML = '';
+        list.forEach(s => { SKINS[s.key] = { img: true, bg: '#05070A', accent: s.accent, accent2: s.accent2, bezel: '#2E3542' };
+          const o = document.createElement('option'); o.value = s.key; o.textContent = '📸 ' + s.name.replace(/_/g, ' '); grp.appendChild(o); });
+        sel.style.display = '';
+      });
+      window.__JUCE__.backend.addEventListener('applySkin', (key) => { const sel = document.getElementById('skinSelect'); if (sel) sel.value = key; applySkin(key); flashHint('📸 New skin from your phone'); });
       window.__JUCE__.backend.addEventListener('scope', (m) => { window._scope = m; });
       window.__JUCE__.backend.addEventListener('alignResult', (msg) => { document.getElementById('alignMsg').textContent = msg; });
       window.__JUCE__.backend.addEventListener('roomList', (m) => { roomList = m || []; renderRooms(); });

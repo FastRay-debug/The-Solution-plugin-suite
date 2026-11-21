@@ -321,6 +321,9 @@ private:
     juce::ThreadPool analysisPool { 1 };                         // declared last: joins first on destruction
     int rackSlot = -1;
     juce::MemoryBlock skippedState;
+public:
+    juce::String pendingSkin;          // Skin Studio upload waiting to be shown (message thread only)
+private:
     bool restoringSkipped = false;
     double preparedSampleRate = 0.0;
     int preparedBlockSize = 0;

@@ -106,26 +106,31 @@ static void drainBriefly (juce::StreamingSocket& s)
 void RemoteServer::handle (juce::StreamingSocket& s)
 {
     // Read the request (headers + small body), at most 16 KB, with a short timeout.
+    // Skin uploads from the phone's Skin Studio may be up to 3 MB.
     juce::MemoryBlock data;
-    char buf[2048];
+    char buf[8192];
     int headerEnd = -1, contentLength = 0;
-    while (data.getSize() < 16384)
+    size_t maxRequest = 16384;
+    while (data.getSize() < maxRequest)
     {
         if (s.waitUntilReady (true, 2000) <= 0) break;
         const int n = s.read (buf, sizeof (buf), false);
         if (n <= 0) break;
         data.append (buf, (size_t) n);
+        if (headerEnd >= 0) { if ((int) data.getSize() >= headerEnd + 4 + contentLength) break; continue; }   // body: just count bytes
         const auto text = data.toString();
-        if (headerEnd < 0 && (headerEnd = text.indexOf ("\r\n\r\n")) >= 0)
+        if ((headerEnd = text.indexOf ("\r\n\r\n")) >= 0)
         {
             const auto lower = text.substring (0, headerEnd).toLowerCase();
             const int cl = lower.indexOf ("content-length:");
             contentLength = cl >= 0 ? lower.substring (cl + 15).upToFirstOccurrenceOf ("\r\n", false, false).trim().getIntValue() : 0;
-            if (contentLength > 8192) { respond (s, 413, "text/plain", "too large"); drainBriefly (s); return; }
+            const bool skinUpload = text.startsWith ("POST /api/skin ");
+            if (skinUpload) maxRequest = (size_t) 3 * 1024 * 1024 + 16384;
+            if (contentLength > (skinUpload ? 3 * 1024 * 1024 : 8192)) { respond (s, 413, "text/plain", "too large"); drainBriefly (s); return; }
         }
         if (headerEnd >= 0 && (int) data.getSize() >= headerEnd + 4 + contentLength) break;
     }
-    if (data.getSize() >= 16384) { respond (s, 413, "text/plain", "too large"); drainBriefly (s); return; }
+    if (data.getSize() >= maxRequest) { respond (s, 413, "text/plain", "too large"); drainBriefly (s); return; }
     const auto text = data.toString();
     if (headerEnd < 0) { respond (s, 400, "text/plain", "bad request"); return; }
 
@@ -186,6 +191,24 @@ void RemoteServer::handle (juce::StreamingSocket& s)
         if (! std::isfinite (yaw) || ! std::isfinite (pitch)) return respond (s, 400, "application/json", "{\"error\":\"yaw and pitch needed\"}");
         if (host.setHead) host.setHead (yaw, pitch);
         return respond (s, 200, "application/json", "{\"ok\":true}");
+    }
+
+    if (method == "POST" && path == "/api/skin")      // Skin Studio: {name, jpeg (base64), accent, accent2}
+    {
+        const auto json = juce::JSON::parse (body);
+        const auto name = json.getProperty ("name", {}).toString().toLowerCase().retainCharacters ("abcdefghijklmnopqrstuvwxyz0123456789_-").substring (0, 32);
+        juce::MemoryOutputStream jpeg;
+        if (name.isEmpty() || ! juce::Base64::convertFromBase64 (jpeg, json.getProperty ("jpeg", {}).toString()) || jpeg.getDataSize() < 200)
+            return respond (s, 400, "application/json", "{\"error\":\"name and photo needed\"}");
+        const auto* d = static_cast<const juce::uint8*> (jpeg.getData());
+        if (! (d[0] == 0xFF && d[1] == 0xD8)) return respond (s, 400, "application/json", "{\"error\":\"photo must be a JPEG\"}");
+        if (host.saveSkin && host.runOnMessageThread)
+        {
+            auto block = std::make_shared<juce::MemoryBlock> (jpeg.getData(), jpeg.getDataSize());
+            const auto accent = json.getProperty ("accent", "#F59E0B").toString(), accent2 = json.getProperty ("accent2", "#38BDF8").toString();
+            host.runOnMessageThread ([fn = host.saveSkin, name, block, accent, accent2] { fn (name, *block, accent, accent2); });
+        }
+        return respond (s, 200, "application/json", "{\"ok\":true,\"skin\":\"custom_" + name + "\"}");
     }
 
     if (method == "POST" && path == "/api/preset")

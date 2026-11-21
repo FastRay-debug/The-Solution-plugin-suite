@@ -36,6 +36,15 @@ namespace
             if (baseName.isEmpty() || ! baseName.containsOnly ("abcdefghijklmnopqrstuvwxyz0123456789_-"))
                 return std::nullopt;
 
+            // 0. Your own skins from the phone's Skin Studio.
+            if (baseName.startsWith ("custom_"))
+            {
+                juce::MemoryBlock fileData;
+                if (SolutionVendor::userFolder ("Skins").getChildFile (baseName + ".jpg").loadFileAsData (fileData))
+                    return makeResource (fileData.getData(), fileData.getSize(), "image/jpeg");
+                return std::nullopt;
+            }
+
             // 1. Shared Skins folder installed once for the whole suite.
             if (sharedSkinsDir.isDirectory())
             {
@@ -756,6 +765,13 @@ void SolutionAudioProcessorEditor::timerCallback()
     if (audioProcessor.consumeParamsChanged())
         sendParamState();
     if (frameCounter % 15 == 0) updateDiagLog();          // keep the event log even while the panel is closed
+    if (frameCounter % 60 == 45)                          // Skin Studio: pick up skins sent from any phone, in every plugin
+    {
+        const auto meta = SolutionVendor::userFolder ("Skins").getChildFile ("custom_skins.json");
+        const auto stamp = meta.getLastModificationTime().toMilliseconds();
+        if (stamp != customSkinsStamp) { customSkinsStamp = stamp; emitToViews ("customSkins", juce::JSON::parse (meta)); }
+        if (audioProcessor.pendingSkin.isNotEmpty()) { emitToViews ("applySkin", juce::var (audioProcessor.pendingSkin)); audioProcessor.pendingSkin.clear(); }
+    }
     if (systemMonitor != nullptr && frameCounter % 30 == 0) sendDiagnostics();
     if (++frameCounter % 6 == 0)      // 10 times a second (the 3D stage follows every track)
         sendRackState();

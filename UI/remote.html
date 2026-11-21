@@ -41,6 +41,26 @@
     <div class="card meters"><span>LUFS <b id="mLufs">—</b></span><span>TP <b id="mTp">—</b></span><span>GR <b id="mGr">—</b></span></div>
     <div class="card"><select id="presets" onchange="if (this.value) post('/api/preset', { name: this.value })"></select></div>
     <div class="card"><div class="toggle">Head tracking (binaural follows this phone) <input type="checkbox" id="headSw" onchange="toggleHead(this.checked)"></div><div class="sub" id="headMsg" style="margin:4px 0 0;">Wear the phone on your headphones or hold it in front of you, then switch on.</div></div>
+    <div class="card" id="studio">
+      <div style="font-weight:600;color:var(--accent);margin-bottom:6px;">📸 SKIN STUDIO</div>
+      <div class="sub" style="margin:0 0 8px;">Turn any photo into a plugin skin. It appears in the plugin straight away and is saved for every Solution plugin.</div>
+      <div style="display:flex;gap:8px;"><button onclick="pick(true)">📷 Take photo</button><button onclick="pick(false)">🖼 Choose photo</button></div>
+      <input id="camIn" type="file" accept="image/*" capture="environment" class="hidden" onchange="loadPhoto(this)">
+      <input id="libIn" type="file" accept="image/*" class="hidden" onchange="loadPhoto(this)">
+      <div id="studioEdit" class="hidden">
+        <canvas id="skinCv" width="1080" height="640" style="width:100%;border-radius:10px;margin-top:10px;touch-action:none;background:#000;"></canvas>
+        <div class="sub" style="margin:4px 0 0;">Drag to move · slider to zoom</div>
+        <div class="param"><label>Zoom <span id="vZoom">100%</span></label><input type="range" id="sZoom" min="100" max="300" value="100" oninput="redraw()"></div>
+        <div class="param"><label>Brightness <span id="vBri">0</span></label><input type="range" id="sBri" min="-50" max="50" value="-10" oninput="redraw()"></div>
+        <div class="param"><label>Contrast <span id="vCon">0</span></label><input type="range" id="sCon" min="-50" max="50" value="10" oninput="redraw()"></div>
+        <div class="param"><label>Warmth <span id="vWarm">0</span></label><input type="range" id="sWarm" min="-50" max="50" value="0" oninput="redraw()"></div>
+        <div class="toggle">Darken the edges (controls stay readable) <input type="checkbox" id="sVig" checked onchange="redraw()"></div>
+        <div class="toggle">LED colours <span><input type="color" id="acc1" value="#F59E0B" style="width:44px;height:32px;border:none;background:none;"> <input type="color" id="acc2" value="#38BDF8" style="width:44px;height:32px;border:none;background:none;"></span></div>
+        <input type="text" id="skinName" placeholder="Skin name" style="font-size:18px;letter-spacing:0;text-align:left;margin-top:8px;">
+        <button class="primary" onclick="sendSkin()">SEND TO PLUGIN</button>
+        <div class="err" id="studioMsg"></div>
+      </div>
+    </div>
     <div class="card" id="params"></div>
     <div class="err" id="mainErr"></div>
   </div>
@@ -132,6 +152,51 @@
     } catch (e) { document.getElementById('mainErr').textContent = 'Lost connection - is the plugin still open?'; }
     setTimeout(poll, 400);
   }
+  // ---------- Skin Studio ----------
+  let photo = null, ox = 0, oy = 0, dragging = null;
+  function pick(camera) { document.getElementById(camera ? 'camIn' : 'libIn').click(); }
+  function loadPhoto(input) {
+    const f = input.files && input.files[0]; if (!f) return;
+    const img = new Image(); img.onload = () => { photo = img; ox = 0; oy = 0; document.getElementById('studioEdit').classList.remove('hidden'); autoAccents(); redraw(); };
+    img.src = URL.createObjectURL(f); input.value = '';
+  }
+  function redraw() {
+    if (!photo) return;
+    const cv = document.getElementById('skinCv'), c = cv.getContext('2d'), W = cv.width, H = cv.height;
+    const zoom = +document.getElementById('sZoom').value / 100, bri = +document.getElementById('sBri').value, con = +document.getElementById('sCon').value, warm = +document.getElementById('sWarm').value;
+    ['Zoom', 'Bri', 'Con', 'Warm'].forEach(k => document.getElementById('v' + k).textContent = k === 'Zoom' ? Math.round(zoom * 100) + '%' : document.getElementById('s' + k).value);
+    const scale = Math.max(W / photo.width, H / photo.height) * zoom, dw = photo.width * scale, dh = photo.height * scale;
+    ox = Math.max(Math.min(ox, (dw - W) / 2), -(dw - W) / 2); oy = Math.max(Math.min(oy, (dh - H) / 2), -(dh - H) / 2);
+    c.filter = `brightness(${100 + bri}%) contrast(${100 + con}%) saturate(${100 + Math.abs(warm) * 0.3}%) sepia(${Math.max(0, warm) * 0.6}%) hue-rotate(${warm < 0 ? warm * 0.6 : 0}deg)`;
+    c.drawImage(photo, (W - dw) / 2 + ox, (H - dh) / 2 + oy, dw, dh); c.filter = 'none';
+    if (document.getElementById('sVig').checked) { const g = c.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, W * 0.62); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.65)'); c.fillStyle = g; c.fillRect(0, 0, W, H); }
+  }
+  // LED colours from the photo: the most common bright, saturated hue, plus its opposite.
+  function autoAccents() {
+    const t = document.createElement('canvas'); t.width = 64; t.height = 40; const c = t.getContext('2d'); c.drawImage(photo, 0, 0, 64, 40);
+    const d = c.getImageData(0, 0, 64, 40).data, bins = new Array(24).fill(0);
+    for (let i = 0; i < d.length; i += 4) { const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx ? (mx - mn) / mx : 0;
+      if (sat < 0.35 || mx < 0.35) continue; let h = mx === r ? ((g - b) / (mx - mn)) % 6 : mx === g ? (b - r) / (mx - mn) + 2 : (r - g) / (mx - mn) + 4; h = (h * 60 + 360) % 360; bins[Math.floor(h / 15)] += sat * mx; }
+    const best = bins.indexOf(Math.max(...bins)), hue = best * 15 + 7, hsl = (h, l) => { const a = 0.9 * Math.min(l, 1 - l), f = n => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0'); }; return '#' + f(0) + f(8) + f(4); };
+    if (Math.max(...bins) > 0) { document.getElementById('acc1').value = hsl(hue, 0.55); document.getElementById('acc2').value = hsl((hue + 180) % 360, 0.6); }
+  }
+  (function () {
+    const cv = document.getElementById('skinCv'), pt = (e) => { const r = cv.getBoundingClientRect(), t = e.touches ? e.touches[0] : e; return [(t.clientX - r.left) * cv.width / r.width, (t.clientY - r.top) * cv.height / r.height]; };
+    const down = (e) => { dragging = pt(e); }, move = (e) => { if (!dragging) return; e.preventDefault(); const p = pt(e); ox += p[0] - dragging[0]; oy += p[1] - dragging[1]; dragging = p; redraw(); }, up = () => dragging = null;
+    cv.addEventListener('mousedown', down); cv.addEventListener('touchstart', down, { passive: true });
+    window.addEventListener('mousemove', move); cv.addEventListener('touchmove', move, { passive: false }); window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+  })();
+  async function sendSkin() {
+    const msg = document.getElementById('studioMsg'), name = (document.getElementById('skinName').value || 'my skin').toLowerCase().replace(/[^a-z0-9_-]+/g, '_').slice(0, 32);
+    const data = document.getElementById('skinCv').toDataURL('image/jpeg', 0.86).split(',')[1];
+    msg.style.color = 'var(--mute)'; msg.textContent = 'Sending...';
+    try {
+      const r = await post('/api/skin', { name, jpeg: data, accent: document.getElementById('acc1').value, accent2: document.getElementById('acc2').value });
+      const j = await r.json().catch(() => ({}));
+      msg.style.color = r.ok ? 'var(--good)' : '#EF4444'; msg.textContent = r.ok ? '✓ Sent - it\'s on the plugin now' : (j.error || 'Could not send (' + r.status + ')');
+    } catch (e) { msg.style.color = '#EF4444'; msg.textContent = 'Lost connection to the plugin'; }
+  }
+
   // Phone motion sensors -> head yaw/pitch (some phones only allow this on secure pages).
   let headTimer = null, lastPose = null, yaw0 = null;
   function onOrient(e) { if (e.alpha == null) return; const yaw = -(e.alpha || 0), pitch = (e.beta || 0) - 90; if (yaw0 === null) yaw0 = yaw; lastPose = { yaw: ((yaw - yaw0 + 540) % 360) - 180, pitch: Math.max(-80, Math.min(80, pitch)) }; }

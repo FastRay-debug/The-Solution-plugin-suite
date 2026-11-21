@@ -34,7 +34,8 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ☐ Pop-out meter vertical/horizontal option
 
 ### Features
-- ☐ Mobile Skin Studio (phone photos → skins, live sync); Skin Editor as its own program, launchable from every plugin
+- ✅ Mobile Skin Studio: phone camera/library → frame, brightness/contrast/warmth, auto LED colours → sent to the plugin (live), saved for every Solution plugin
+- ☐ Skin Editor as its own program (separate installer), launchable from every plugin (launcher already wired)
 - ✅ Head tracking for binaural: OSC trackers + phone apps (GyrOSC, ZIG SIM, Sensors2OSC; IEM/SPARTA ypr/quaternion), phone remote page sensors, gamepad/joystick; recentre Ctrl+Alt+H; 3D head follows
 - ✅ Drone telemetry: flight-log CSV (lat/lon/alt) becomes a sound's motion path
 - ☐ Webcam face tracking; native VR headset (OpenXR) output

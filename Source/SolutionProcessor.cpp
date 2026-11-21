@@ -1,4 +1,5 @@
 #include "SolutionProcessor.h"
+#include "Vendor.h"
 #if ! SOLUTION_HEADLESS
  #include "SolutionEditor.h"
  #include "BinaryData.h"
@@ -873,6 +874,23 @@ bool SolutionAudioProcessor::startRemote (const juce::String& bindAddress)
     };
     host.loadPreset = [this] (const juce::String& name) { presets.loadPreset (name); };
     host.setHead = [this] (float yaw, float pitch) { headTracker->setPose (yaw, pitch, 2); };   // phone page sensors (any thread)
+    host.saveSkin = [this] (const juce::String& name, const juce::MemoryBlock& jpeg, const juce::String& accent, const juce::String& accent2)
+    {
+        // Skin Studio: the photo becomes custom_<name>.jpg in your skins folder; every plugin picks it up.
+        const auto dir = SolutionVendor::userFolder ("Skins"); dir.createDirectory();
+        dir.getChildFile ("custom_" + name + ".jpg").replaceWithData (jpeg.getData(), jpeg.getSize());
+        const auto metaFile = dir.getChildFile ("custom_skins.json");
+        auto meta = juce::JSON::parse (metaFile);
+        juce::Array<juce::var> list; if (auto* arr = meta.getArray()) list = *arr;
+        for (int i = list.size(); --i >= 0;) if (list[i]["key"].toString() == "custom_" + name) list.remove (i);
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        auto safeColour = [] (const juce::String& c, const char* fallback) { return c.matchesWildcard ("#??????", true) && c.substring (1).containsOnly ("0123456789abcdefABCDEF") ? c : juce::String (fallback); };
+        o->setProperty ("key", "custom_" + name); o->setProperty ("name", name);
+        o->setProperty ("accent", safeColour (accent, "#F59E0B")); o->setProperty ("accent2", safeColour (accent2, "#38BDF8"));
+        list.insert (0, juce::var (o.get()));
+        metaFile.replaceWithText (juce::JSON::toString (juce::var (list)));
+        pendingSkin = "custom_" + name;                       // this plugin switches to it right away
+    };
     host.runOnMessageThread = [this] (std::function<void()> fn)
     {
         if (remoteExecutor) { remoteExecutor (std::move (fn)); return; }

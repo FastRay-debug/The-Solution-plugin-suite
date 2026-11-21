@@ -11,6 +11,7 @@
 #include "../Source/ModuleEngines.h"
 #include "../Source/SolutionProcessor.h"
 #include "../Source/SystemMonitor.h"
+#include "../Source/Vendor.h"
 #include "../Source/VoiceCommands.h"
 #include <atomic>
 #include <complex>
@@ -899,6 +900,19 @@ static void testRemote()
     http (port, "POST", "/api/preset", R"({"name":"Wide Chorus Lift"})", token);
     EXPECT (proc.presets.getCurrentPresetName() == "Wide Chorus Lift", "phone couldn't load a preset");
     EXPECT (http (port, "POST", "/api/param", juce::String::repeatedString ("x", 9000), token).status == 413, "oversized request must be refused");
+    {   // Skin Studio: a phone photo (base64 JPEG) becomes custom_<name>.jpg and the plugin switches to it.
+        juce::Image img (juce::Image::RGB, 270, 160, true); juce::Graphics g (img); g.fillAll (juce::Colours::darkorange);
+        juce::MemoryOutputStream jpg; juce::JPEGImageFormat fmt; fmt.writeImageToStream (img, jpg);
+        juce::String bodyJson; bodyJson << "{\"name\":\"Test Skin!\",\"jpeg\":\"" << juce::Base64::toBase64 (jpg.getData(), jpg.getDataSize()) << "\",\"accent\":\"#ff6a1a\",\"accent2\":\"bad\"}";
+        const auto r = http (port, "POST", "/api/skin", bodyJson, token);
+        const auto file = SolutionVendor::userFolder ("Skins").getChildFile ("custom_testskin.jpg");
+        const auto meta = juce::JSON::parse (SolutionVendor::userFolder ("Skins").getChildFile ("custom_skins.json"));
+        EXPECT (r.status == 200 && file.existsAsFile() && proc.pendingSkin == "custom_testskin", "skin upload saved (%d) and queued", r.status);
+        if (r.status != 200) std::printf ("  skin upload reply %d: %s\n", r.status, r.body.toRawUTF8());
+        EXPECT (meta.isArray() && meta.size() > 0 && meta[0]["accent"].toString() == "#ff6a1a" && meta[0]["accent2"].toString() == "#38BDF8", "accent kept, bad colour replaced");
+        EXPECT (http (port, "POST", "/api/skin", "{\"name\":\"x\",\"jpeg\":\"aGVsbG8=\"}", token).status == 400, "non-JPEG refused");
+        file.deleteFile();
+    }
 
     // Wrong codes: 5 strikes then a lockout (even the right code is refused for a minute).
     for (int i = 0; i < 5; ++i) http (port, "POST", "/api/pair", R"({"code":"000000"})");
