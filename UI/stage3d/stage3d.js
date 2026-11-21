@@ -363,6 +363,65 @@ function init() {
     }
   };
 
+  // ---------- hologram centrepiece (one per module, coloured by the theme) ----------
+  const moduleName = (new URLSearchParams(location.search).get('module') || '').toLowerCase();
+  const holo = new THREE.Group(); scene.add(holo);
+  const holoMat = new THREE.LineBasicMaterial({ color: 0xff8a1c, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+  const holoMat2 = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
+  const kind = moduleName.includes('bunker') ? 'cube' : moduleName.includes('orbit') ? 'dome' : moduleName.includes('aether') ? 'spectral' : 'ring';
+  let wave = null, bars = [], dome = null, waterfall = [], wfTick = 0;
+  if (kind === 'cube') {
+    holo.position.set(0, 2.5, 7.2); holo.scale.setScalar(1.35);
+    holo.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(2.4, 1.4, 1.4)), holoMat));
+    wave = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(128 * 3), 3)), holoMat2); holo.add(wave);
+    for (let i = 0; i < 12; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1, 0.14), new THREE.MeshBasicMaterial({ color: 0xff8a1c, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }));
+      b.position.set(-1.05 + i * 0.19, -0.7, 0.55); holo.add(b); bars.push(b); }
+  } else if (kind === 'dome') {
+    dome = new THREE.Mesh(new THREE.SphereGeometry(STAGE_R + 0.6, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+    scene.add(dome);
+    const domeLines = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(STAGE_R + 0.6, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2)), holoMat2);
+    domeLines.material = holoMat2.clone(); domeLines.material.opacity = 0.12; scene.add(domeLines);
+    for (let i = 0; i < 3; i++) { const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, 1.2 + i * 0.5, 1.2 + i * 0.5).getPoints(96).map(p => new THREE.Vector3(p.x, 0, p.y))), holoMat);
+      ring.rotation.set(0.4 * (i + 1), i, 0); holo.add(ring); }
+    holo.position.set(0, 3.2, 6.5); holo.scale.setScalar(0.8);
+  } else if (kind === 'spectral') {
+    holo.position.set(0, 0.6, 7.4);
+    for (let r = 0; r < 18; r++) { const line = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(36 * 3), 3)), r ? holoMat2 : holoMat);
+      holo.add(line); waterfall.push(line); }
+  } else {
+    holo.position.set(0, 3.1, 6.8);
+    for (let i = 0; i < 2; i++) { const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, 0.9 + i * 0.35, 0.9 + i * 0.35).getPoints(96).map(p => new THREE.Vector3(p.x, p.y, 0))), i ? holoMat2 : holoMat);
+      holo.add(ring); }
+  }
+  function updateHologram(t, dt) {
+    const sc = window._scope || {};
+    holo.rotation.y = kind === 'cube' ? Math.sin(t * 0.3) * 0.35 : kind === 'ring' ? t * 0.4 : holo.rotation.y;
+    if (kind === 'dome') holo.children.forEach((r, i) => { r.rotation.z += dt * (0.2 + i * 0.15); });
+    if (wave && sc.lr && sc.lr.length) {
+      const arr = wave.geometry.attributes.position.array, n = 128, step = Math.max(1, Math.floor(sc.lr.length / 2 / n));
+      for (let i = 0; i < n; i++) { const v = sc.lr[i * step * 2] || 0; arr[i * 3] = -1.15 + 2.3 * i / (n - 1); arr[i * 3 + 1] = Math.max(-0.65, Math.min(0.65, v * 1.6)); arr[i * 3 + 2] = Math.sin(i * 0.2 + t) * 0.15; }
+      wave.geometry.attributes.position.needsUpdate = true;
+    }
+    if (bars.length && sc.spec) bars.forEach((b, i) => { const db = sc.spec[Math.min(sc.spec.length - 1, i)] ?? -90, h = Math.max(0.05, (db + 70) / 60); b.scale.y = h; b.position.y = -0.7 + h / 2; });
+    if (waterfall.length && sc.spec && (wfTick += dt) > 0.08) {
+      wfTick = 0;
+      for (let r = waterfall.length - 1; r > 0; r--) waterfall[r].geometry.attributes.position.array.set(waterfall[r - 1].geometry.attributes.position.array);
+      const arr = waterfall[0].geometry.attributes.position.array;
+      for (let i = 0; i < 36; i++) { const db = sc.spec[Math.floor(i * sc.spec.length / 36)] ?? -90; arr[i * 3] = -4 + 8 * i / 35; arr[i * 3 + 1] = Math.max(0, (db + 72) / 22); arr[i * 3 + 2] = 0; }
+      waterfall.forEach((l, r) => { const a = l.geometry.attributes.position.array; for (let i = 0; i < 36; i++) a[i * 3 + 2] = r * 0.35; l.geometry.attributes.position.needsUpdate = true; });
+    }
+  }
+  // Theme colours for the 3D world (matches the CSS hardware theme).
+  const THEME_COLOURS = { '': [0xd4af37, 0x38bdf8], hypercar: [0xff8a1c, 0xffc266], deco: [0xe9b949, 0x5ed0ff], dome: [0x22d3ee, 0xe879f9],
+                          abyssal: [0x2dd4bf, 0x60a5fa], brass: [0xf2b04b, 0xf7e2b0], holo: [0xfbbf24, 0x22d3ee], sunset: [0xff6a1a, 0x3ba9ff] };
+  gl3d.setTheme = (id) => {
+    const [a, b] = THEME_COLOURS[id] || THEME_COLOURS[''];
+    holoMat.color.setHex(a); holoMat2.color.setHex(b); goldRingMat.color.setHex(a); ringMat.color.setHex(b);
+    bars.forEach(x => x.material.color.setHex(a)); if (dome) dome.material.color.setHex(b);
+  };
+  gl3d.setTheme(document.documentElement.getAttribute('data-theme') || '');
+
   // ---------- main loop ----------
   let clashes = [], last = performance.now(), frames = 0, fpsT = 0, slowFor = 0, lastHoldSend = 0;
   gl3d.render = () => {
@@ -432,6 +491,7 @@ function init() {
       const p = camera.position.clone().addScaledVector(fwd, heldDist); p.y -= 0.15;
       api.move(heldByPad, toStage(p));
     }
+    updateHologram(t, dt);
     bloom.enabled = !gl3d.lowQuality;
     stars.rotation.y += dt * 0.004;
     composer.render(dt);

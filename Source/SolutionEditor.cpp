@@ -186,6 +186,12 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("theme", [this] (const juce::var& d)
+           {
+               const auto id = d.getProperty ("id", {}).toString().retainCharacters ("abcdefghijklmnopqrstuvwxyz");
+               audioProcessor.setUiProperty ("theme", id);
+               if (! (bool) d.getProperty ("local", false)) { auto& bus = audioProcessor.getRackBus(); bus.suiteTheme = id; ++bus.suiteThemeGen; }
+           })
            .withEventListener ("openSkinEditor", [this] (const juce::var&)
            {
                // The Skin Editor is its own program (separate installer). Look where it installs.
@@ -434,6 +440,8 @@ void SolutionAudioProcessorEditor::sendRackState()
     payload->setProperty ("instances", list);
     payload->setProperty ("suiteGlue", bus.suiteGlue.load());
     payload->setProperty ("selfSlot", audioProcessor.getRackSlot());
+    payload->setProperty ("suiteTheme", audioProcessor.getRackBus().suiteTheme);
+    payload->setProperty ("suiteThemeGen", audioProcessor.getRackBus().suiteThemeGen);
     payload->setProperty ("animAz", audioProcessor.animAz.load());
     payload->setProperty ("animEl", audioProcessor.animEl.load());
     payload->setProperty ("animDist", audioProcessor.animDist.load());

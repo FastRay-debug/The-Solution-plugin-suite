@@ -114,7 +114,7 @@ namespace SolutionVoice
                 "seventeen","eighteen","nineteen","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety",
                 "bypass","compare","original","delta","mono","check","fullscreen","full","screen","maximize","diagnostics","fly","exit","close","escape",
                 "presets","vault","next","previous","preset","room","rooms","snapshot","store","save","recall","macro","beginner","mode",
-                "pre","render","shortcuts","help","monitoring","monitors","hub","the","a","b","utility","cancel","never","mind" };
+                "pre","render","shortcuts","help","theme","monitoring","monitors","hub","the","a","b","utility","cancel","never","mind" };
             for (auto* w : fixed) v.addIfNotAlreadyThere (w);
             for (auto& a : aliases()) for (auto& w : juce::StringArray::fromTokens (a.first, " ", "")) v.addIfNotAlreadyThere (w);
             for (auto& p : params) for (auto& w : juce::StringArray::fromTokens (normalise (p.name), " ", "")) if (w.containsOnly ("abcdefghijklmnopqrstuvwxyz")) v.addIfNotAlreadyThere (w);
@@ -173,6 +173,8 @@ namespace SolutionVoice
             if (text == "next room")                                           return ui (c, "nextRoom", "Next listening room");
             if (text == "previous room")                                       return ui (c, "prevRoom", "Previous listening room");
             if (text == "rooms")                                               return ui (c, "rooms", "Listening rooms");
+            if (text == "next theme" || text == "theme")                       return ui (c, "nextTheme", "Next theme");
+            if (text == "previous theme")                                      return ui (c, "prevTheme", "Previous theme");
             if (has ("beginner"))                                              return ui (c, "beginner", "Beginner mode");
             if (text == "pre render" || text == "pre render check" || text == "check") return ui (c, "prerender", "Pre-render check");
             if (text == "shortcuts" || text == "help")                         return ui (c, "help", "Shortcuts & voice commands");

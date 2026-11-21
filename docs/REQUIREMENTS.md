@@ -26,9 +26,9 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 
 ## To do ☐ (in build order)
 ### 3D hardware themes & holograms
-- ☐ Universal 3D hardware themes (sync across the session), alongside photo skins; per-module live hologram centrepiece (one shared GPU engine)
-- ☐ The plugin itself 3D and interactive, not a flat face with a background picture
-- ☐ Colours: burnt/sunset orange, LED-glow blue, asymmetric pop of contrast; futuristic, timeless, fluid curves
+- ✅ Universal 3D hardware themes (7: Hypercar, Art Deco, Glass Dome, Abyssal, Vintage Brass, Holo Glass, Fast Ray Sunset), session-synced with "only here" override, alongside photo skins; per-module live hologram (Bunker sub-wave cube, Orbit glass dome, Aether spectral waterfall, others ring) on one shared GPU engine
+- ✅ Faceplate depth: bevels, screws, LED rims, mouse-follow 3D tilt, hologram projector base (more 3D interactivity still welcome)
+- ✅ Colours: burnt/sunset orange, LED-glow blue, asymmetric blue pop (Fast Ray Sunset)
 - ☐ 50 skins incl. a Vidalia skin (Vidalia High School, Kroger, local landmarks); skins + Skin Editor in a separate installer with per-skin checkboxes
 - ☐ Analog meters full screen; Ctrl-click several panels and tile them full screen together
 - ☐ Pop-out meter vertical/horizontal option

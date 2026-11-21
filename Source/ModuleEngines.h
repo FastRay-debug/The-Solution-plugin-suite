@@ -109,6 +109,8 @@ namespace SolutionDSP
 
     struct RackLinkBus
     {
+        juce::String suiteTheme;            // hardware theme the whole session follows (message thread only)
+        int suiteThemeGen = 0;
         std::atomic<int>   activeInstances { 0 };
         std::atomic<float> masterSubRms    { 0.0f };
         std::atomic<float> masterPhase     { 1.0f };
