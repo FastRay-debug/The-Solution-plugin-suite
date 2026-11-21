@@ -1069,6 +1069,92 @@ static void testProTricks()
     std::printf ("  done\n");
 }
 
+static void testListeningRooms()
+{
+    std::printf ("== Listening Room library\n");
+    using namespace SolutionDSP;
+    const auto& rooms = listeningRooms();
+    EXPECT (rooms.size() >= 20, "expected 20+ rooms, got %d", (int) rooms.size());
+    juce::Random rnd (31);
+    for (double fs : { 48000.0, 96000.0 })
+        for (int idx = 0; idx < (int) rooms.size(); ++idx)
+        {
+            ListeningRoomSim sim; sim.prepare (fs);
+            const int bs = 256, total = (int) (fs * 1.0), tailLen = (int) (fs * (rooms[(size_t) idx].rt60 * 1.6 + 0.6));
+            juce::AudioBuffer<float> b (2, bs);
+            bool finite = true, mono = true; int allocs = 0; double energy = 0, tailEnergy = 0;
+            for (int pos = 0; pos < total + tailLen; pos += bs)
+            {
+                for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < bs; ++i) b.setSample (ch, i, pos < total ? 0.1f * (rnd.nextFloat() * 2 - 1) : 0.0f);
+                allocCount = 0; trackAllocs = true;
+                sim.process (b.getWritePointer (0), b.getWritePointer (1), bs, idx);
+                trackAllocs = false; allocs += allocCount.load();
+                for (int i = 0; i < bs; ++i)
+                {
+                    const float l = b.getSample (0, i), r = b.getSample (1, i);
+                    finite &= std::isfinite (l) && std::isfinite (r);
+                    const bool strictMono = rooms[(size_t) idx].mono && rooms[(size_t) idx].length <= 0.0f;   // in a room, reflections reach each ear differently
+                    if (strictMono && pos > (int) (0.02 * fs)) mono &= std::abs (l - r) < 1e-6f;
+                    if (pos < total) energy += (double) l * l; else if (pos + bs >= total + tailLen) tailEnergy += (double) l * l;
+                }
+            }
+            const char* nm = rooms[(size_t) idx].name;
+            EXPECT (finite, "%s @ %.0f: NaN/inf", nm, fs);
+            EXPECT (allocs == 0, "%s @ %.0f: %d allocations on the audio thread", nm, fs, allocs);
+            EXPECT (10 * std::log10 (energy / total + 1e-20) > -40.0, "%s @ %.0f: nearly silent", nm, fs);
+            EXPECT (10 * std::log10 (tailEnergy / bs + 1e-30) < -90.0, "%s @ %.0f: reverb didn't decay", nm, fs);
+            if (rooms[(size_t) idx].mono && rooms[(size_t) idx].length <= 0.0f) EXPECT (mono, "%s should be mono", nm);
+        }
+
+    auto find = [&] (const char* name) { for (int i = 0; i < (int) rooms.size(); ++i) if (juce::String (rooms[(size_t) i].name) == name) return i; return -1; };
+    const double fs = 48000.0;
+    auto toneThrough = [&] (int idx, double hz) {
+        ListeningRoomSim sim; sim.prepare (fs);
+        juce::AudioBuffer<float> b (2, (int) fs); fillSine (b, fs, hz, 0.1f);
+        sim.process (b.getWritePointer (0), b.getWritePointer (1), b.getNumSamples(), idx);
+        return toneDb (b, 0, hz, fs, 4800);
+    };
+    const int phone = find ("Phone Speaker");
+    EXPECT (phone >= 0 && toneThrough (phone, 2000) - toneThrough (phone, 100) > 15.0, "phone speaker should lose its deep bass");
+    const int sub = find ("Car - SUV with Subwoofer");
+    EXPECT (sub >= 0 && toneThrough (sub, 45) - toneThrough (sub, 1000) > 6.0, "SUV subwoofer should boost the low end");
+
+    // Reverb length: a cathedral rings far longer than a vocal booth.
+    auto tailAfter = [&] (int idx, double seconds) {
+        ListeningRoomSim sim; sim.prepare (fs);
+        juce::AudioBuffer<float> b (2, (int) (fs * (seconds + 0.6)));
+        b.clear(); for (int i = 0; i < 2400; ++i) { const float v = rnd.nextFloat() * 2 - 1; b.setSample (0, i, v); b.setSample (1, i, v); }
+        sim.process (b.getWritePointer (0), b.getWritePointer (1), b.getNumSamples(), idx);
+        double e = 0; for (int i = (int) (fs * seconds); i < (int) (fs * (seconds + 0.1)); ++i) e += (double) b.getSample (0, i) * b.getSample (0, i);
+        return 10 * std::log10 (e + 1e-30);
+    };
+    const double cathedral = tailAfter (find ("Church / Cathedral"), 1.0), booth = tailAfter (find ("Vocal Booth"), 1.0);
+    std::printf ("  energy 1 s after a burst: cathedral %.0f dB, vocal booth %.0f dB\n", cathedral, booth);
+    EXPECT (cathedral - booth > 40.0, "a cathedral should ring much longer than a vocal booth");
+
+    // Switching rooms while audio plays: no blow-ups, no big jumps.
+    {
+        ListeningRoomSim sim; sim.prepare (fs);
+        juce::AudioBuffer<float> b (2, 256); float maxJump = 0, last = 0; bool finite = true;
+        for (int k = 0; k < 400; ++k)
+        {
+            fillSine (b, fs, 220.0, 0.2f, 0.0, k * 256);
+            sim.process (b.getWritePointer (0), b.getWritePointer (1), 256, (k / 20) % ((int) rooms.size() + 1) - 1);
+            for (int i = 0; i < 256; ++i) { const float v = b.getSample (0, i); finite &= std::isfinite (v); maxJump = std::max (maxJump, std::abs (v - last)); last = v; }
+        }
+        EXPECT (finite && maxJump < 0.3f, "room switching produced a jump of %.2f", maxJump);
+    }
+
+    // Through the plugin.
+    SolutionAudioProcessor proc; proc.prepareToPlay (fs, 512);
+    setParam (proc, "listen_room", (float) (find ("Mono Check") + 1));
+    juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512);
+    for (int k = 0; k < 20; ++k) { for (int i = 0; i < 512; ++i) { b.setSample (0, i, 0.2f * (float) std::sin (0.05 * (k * 512 + i))); b.setSample (1, i, 0.0f); } proc.processBlock (b, midi); }
+    float diff = 0; for (int i = 0; i < 512; ++i) diff = std::max (diff, std::abs (b.getSample (0, i) - b.getSample (1, i)));
+    EXPECT (diff < 1e-4f, "plugin Listening Room 'Mono Check' isn't mono (diff %g)", diff);
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -1086,6 +1172,7 @@ int main()
     testRemote();
     testModeNotchSwitch();
     testProTricks();
+    testListeningRooms();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

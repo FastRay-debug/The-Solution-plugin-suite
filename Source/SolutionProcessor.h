@@ -17,6 +17,7 @@
 #include "NeuralCharacter.h"
 #include "RemoteControl.h"
 #include "ProTricks.h"
+#include "RoomLibrary.h"
 #include <atomic>
 #include <array>
 
@@ -124,7 +125,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 8;   // v7: 115 Hz notch, v8: Pro Tricks
+    static constexpr int stateVersion = 9;   // v7: 115 Hz notch, v8: Pro Tricks, v9: listening rooms
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -166,6 +167,7 @@ private:
     SolutionDSP::RoomCorrector roomCorrector;
     SolutionDSP::BinauralRenderer binaural;
     SolutionDSP::MonoLows monoLows;
+    SolutionDSP::ListeningRoomSim listeningRoom;
     SolutionDSP::Smoother smoother;
     SolutionDSP::PhoneBass phoneBass;
     SolutionDSP::LoudnessMatcher abMatcher;

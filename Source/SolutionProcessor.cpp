@@ -75,6 +75,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v9: listening room library (monitoring)
+    {
+        juce::StringArray rooms { "Off" };
+        for (const auto& room : SolutionDSP::listeningRooms()) rooms.add (room.name);
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "listen_room", 9 }, "Listening Room", rooms, 0));
+    }
     // --- v8: Pro Tricks
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "trim_in_db", 8 },     "Input Trim (dB)",  juce::NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "trim_out_db", 8 },    "Output Trim (dB)", juce::NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f));
@@ -128,6 +134,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     roomCorrector.prepare (sampleRate);
     binaural.prepare (sampleRate);
     monoLows.prepare (sampleRate, samplesPerBlock);
+    listeningRoom.prepare (sampleRate);
     smoother.prepare (sampleRate);
     phoneBass.prepare (sampleRate);
     abMatcher.prepare (sampleRate);
@@ -362,6 +369,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     }
 
     // Monitoring stages (after A/B and Delta so both sides are heard the same way).
+    if (! p.tapeCalTone)
+        listeningRoom.process (left, right, numSamples, static_cast<int> (apvts.getRawParameterValue ("listen_room")->load()) - 1);
     if (binauralOn && ! p.tapeCalTone)
         binaural.process (left, right, numSamples, binauralAz, p.elevationDeg, binauralWidth);
 

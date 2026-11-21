@@ -122,6 +122,17 @@ SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcess
                        sendRoomResult();
                        sendCharacterState();
                        sendRemoteState();
+                       {
+                           juce::Array<juce::var> rooms;
+                           for (const auto& room : SolutionDSP::listeningRooms())
+                           {
+                               juce::DynamicObject::Ptr o = new juce::DynamicObject();
+                               o->setProperty ("name", juce::String (room.name));
+                               o->setProperty ("category", juce::String (room.category));
+                               rooms.add (juce::var (o.get()));
+                           }
+                           webView.emitEventIfBrowserIsVisible ("roomList", juce::var (rooms));
+                       }
                    })
                    .withEventListener ("setUiProp", [this] (const juce::var& data)
                    {

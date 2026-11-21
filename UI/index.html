@@ -315,12 +315,13 @@
           <option value="banff">Banff Emerald Lake</option>
         </optgroup>
       </select>
-      <button id="emuBtn" onclick="openEmulator()" data-tip="Built-in Audio Emulator">▶ AUDIO</button>
+      <button id="emuBtn" onclick="openEmulator()" data-tip="Built-in Audio Emulator">▶</button>
       <button onclick="openVault()" data-tip="The Vault: Presets & A/B">🗄 VAULT</button>
-      <button onclick="openAssistant()" data-tip="Mix Assistant: compare with a reference track or genre target">🎯 ASSIST</button>
-      <button onclick="openCharacter()" data-tip="Neural Character: run a captured model of real hardware on this module">🧠 CHARACTER</button>
-      <button onclick="openRemote()" data-tip="Control this module from your phone or tablet">📱 REMOTE</button>
-      <button onclick="openPro()" data-tip="Pro Tricks: gain staging, mono lows, smooth, phone bass, streaming preview">⚡ PRO TRICKS</button>
+      <button onclick="openAssistant()" data-tip="Mix Assistant: compare with a reference track or genre target">🎯</button>
+      <button onclick="openCharacter()" data-tip="Neural Character: run a captured model of real hardware on this module">🧠</button>
+      <button onclick="openRemote()" data-tip="Control this module from your phone or tablet">📱</button>
+      <button onclick="openPro()" data-tip="Pro Tricks: gain staging, mono lows, smooth, phone bass, streaming preview">★ PRO</button>
+      <button id="roomsBtnTop" onclick="openRooms()" data-tip="Listening Rooms: hear your mix in studios, venues, cars, phones, earbuds...">🏛 ROOMS</button>
       <button id="abBtnTop" onclick="toggleParamBtn('ab_bypass')" data-tip="Hear the ORIGINAL at the same loudness - louder no longer fools you">A/B</button>
       <button id="deltaBtnTop" onclick="toggleParamBtn('delta_listen')" data-tip="Delta: hear only what this module adds or removes">Δ</button>
       <button onclick="openMatrix()" data-tip="The Matrix: CV & MIDI Learn">⚡ MATRIX</button>
@@ -611,10 +612,27 @@
     </div>
   </div>
 
+  <div class="modal" id="roomsModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="min-width:640px;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">🏛 LISTENING ROOMS</strong>
+      <div style="font-size:11px;color:var(--mute);">Hear your mix in other places. Best on headphones - turn on 🎧 BINAURAL too. Monitoring only: switch to OFF before you bounce.</div>
+      <div id="roomGrid" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;"></div>
+      <div style="font-size:11px;color:var(--accent2);">TRANSLATION TOUR</div>
+      <div style="display:flex;gap:6px;align-items:center;font-size:11px;">
+        <button id="tourBtn" onclick="toggleTour()">▶ START TOUR</button>
+        <span>every</span>
+        <select id="tourSecs"><option value="4">4 s</option><option value="8" selected>8 s</option><option value="15">15 s</option></select>
+        <span id="tourNow" style="color:var(--gold);"></span>
+      </div>
+      <div style="font-size:10px;color:var(--mute);">Steps through: your room → Car → Phone → Earbuds → Laptop → TV Soundbar → Bluetooth Speaker → Mono → back to where you started.</div>
+      <button onclick="document.getElementById('roomsModal').classList.remove('open')">CLOSE</button>
+    </div>
+  </div>
+
   <div class="modal" id="proModal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box" style="min-width:560px;">
-      <strong style="color:var(--gold);letter-spacing:0.1em;">⚡ PRO TRICKS</strong>
-      <div id="monWarn" style="display:none;font-size:11px;color:#EF4444;border:1px solid #EF4444;border-radius:4px;padding:4px 6px;">MONITORING MODE ON - turn off A/B, Δ and Streaming Preview before you bounce.</div>
+      <strong style="color:var(--gold);letter-spacing:0.1em;">★ PRO TRICKS</strong>
+      <div id="monWarn" style="display:none;font-size:11px;color:#EF4444;border:1px solid #EF4444;border-radius:4px;padding:4px 6px;">MONITORING MODE ON - turn off A/B, Δ, Streaming Preview and Listening Rooms before you bounce.</div>
 
       <div style="font-size:11px;color:var(--accent2);margin-top:4px;">GAIN STAGING</div>
       <div style="display:flex;gap:6px;align-items:center;">
@@ -1254,12 +1272,42 @@
         svg.innerHTML += shade(20, m.fitLow) + shade(m.fitHigh, 20000);
       }
     }
+    let roomList = [], tourTimer = null, tourIdx = 0, tourReturn = 0;
+    const TOUR = ['Car - Sedan', 'Phone Speaker', 'Earbuds (consumer)', 'Laptop Speakers', 'TV Soundbar (living room)', 'Bluetooth Speaker', 'Mono Check'];
+    function openRooms() { renderRooms(); document.getElementById('roomsModal').classList.add('open'); }
+    function setRoom(index) { bind('listen_room', index, '', 1); state.listen_room = index; renderRooms(); updateMonitorBadges(); }
+    function renderRooms() {
+      const cur = Math.round(state.listen_room || 0);
+      const cats = [...new Set(roomList.map(r => r.category))];
+      document.getElementById('roomGrid').innerHTML =
+        `<div><button class="${cur === 0 ? 'active' : ''}" onclick="setRoom(0)">OFF (your own speakers)</button></div>` +
+        cats.map(c => `<div><div style="font-size:10px;color:var(--accent2);margin:2px 0;">${escapeHtml(c.toUpperCase())}</div><div style="display:flex;flex-wrap:wrap;gap:4px;">` +
+          roomList.map((r, i) => r.category === c ? `<button style="font-size:10px;" class="${cur === i + 1 ? 'active' : ''}" onclick="setRoom(${i + 1})">${escapeHtml(r.name)}</button>` : '').join('') + '</div></div>').join('');
+      const btn = document.getElementById('roomsBtnTop');
+      btn.textContent = cur > 0 ? '🏛 ON' : '🏛 ROOMS';
+      btn.dataset.tip = cur > 0 && roomList[cur - 1] ? 'Listening Room: ' + roomList[cur - 1].name : 'Listening Rooms: hear your mix in studios, venues, cars, phones, earbuds...';
+      btn.classList.toggle('active', cur > 0);
+    }
+    function toggleTour() {
+      if (tourTimer) { clearInterval(tourTimer); tourTimer = null; setRoom(tourReturn); document.getElementById('tourBtn').textContent = '▶ START TOUR'; document.getElementById('tourNow').textContent = ''; return; }
+      tourReturn = Math.round(state.listen_room || 0); tourIdx = 0;
+      const step = () => {
+        const name = TOUR[tourIdx % TOUR.length], idx = roomList.findIndex(r => r.name === name);
+        if (idx >= 0) setRoom(idx + 1);
+        document.getElementById('tourNow').textContent = 'Now: ' + name;
+        tourIdx++;
+      };
+      step();
+      tourTimer = setInterval(step, parseFloat(document.getElementById('tourSecs').value) * 1000);
+      document.getElementById('tourBtn').textContent = '■ STOP TOUR';
+    }
     function openPro() { document.getElementById('proModal').classList.add('open'); }
     function toggleParamBtn(id) { const on = !(state[id] > 0.5); bind(id, on ? 1 : 0, '', 1); updateMonitorBadges(); }
     function updateMonitorBadges() {
       document.getElementById('abBtnTop').classList.toggle('active', state.ab_bypass > 0.5);
       document.getElementById('deltaBtnTop').classList.toggle('active', state.delta_listen > 0.5);
-      const mon = state.ab_bypass > 0.5 || state.delta_listen > 0.5 || state.stream_preview > 0.5;
+      const mon = state.ab_bypass > 0.5 || state.delta_listen > 0.5 || state.stream_preview > 0.5 || state.listen_room > 0.5;
+      if (roomList.length) renderRooms();
       document.getElementById('monWarn').style.display = mon ? '' : 'none';
     }
     const remoteCmd = (cmd) => { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('remote', { cmd }); };
@@ -1470,6 +1518,7 @@
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
       window.__JUCE__.backend.addEventListener('roomNotice', (msg) => alert(msg));
+      window.__JUCE__.backend.addEventListener('roomList', (m) => { roomList = m || []; renderRooms(); });
       window.__JUCE__.backend.addEventListener('remoteState', (m) => { window._remote = m; renderRemote(); });
       window.__JUCE__.backend.addEventListener('characterState', (m) => { window._char = m; renderCharacter(); });
       window.__JUCE__.backend.addEventListener('assistantState', (m) => { window._assist = m; if (document.getElementById('assistModal').classList.contains('open')) renderAssistant(); });
