@@ -27,7 +27,7 @@ SolutionAudioProcessor::SolutionAudioProcessor()
         "stage_azimuth", "stage_elevation", "stage_depth", "stage_haas_itd",
         "stage_width", "stage_anchor_hz", "stage_ms_mid", "stage_ms_side",
         "room_match_mix", "global_mix", "ultra_wide", "cv_mod_depth",
-        "glue_amount", "link_duck_depth"
+        "glue_amount", "link_duck_depth", "infra_lift_db"
     };
 }
 
@@ -82,6 +82,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "dqs_mode", 14 }, "Quality (DQS)",
                           juce::StringArray { "Auto", "Locked 4x (best)", "Eco (lightest)" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
+    // --- v16: The Bunker - Infrasonic Lift (boost centred on 7.63 Hz instead of cutting below 18 Hz)
+    params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "infra_lift", 16 }, "Infrasonic Lift", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "infra_lift_db", 16 }, "Infrasonic Lift (dB)",
+                          juce::NormalisableRange<float> (0.0f, 12.0f, 0.01f), 6.0f));
     // --- v15: the creature that represents this track in the 3D world
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "stage_creature", 15 }, "Stage Creature",
                           juce::StringArray { "Auto", "Manta ray", "Phoenix", "Jellyfish", "Serpent", "Firefly swarm", "Orb guardian" }, 0));
@@ -177,6 +181,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 {
     preparedSampleRate = sampleRate;
     preparedBlockSize = samplesPerBlock;
+    infraLift.prepare (sampleRate);
    #if ! SOLUTION_HEADLESS
     diagBridge->sampleRate = sampleRate;
    #endif
@@ -456,6 +461,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     p.regenThrottle   = apvts.getRawParameterValue ("regen_throttle")->load();
     p.dialogueDuck    = apvts.getRawParameterValue ("dialogue_duck")->load() > 0.5f;
     p.modeNotch       = static_cast<int> (apvts.getRawParameterValue ("mode_notch")->load());
+    const bool infraOn = moduleId == SolutionDSP::ModuleId::Bunker && apvts.getRawParameterValue ("infra_lift")->load() > 0.5f;
+    p.infraLift       = infraOn;
 
     // 3D stage: distance, and the motion path (locked to the host's bars when it's playing).
     float stageDistance = apvts.getRawParameterValue ("stage_distance")->load();
@@ -560,6 +567,14 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         glue.process (left, right, numSamples, followSuite ? rackLinkBus->suiteGlue.load (std::memory_order_relaxed) : localGlue);
         glueGainReductionDb.store (glue.getGainReductionDb(), std::memory_order_relaxed);
     }
+
+    // The Bunker - Infrasonic Lift. After every saturator, clipper, ducker and the glue compressor
+    // (so the boosted 7 Hz energy never drives distortion or pumping), before the true-peak limiter
+    // (so the ceiling still holds).
+    if (infraOn)
+        infraLift.process (left, right, numSamples, apvts.getRawParameterValue ("infra_lift_db")->load());
+    else
+        infraLift.reset();
 
     // A/B (loudness-matched original) and Delta (only what changed). Monitoring aids.
     abMatcher.measure (left, right, dryL, dryR, numSamples);

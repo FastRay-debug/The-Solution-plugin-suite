@@ -2,6 +2,7 @@
 
 #include <juce_dsp/juce_dsp.h>
 #include <cmath>
+#include <complex>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -201,6 +202,55 @@ namespace SolutionDSP
         float regenThrottle   = 0.0f;
         bool  dialogueDuck    = false;
         int   modeNotch       = 2;       // fixed 115 Hz notch in the room profiles: 0 off, 1 always on, 2 auto (when 115 Hz builds up)
+        bool  infraLift       = false;   // The Bunker: Infrasonic Lift is on, so the sub band skips the de-rumble cut
+    };
+
+    //==========================================================================
+    // Infrasonic Lift (The Bunker): a wide bell centred on 7.63 Hz whose skirt fills in 15-30 Hz,
+    // plus a 3 Hz guard so DC and sub-3 Hz drift never reach the speakers. Double precision:
+    // a 7.63 Hz biquad at 48-192 kHz is too close to z = 1 for float coefficients.
+    class InfraLift
+    {
+    public:
+        static constexpr double centreHz = 7.63, q = 0.6, guardHz = 3.0;
+        void prepare (double fs) { sampleRate = fs; lastDb = -1000.0f; reset(); }
+        void reset() { for (auto* b : { &bell[0], &bell[1], &guard[0], &guard[1] }) b->z1 = b->z2 = 0.0; }
+        void process (float* l, float* r, int n, float gainDb)
+        {
+            if (std::abs (gainDb - lastDb) > 0.005f) { setCoefficients (gainDb); lastDb = gainDb; }
+            float* ch[2] = { l, r };
+            for (int c = 0; c < 2; ++c)
+                if (ch[c] != nullptr)
+                    for (int i = 0; i < n; ++i)
+                        ch[c][i] = (float) guard[c].run (bell[c].run ((double) ch[c][i]));
+        }
+        // Magnitude of the whole stage at f (Hz), for tests and the UI curve.
+        double magnitudeAt (double f) const { return mag (bell[0], f) * mag (guard[0], f); }
+
+    private:
+        struct BQ
+        {
+            double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
+            double run (double x) { const double y = b0 * x + z1; z1 = b1 * x - a1 * y + z2; z2 = b2 * x - a2 * y; return y; }
+        };
+        void setCoefficients (float gainDb)
+        {
+            const double w = juce::MathConstants<double>::twoPi * centreHz / sampleRate, al = std::sin (w) / (2 * q), c = std::cos (w);
+            const double A = std::pow (10.0, gainDb / 40.0), a0 = 1 + al / A;
+            for (auto& b : bell) { const double z1 = b.z1, z2 = b.z2;
+                b = { (1 + al * A) / a0, -2 * c / a0, (1 - al * A) / a0, -2 * c / a0, (1 - al / A) / a0 }; b.z1 = z1; b.z2 = z2; }
+            const double wg = juce::MathConstants<double>::twoPi * guardHz / sampleRate, ag = std::sin (wg) / (2 * 0.7071), cg = std::cos (wg), g0 = 1 + ag;
+            for (auto& b : guard) { const double z1 = b.z1, z2 = b.z2;
+                b = { (1 + cg) / 2 / g0, -(1 + cg) / g0, (1 + cg) / 2 / g0, -2 * cg / g0, (1 - ag) / g0 }; b.z1 = z1; b.z2 = z2; }
+        }
+        double mag (const BQ& b, double f) const
+        {
+            const std::complex<double> z = std::polar (1.0, juce::MathConstants<double>::twoPi * f / sampleRate), zi = 1.0 / z;
+            return std::abs ((b.b0 + b.b1 * zi + b.b2 * zi * zi) / (1.0 + b.a1 * zi + b.a2 * zi * zi));
+        }
+        double sampleRate = 48000.0;
+        float lastDb = -1000.0f;
+        BQ bell[2], guard[2];
     };
 
     class RoomMatcherEngine
@@ -561,7 +611,7 @@ namespace SolutionDSP
                 juce::dsp::ProcessContextReplacing<float> lctx (lb), hctx (hb);
                 lowCross.process (lctx);
                 highCross.process (hctx);
-                deRumbleHPF.process (lctx);
+                if (! p.infraLift) deRumbleHPF.process (lctx);      // Infrasonic Lift replaces the de-rumble cut
 
                 // Sub-band saturation: only low frequencies, so no oversampling needed.
                 const float drive = 1.0f + effectiveDepth * 3.5f;

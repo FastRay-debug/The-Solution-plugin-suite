@@ -163,6 +163,7 @@ public:
         std::atomic<float>    lastBlockLoad { 0.0f };
     } diag;
     float phaseBadSeconds = 0.0f;
+    SolutionDSP::InfraLift infraLift;       // The Bunker: infrasonic lift, just before the limiter
    #if ! SOLUTION_HEADLESS
     juce::SharedResourcePointer<SolutionDiag::DiagBridge> diagBridge;   // feeds the standalone Solution Utility
    #endif
@@ -195,7 +196,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 15;  // v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 16;  // v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }

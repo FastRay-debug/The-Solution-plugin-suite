@@ -619,6 +619,11 @@
         </div>
       </div>
       <div class="wing-actions">
+        <div id="infraRow" style="display:none;gap:4px;align-items:center;font-size:9px;" data-tip="Infrasonic Lift: a wide boost centred on 7.63 Hz that fills in the felt low end (15-30 Hz) instead of cutting below 18 Hz. Placed after all saturation, glue and ducking, right before the -0.5 dB limiter. Watch it on small speakers - you feel it more than you hear it.">
+          <label style="display:flex;gap:3px;align-items:center;white-space:nowrap;"><input type="checkbox" data-sync="infra_lift" onchange="bind('infra_lift', this.checked ? 1 : 0, '', 1)">▼ INFRA LIFT</label>
+          <input type="range" min="0" max="12" step="0.1" data-sync="infra_lift_db" oninput="bind('infra_lift_db', +this.value, '', 1); document.getElementById('v-infra_lift_db').textContent = '+' + (+this.value).toFixed(1) + ' dB'" style="flex:1;min-width:40px;">
+          <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
+        </div>
         <button id="sculptBtn" onclick="toggleSculpt()" data-tip="Predictive Transient Sculpting">⚡ TRANSIENT SCULPT: OFF</button>
         <button id="binauralBtn" onclick="toggleBinaural()" data-tip="Headphones: hear the mix on virtual speakers around your head. Azimuth rotates, Elevation raises, Width spreads.">🎧 BINAURAL: OFF</button>
         <div style="display:flex;gap:3px;align-items:center;" data-tip="Stem Focus: this module processes only the chosen part of the mix; the rest passes through untouched (adds ~43 ms latency while on)">
@@ -1911,6 +1916,7 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
+        if (id === 'infra_lift_db') document.getElementById('v-infra_lift_db').textContent = '+' + (+v).toFixed(1) + ' dB';
         if (id === 'dqs_threshold') document.getElementById('v-dqs_threshold').textContent = Math.round(v) + '%';
         if (id === 'align_delay_ms') document.getElementById('v-align_delay_ms').textContent = (+v).toFixed(2) + ' ms';
         if (id === 'char_amount') showValue(id, v, '%', 100);
@@ -2821,6 +2827,7 @@
 
     // ---------- fullscreen panels ----------
     const IS_POPOUT = params.get('popout') === '1';
+    if (/bunker/i.test(params.get('module') || '')) document.getElementById('infraRow').style.display = 'flex';   // The Bunker only
     let hoverPanel = 'stage';
     document.addEventListener('mousemove', (e) => { const el = e.target.closest && e.target.closest('[data-panel]'); if (el && !document.querySelector('.panel-max')) hoverPanel = el.dataset.panel; }, true);
     function showFsBadge(text, ms) { const b = document.getElementById('fsBadge'); b.textContent = text; b.style.display = text ? 'block' : 'none'; clearTimeout(showFsBadge.t); if (ms) showFsBadge.t = setTimeout(() => b.style.display = 'none', ms); }

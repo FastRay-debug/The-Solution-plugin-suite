@@ -1413,6 +1413,45 @@ static void testDqs()
     std::printf ("  done\n");
 }
 
+static void testInfraLift()
+{
+    std::printf ("Infrasonic Lift (The Bunker)\n");
+    for (double fs : { 44100.0, 48000.0, 96000.0, 192000.0 })
+    {
+        InfraLift lift; lift.prepare (fs);
+        float l[64] = {}, r[64] = {};
+        lift.process (l, r, 64, 6.0f);                      // sets the coefficients
+        const double g763 = 20 * std::log10 (lift.magnitudeAt (7.63)), g20 = 20 * std::log10 (lift.magnitudeAt (20.0)),
+                     g60 = 20 * std::log10 (lift.magnitudeAt (60.0)), g1k = 20 * std::log10 (lift.magnitudeAt (1000.0)), g1 = 20 * std::log10 (lift.magnitudeAt (1.0));
+        EXPECT (std::abs (g763 - 6.0) < 1.0, "%.0f Hz: +%.2f dB at 7.63 Hz (want ~+6)", fs, g763);
+        EXPECT (g20 > 1.0 && g20 < 5.5, "%.0f Hz: skirt lifts 20 Hz by %.2f dB", fs, g20);
+        EXPECT (std::abs (g60) < 0.6 && std::abs (g1k) < 0.05, "%.0f Hz: leaves 60 Hz (%.2f) and 1 kHz (%.3f) alone", fs, g60, g1k);
+        EXPECT (g1 < -6.0, "%.0f Hz: 3 Hz guard cuts 1 Hz (%.1f dB)", fs, g1);
+    }
+    // Real signal: DC never gets through, and the plugin chain stays stable and under the ceiling.
+    {
+        InfraLift lift; lift.prepare (48000.0);
+        std::vector<float> dc (96000, 0.5f), dc2 (96000, 0.5f);
+        lift.process (dc.data(), dc2.data(), 96000, 12.0f);
+        EXPECT (std::abs (dc.back()) < 0.002f, "DC must be blocked (%.4f left after 2 s)", dc.back());
+    }
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
+        setParam (proc, "infra_lift", 1.0f); setParam (proc, "infra_lift_db", 12.0f);
+        juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512);
+        float peak = 0; bool finite = true;
+        for (int k = 0; k < 200; ++k)
+        {
+            fillSine (b, 48000.0, 9.0, 0.6f, 0.0, k * 512);
+            proc.processBlock (b, midi);
+            peak = std::max (peak, b.getMagnitude (0, 512));
+            for (int ch = 0; ch < 2; ++ch) for (int i = 0; i < 512; ++i) finite = finite && std::isfinite (b.getSample (ch, i));
+        }
+        EXPECT (finite && peak <= juce::Decibels::decibelsToGain (-0.5f) * 1.02f, "+12 dB lift on a hot 9 Hz tone stays finite and under the ceiling (peak %.3f)", peak);
+    }
+    std::printf ("  done\n");
+}
+
 static void testDiagnostics()
 {
     std::printf ("Diagnostics: real counters + real system readings\n");
@@ -1438,8 +1477,12 @@ static void testDiagnostics()
     }
     {
         SolutionDiag::SystemMonitor monitor;
-        juce::Thread::sleep (1300);
-        const auto s = monitor.getSnapshot();
+        auto s = monitor.getSnapshot();
+        for (int waited = 0; waited < 5000 && (s.historyCpuPct.empty() || (int) s.coreLoadPct.size() != s.logicalCores); waited += 100)
+        {
+            juce::Thread::sleep (100);                 // first readings need two polls; a busy machine can be slow
+            s = monitor.getSnapshot();
+        }
         EXPECT (s.logicalCores > 0 && (int) s.coreLoadPct.size() == s.logicalCores, "per-core loads: %d of %d cores", (int) s.coreLoadPct.size(), s.logicalCores);
         bool inRange = true; for (auto v : s.coreLoadPct) inRange = inRange && v >= 0.0f && v <= 100.0f;
         EXPECT (inRange && std::isfinite (s.cpuTotalPct), "core loads must be real percentages");
@@ -1477,6 +1520,7 @@ int main()
     testSafeBounce();
     testStageEngine();
     testDqs();
+    testInfraLift();
     testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
