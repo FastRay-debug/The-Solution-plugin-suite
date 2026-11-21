@@ -75,6 +75,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v10: Unmask (frequency-specific make-room via Rack Link)
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "unmask_role", 10 }, "Unmask Role",
+                          juce::StringArray { "Off", "Priority (vocal / kick)", "Make room" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "unmask_depth", 10 }, "Unmask Depth (dB)", juce::NormalisableRange<float> (0.0f, 12.0f, 0.1f), 6.0f));
     // --- v9: listening room library (monitoring)
     {
         juce::StringArray rooms { "Off" };
@@ -135,6 +139,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     binaural.prepare (sampleRate);
     monoLows.prepare (sampleRate, samplesPerBlock);
     listeningRoom.prepare (sampleRate);
+    unmask.prepare (sampleRate);
     smoother.prepare (sampleRate);
     phoneBass.prepare (sampleRate);
     abMatcher.prepare (sampleRate);
@@ -243,6 +248,16 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         slot.duckSource.store (duckSender && linkGroup > 0, std::memory_order_relaxed);
         slot.keyLevel.store (duckSender ? keyLevel : 0.0f, std::memory_order_relaxed);
         slot.heartbeat.fetch_add (1, std::memory_order_relaxed);
+
+        // Unmask: a priority track publishes its band levels (from its input).
+        const int role = static_cast<int> (apvts.getRawParameterValue ("unmask_role")->load());
+        slot.unmaskRole.store (role, std::memory_order_relaxed);
+        if (role == 1)
+        {
+            std::array<float, SolutionDSP::Unmask::numBands> levels;
+            unmask.measure (dryCopy.getReadPointer (0), dryCopy.getReadPointer (1), numSamples, levels);
+            for (size_t b = 0; b < levels.size(); ++b) slot.bandDb[b].store (levels[b], std::memory_order_relaxed);
+        }
     }
 
     // Stem Focus: split the input; the module processes only the focus stem, the rest passes through.
@@ -341,6 +356,15 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // Rack Link ducking: dip when another source in my group is playing (no routing needed).
     if (! p.tapeCalTone)
     {
+        // Unmask: make room only where the group's priority track is loud right now.
+        if (linkGroup > 0 && static_cast<int> (apvts.getRawParameterValue ("unmask_role")->load()) == 2)
+        {
+            std::array<float, SolutionDSP::Unmask::numBands> priority;
+            rackLinkBus->groupPriorityBands (linkGroup, rackSlot, priority);
+            unmask.apply (left, right, numSamples, priority, apvts.getRawParameterValue ("unmask_depth")->load());
+        }
+        for (size_t b = 0; b < unmaskDipDb.size(); ++b) unmaskDipDb[b].store (unmask.getDipsDb()[b], std::memory_order_relaxed);
+
         const float key = (linkGroup > 0 && ! duckSender) ? rackLinkBus->groupKey (linkGroup, rackSlot) : 0.0f;
         ducker.process (left, right, numSamples, key, apvts.getRawParameterValue ("link_duck_depth")->load());
         duckGainReductionDb.store (ducker.getGainReductionDb(), std::memory_order_relaxed);

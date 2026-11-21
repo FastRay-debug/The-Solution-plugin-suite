@@ -292,6 +292,9 @@ void SolutionAudioProcessorEditor::sendRackState()
     payload->setProperty ("suiteGlue", bus.suiteGlue.load());
     payload->setProperty ("glueGr", audioProcessor.glueGainReductionDb.load());
     payload->setProperty ("duckGr", audioProcessor.duckGainReductionDb.load());
+    juce::Array<juce::var> dips;
+    for (auto& d : audioProcessor.unmaskDipDb) dips.add (std::round (d.load() * 10.0f) / 10.0f);
+    payload->setProperty ("unmaskDips", dips);
     webView.emitEventIfBrowserIsVisible ("rack", juce::var (payload.get()));
 }
 

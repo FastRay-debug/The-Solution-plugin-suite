@@ -57,6 +57,8 @@ namespace SolutionDSP
         std::atomic<float> truePeak    { -70.0f };
         std::atomic<float> gainReduct  { 0.0f };
         std::atomic<std::uint32_t> heartbeat { 0 };  // bumps every audio block
+        std::atomic<int>   unmaskRole  { 0 };        // 0 off, 1 priority, 2 make room
+        std::array<std::atomic<float>, 12> bandDb;   // priority's level per Unmask band (dBFS)
         juce::String trackName;                       // message thread only
     };
 
@@ -83,7 +85,8 @@ namespace SolutionDSP
                 {
                     auto& s = slots[(size_t) i];
                     s.moduleId = moduleId; s.group = 0; s.duckSource = false; s.keyLevel = 0.0f;
-                    s.lufsShort = -70.0f; s.truePeak = -70.0f; s.gainReduct = 0.0f;
+                    s.lufsShort = -70.0f; s.truePeak = -70.0f; s.gainReduct = 0.0f; s.unmaskRole = 0;
+                    for (auto& b : s.bandDb) b = -100.0f;
                     return i;
                 }
             }
@@ -97,6 +100,20 @@ namespace SolutionDSP
                 slots[(size_t) index].keyLevel = 0.0f;
                 slots[(size_t) index].duckSource = false;
                 slots[(size_t) index].active = false;
+            }
+        }
+
+        // Loudest level per Unmask band among the *priority* instances in a group.
+        void groupPriorityBands (int group, int excludeSlot, std::array<float, 12>& out) const
+        {
+            out.fill (-100.0f);
+            if (group <= 0) return;
+            for (int i = 0; i < maxSlots; ++i)
+            {
+                const auto& s = slots[(size_t) i];
+                if (i != excludeSlot && s.active.load (std::memory_order_relaxed) && s.unmaskRole.load (std::memory_order_relaxed) == 1
+                    && s.group.load (std::memory_order_relaxed) == group)
+                    for (size_t b = 0; b < out.size(); ++b) out[b] = std::max (out[b], s.bandDb[b].load (std::memory_order_relaxed));
             }
         }
 

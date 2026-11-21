@@ -1155,6 +1155,40 @@ static void testListeningRooms()
     std::printf ("  done\n");
 }
 
+static void testUnmask()
+{
+    std::printf ("== Unmask (frequency-specific make-room)\n");
+    const double fs = 48000.0; const int bs = 480;
+    juce::MidiBuffer midi; juce::Random rnd (4);
+    auto run = [&] (int musicRole, int musicGroup, bool vocalLoud)
+    {
+        SolutionAudioProcessor vocal, music;
+        for (auto* p : { &vocal, &music }) { p->prepareToPlay (fs, bs); setParam (*p, "global_mix", 0.0f); setParam (*p, "stage_ceiling_guard", 0.0f); }
+        setParam (vocal, "link_group", 1.0f); setParam (vocal, "unmask_role", 1.0f);
+        setParam (music, "link_group", (float) musicGroup); setParam (music, "unmask_role", (float) musicRole); setParam (music, "unmask_depth", 9.0f);
+        juce::AudioBuffer<float> tail (2, (int) fs);
+        for (int k = 0; k < (int) (3 * fs / bs); ++k)
+        {
+            juce::AudioBuffer<float> v (2, bs), m (2, bs);
+            fillSine (v, fs, 1100.0, vocalLoud ? 0.3f : 0.0f, 0.0, k * bs);         // the "vocal" lives at 1.1 kHz
+            for (int i = 0; i < bs; ++i) { const double t = (k * bs + i) / fs;       // the "music": tones at 220 Hz and 1.1 kHz
+                const float x = (float) (0.1 * std::sin (juce::MathConstants<double>::twoPi * 220 * t) + 0.1 * std::sin (juce::MathConstants<double>::twoPi * 1100 * t));
+                m.setSample (0, i, x); m.setSample (1, i, x); }
+            vocal.processBlock (v, midi); music.processBlock (m, midi);
+            const int pos = k * bs - (int) (2 * fs);
+            if (pos >= 0) for (int ch = 0; ch < 2; ++ch) tail.copyFrom (ch, pos, m, ch, 0, bs);
+        }
+        return std::pair<double, double> { toneDb (tail, 0, 1100, fs, 0), toneDb (tail, 0, 220, fs, 0) };
+    };
+    const auto base = run (0, 1, true), room = run (2, 1, true), quiet = run (2, 1, false), otherGroup = run (2, 2, true);
+    std::printf ("  music @1.1 kHz: %.1f dB normally, %.1f dB making room | @220 Hz: %.1f -> %.1f dB\n", base.first, room.first, base.second, room.second);
+    EXPECT (base.first - room.first > 6.0, "make-room should dip 1.1 kHz under the priority (dipped %.1f dB)", base.first - room.first);
+    EXPECT (std::abs (base.second - room.second) < 1.0, "220 Hz should be left alone (changed %.1f dB)", base.second - room.second);
+    EXPECT (std::abs (quiet.first - base.first) < 0.3, "no dip when the priority is silent");
+    EXPECT (std::abs (otherGroup.first - base.first) < 0.3, "a different group must not be affected");
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -1173,6 +1207,7 @@ int main()
     testModeNotchSwitch();
     testProTricks();
     testListeningRooms();
+    testUnmask();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

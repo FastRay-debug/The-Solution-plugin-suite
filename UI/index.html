@@ -745,6 +745,15 @@
       </div>
       <div class="ctrl"><label>DUCK DEPTH <span id="v-link_duck_depth">6.0 dB</span></label>
         <input type="range" data-sync="link_duck_depth" min="0" max="18" step="0.5" value="6" oninput="bind('link_duck_depth', this.value, ' dB', 1)"></div>
+      <div style="font-size:11px;color:var(--accent2);margin-top:4px;">UNMASK · make room only where the priority track is</div>
+      <div style="display:flex;gap:8px;align-items:center;font-size:11px;">
+        <select data-sync="unmask_role" onchange="bind('unmask_role', this.value, '', 1)">
+          <option value="0">Unmask: off</option><option value="1">This is the PRIORITY (vocal / kick)</option><option value="2">MAKE ROOM for the priority</option>
+        </select>
+        <span>depth</span><input type="range" data-sync="unmask_depth" min="0" max="12" step="0.5" value="6" oninput="bind('unmask_depth', this.value, ' dB', 1)" style="flex:1;"><span id="v-unmask_depth">6.0 dB</span>
+      </div>
+      <svg id="unmaskBars" viewBox="0 0 360 46" style="width:100%;height:46px;background:#05070a;border:1px solid #1f2937;border-radius:4px;"></svg>
+      <div style="font-size:10px;color:var(--mute);">Put the priority and the tracks that should make room in the same group (A-D). Bars show the live dips on this track.</div>
       <div class="ctrl"><label>GLUE <span id="v-glue_amount">0%</span> <small id="glueGrTxt" style="color:var(--gold)"></small></label>
         <input type="range" data-sync="glue_amount" min="0" max="1" step="0.01" value="0" oninput="bind('glue_amount', this.value, '%', 100)"></div>
       <label style="font-size:11px;letter-spacing:0.05em;"><input type="checkbox" data-sync="glue_follow_suite" onchange="bind('glue_follow_suite', this.checked ? 1 : 0, '', 1)"> Follow suite glue (set on The Scope) <span id="suiteGlueTxt" style="color:var(--accent2)"></span></label>
@@ -1375,6 +1384,11 @@
       document.getElementById('rackRows').innerHTML = (m.instances || []).map(r =>
         `<tr style="${r.self ? 'color:var(--gold);' : ''}"><td>${r.self ? '▶ ' : ''}${escapeHtml(r.name || '(unnamed track)')}</td><td>${escapeHtml(r.module)}</td>` +
         `<td>${r.group ? 'ABCD'[r.group - 1] + (r.source ? ' · duck src' : '') : '—'}</td><td>${fmt(r.lufs)}</td><td>${fmt(r.tp)}</td><td>${r.gr < -0.05 ? r.gr.toFixed(1) : '0.0'}</td></tr>`).join('');
+      if (m.unmaskDips) {
+        const labels = ['100', '150', '220', '330', '500', '750', '1.1k', '1.6k', '2.4k', '3.6k', '5.4k', '8k'];
+        document.getElementById('unmaskBars').innerHTML = m.unmaskDips.map((d, i) =>
+          `<rect x="${i * 30 + 4}" y="2" width="22" height="${Math.min(30, d * 2.5)}" fill="#F59E0B"/><text x="${i * 30 + 15}" y="43" fill="#6b7280" font-size="8" text-anchor="middle">${labels[i]}</text>`).join('');
+      }
       document.getElementById('suiteGlueTxt').textContent = '(suite: ' + Math.round((m.suiteGlue || 0) * 100) + '%)';
       document.getElementById('glueGrTxt').textContent = m.glueGr < -0.05 ? 'GR ' + m.glueGr.toFixed(1) + ' dB' : '';
     }
@@ -1471,6 +1485,7 @@
         if (id === 'link_duck_depth') showValue(id, v, ' dB', 1);
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
+        if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
         if (id === 'char_amount') showValue(id, v, '%', 100);
         if (id === 'char_drive') showValue(id, v, ' dB', 1);
         if (id === 'trim_in_db' || id === 'trim_out_db') showValue(id, v, ' dB', 1);
