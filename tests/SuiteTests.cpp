@@ -1285,6 +1285,67 @@ static void testSafeBounce()
     std::printf ("  done\n");
 }
 
+static void testStageEngine()
+{
+    std::printf ("== 3D stage engine: distance, motion paths, cross-track moves\n");
+    using namespace SolutionDSP;
+    const double fs = 48000.0;
+    // Distance: transparent at the 2 m reference, -6 dB at 4 m, darker and roomier far away.
+    auto through = [&] (float metres, double hz, bool tailOnly)
+    {
+        DistanceStage d; d.prepare (fs);
+        juce::AudioBuffer<float> b (2, (int) fs * 2);
+        fillSine (b, fs, hz, 0.2f);
+        if (tailOnly) for (int ch = 0; ch < 2; ++ch) b.clear (ch, (int) fs, (int) fs);
+        d.process (b.getWritePointer (0), b.getWritePointer (1), b.getNumSamples(), metres);
+        if (tailOnly) { double e = 0; for (int i = (int) (fs * 1.2); i < (int) (fs * 1.4); ++i) e += (double) b.getSample (0, i) * b.getSample (0, i); return 10 * std::log10 (e / (0.2 * fs) + 1e-30); }
+        return toneDb (b, 0, hz, fs, (int) (fs * 0.5));
+    };
+    {
+        DistanceStage d; d.prepare (fs);
+        juce::AudioBuffer<float> b (2, 4096), ref (2, 4096); fillSine (b, fs, 440.0, 0.3f); ref.makeCopyOf (b);
+        d.process (b.getWritePointer (0), b.getWritePointer (1), 4096, 2.0f);
+        float diff = 0; for (int i = 0; i < 4096; ++i) diff = std::max (diff, std::abs (b.getSample (0, i) - ref.getSample (0, i)));
+        EXPECT (diff == 0.0f, "2 m must be exactly transparent (diff %g)", diff);
+    }
+    const double at2 = through (2.0f, 1000.0, false), at4 = through (4.0f, 1000.0, false);
+    EXPECT (std::abs ((at2 - at4) - 6.0) < 1.0, "doubling distance should drop ~6 dB (got %.1f)", at2 - at4);
+    const double tilt2 = through (2.0f, 500.0, false) - through (2.0f, 8000.0, false), tilt30 = through (30.0f, 500.0, false) - through (30.0f, 8000.0, false);
+    EXPECT (tilt30 - tilt2 > 6.0, "far away should lose high frequencies (extra loss %.1f dB)", tilt30 - tilt2);
+    const double roomNear = through (2.0f, 1000.0, true), roomFar = through (20.0f, 1000.0, true);
+    std::printf ("  distance: 4 m %.1f dB, 30 m extra HF loss %.1f dB, room tail far %.0f dB vs near %.0f dB\n", at4 - at2, tilt30 - tilt2, roomFar, roomNear);
+    EXPECT (roomFar > roomNear + 40.0, "more room sound should be heard far away");
+
+    // Motion: a 4-point loop is followed in order; host sync maps song position to the loop.
+    MotionPlayer mp;
+    mp.setPath ({ { 0, 0, 2 }, { 90, 0, 2 }, { 180, 0, 2 }, { -90, 0, 2 } });
+    MotionPoint at;
+    EXPECT (mp.evaluate (0.0, at) && std::abs (at.az) < 1.0f, "phase 0 should be at the first point (az %.1f)", at.az);
+    mp.evaluate (0.25, at); EXPECT (std::abs (at.az - 90.0f) < 1.0f, "phase 0.25 should be at +90 (az %.1f)", at.az);
+    mp.evaluate (0.5, at);  EXPECT (std::abs (std::abs (at.az) - 180.0f) < 1.0f, "phase 0.5 should be behind (az %.1f)", at.az);
+    mp.evaluate (0.125, at); EXPECT (at.az > 20.0f && at.az < 70.0f && std::abs (at.dist - 2.0f) < 0.6f, "between points should glide smoothly (az %.1f, d %.2f)", at.az, at.dist);
+    EXPECT (std::abs (MotionPlayer::phaseFor (true, 6.0, 4.0, 1.0, 0.0) - 1.5) < 1e-9, "host sync: beat 6 in a 1-bar loop is phase 1.5");
+
+    SolutionAudioProcessor proc; proc.prepareToPlay (fs, 512);
+    proc.setMotionPath ({ { -90, 0, 3 }, { 0, 30, 3 }, { 90, 0, 3 }, { 0, -10, 3 } });
+    setParam (proc, "motion_on", 1.0f); setParam (proc, "motion_rate", 0.0f);   // 1/4 bar = 0.5 s at 120 BPM
+    juce::MidiBuffer midi; float minAz = 999, maxAz = -999;
+    for (int k = 0; k < 60; ++k) { juce::AudioBuffer<float> b (2, 512); fillSine (b, fs, 300.0, 0.1f, 0.0, k * 512); proc.processBlock (b, midi);
+                                   minAz = std::min (minAz, proc.animAz.load()); maxAz = std::max (maxAz, proc.animAz.load()); }
+    EXPECT (minAz < -60.0f && maxAz > 60.0f, "the sound should travel along the path (az %.0f..%.0f)", minAz, maxAz);
+    juce::MemoryBlock state; proc.getStateInformation (state);
+    SolutionAudioProcessor reloaded; reloaded.setStateInformation (state.getData(), (int) state.getSize());
+    EXPECT (reloaded.getMotionPath().size() == 4, "motion path not saved with the session");
+
+    // Dragging another track's orb on my stage moves that track.
+    SolutionAudioProcessor a, b2; a.prepareToPlay (fs, 512); b2.prepareToPlay (fs, 512);
+    EXPECT (a.requestParamOnSlot (b2.getRackSlot(), "stage_distance", 10.0f) && a.requestParamOnSlot (b2.getRackSlot(), "stage_azimuth", -45.0f), "move request refused");
+    b2.pollSessionRequests();
+    auto realValue = [&] (SolutionAudioProcessor& pr, const char* id) { auto* q = pr.apvts.getParameter (id); return q->convertFrom0to1 (q->getValue()); };
+    EXPECT (std::abs (realValue (b2, "stage_distance") - 10.0f) < 0.05f && std::abs (realValue (b2, "stage_azimuth") + 45.0f) < 0.2f, "the other track didn't move");
+    std::printf ("  done\n");
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -1306,6 +1367,7 @@ int main()
     testUnmask();
     testAutoAlign();
     testSafeBounce();
+    testStageEngine();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

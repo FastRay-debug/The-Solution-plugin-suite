@@ -74,6 +74,26 @@ namespace SolutionDSP
         // from another instance to switch them all off.
         std::atomic<int>   monitorMask { 0 };
         std::atomic<bool>  monitorOffRequest { false };
+
+        // 3D stage: where this track sits and what it sounds like.
+        std::atomic<float> posAz { 0.0f }, posEl { 0.0f }, posDist { 2.0f }, posWidth { 1.0f }, toneHz { 1000.0f };
+        // Parameter change requests from another instance's stage (index into getParameters(), real value).
+        static constexpr int maxRequests = 8;
+        std::array<std::atomic<int>, maxRequests> reqParam;
+        std::array<std::atomic<float>, maxRequests> reqValue;
+        bool pushRequest (int paramIndex, float value)
+        {
+            for (int i = 0; i < maxRequests; ++i)
+            {
+                int expected = -1;
+                if (reqParam[(size_t) i].load() == -1)
+                {
+                    reqValue[(size_t) i].store (value);
+                    if (reqParam[(size_t) i].compare_exchange_strong (expected, paramIndex)) return true;
+                }
+            }
+            return false;
+        }
         juce::String trackName;                       // message thread only
     };
 
@@ -104,6 +124,8 @@ namespace SolutionDSP
                     for (auto& b : s.bandDb) b = -100.0f;
                     s.alignRole = 0; s.alignRingEnd = -1; s.alignRequest = false;
                     s.monitorMask = 0; s.monitorOffRequest = false;
+                    s.posAz = 0.0f; s.posEl = 0.0f; s.posDist = 2.0f; s.posWidth = 1.0f; s.toneHz = 1000.0f;
+                    for (auto& q : s.reqParam) q = -1;
                     return i;
                 }
             }

@@ -20,6 +20,8 @@
 #include "RoomLibrary.h"
 #include "Unmask.h"
 #include "AutoAlign.h"
+#include "Distance.h"
+#include "MotionPath.h"
 #include <atomic>
 #include <array>
 
@@ -114,9 +116,29 @@ public:
     void pollSessionRequests()                                   // requests from other instances (timer, message thread)
     {
         pollAlignRequests();
-        if (rackSlot >= 0 && rackLinkBus->slots[(size_t) rackSlot].monitorOffRequest.exchange (false))
+        if (rackSlot < 0) return;
+        auto& me = rackLinkBus->slots[(size_t) rackSlot];
+        if (me.monitorOffRequest.exchange (false))
             turnOffMonitoring();
+        const auto& params = getParameters();
+        for (size_t i = 0; i < me.reqParam.size(); ++i)                    // moves from another track's stage
+        {
+            const int index = me.reqParam[i].load();
+            if (index < 0) continue;
+            const float value = me.reqValue[i].load();
+            me.reqParam[i].store (-1);
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (params[index]))
+                setParamReal (ranged->getParameterID(), value);
+        }
     }
+
+    // 3D stage (message thread).
+    void setMotionPath (const std::vector<SolutionDSP::MotionPoint>& points, bool saveToState = true);
+    std::vector<SolutionDSP::MotionPoint> getMotionPath() const;
+    void setParamReal (const juce::String& id, float value);                    // with a host gesture
+    bool requestParamOnSlot (int slot, const juce::String& id, float value);    // own slot or another instance's
+    std::atomic<float> animAz { 0.0f }, animEl { 0.0f }, animDist { 2.0f };     // where the sound is right now
+    SolutionDSP::AudioTap scopeTap;                                            // real-audio scopes in the UI
 
     // Auto-Align (message thread): measure against the group's reference and fix timing/polarity.
     juce::String alignNow();
@@ -146,7 +168,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 12;  // v12: Safe Bounce  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 13;  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -193,6 +215,9 @@ private:
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> alignDelayLine { 4096 };
     long long ownTimeline = 0;
     std::atomic<int> monitorMask { 0 };
+    SolutionDSP::DistanceStage distanceStage;
+    SolutionDSP::MotionPlayer motion;
+    double motionFreeSeconds = 0.0;
     void timerCallback() override { pollSessionRequests(); }
 public:
     std::array<std::atomic<float>, SolutionDSP::Unmask::numBands> unmaskDipDb {};

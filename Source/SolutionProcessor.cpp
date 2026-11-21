@@ -78,6 +78,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "cv_mod_depth", 1 },         "Matrix CV Mod Depth", 0.0f, 1.0f, 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterInt>    (juce::ParameterID { "clipper_shape", 1 },        "Multiband Clipper Shape", 0, 2, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "regen_throttle", 1 },       "Regen Throttle", 0.0f, 1.0f, 0.0f));
+    // --- v13: 3D stage - distance and motion paths
+    {
+        juce::NormalisableRange<float> range (0.5f, 40.0f, 0.01f);
+        range.setSkewForCentre (4.0f);
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "stage_distance", 13 }, "Distance (m)", range, 2.0f));
+    }
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "motion_on", 13 }, "Motion Path", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "motion_rate", 13 }, "Motion Rate",
+                          juce::StringArray { "1/4 bar", "1/2 bar", "1 bar", "2 bars", "4 bars", "8 bars", "16 bars" }, 4));
     // --- v12: Safe Bounce - monitoring tools switch themselves off during offline bounces
     params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "safe_bounce", 12 }, "Safe Bounce (auto-bypass monitoring tools)", true));
     // --- v11: Auto-Align (time + polarity between mics on the same source)
@@ -150,6 +159,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     monoLows.prepare (sampleRate, samplesPerBlock);
     listeningRoom.prepare (sampleRate);
     unmask.prepare (sampleRate);
+    distanceStage.prepare (sampleRate);
     alignDelayLine.prepare ({ sampleRate, (juce::uint32) samplesPerBlock, 2 });
     alignDelayLine.setMaximumDelayInSamples ((int) std::ceil (0.021 * sampleRate) + 8);
     alignDelayLine.reset();
@@ -324,11 +334,17 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         // Unmask: a priority track publishes its band levels (from its input).
         const int role = static_cast<int> (apvts.getRawParameterValue ("unmask_role")->load());
         slot.unmaskRole.store (role, std::memory_order_relaxed);
-        if (role == 1)
-        {
+        {   // every track publishes its band levels: Unmask uses the priority's, the 3D stage colours and clash detection use all
             std::array<float, SolutionDSP::Unmask::numBands> levels;
             unmask.measure (dryCopy.getReadPointer (0), dryCopy.getReadPointer (1), numSamples, levels);
-            for (size_t b = 0; b < levels.size(); ++b) slot.bandDb[b].store (levels[b], std::memory_order_relaxed);
+            double wsum = 0.0, psum = 0.0;
+            for (size_t b = 0; b < levels.size(); ++b)
+            {
+                slot.bandDb[b].store (levels[b], std::memory_order_relaxed);
+                const double pw = std::pow (10.0, levels[b] / 10.0);
+                wsum += pw * std::log2 (SolutionDSP::Unmask::centres[b]); psum += pw;
+            }
+            if (psum > 1e-9) slot.toneHz.store ((float) std::pow (2.0, wsum / psum), std::memory_order_relaxed);
         }
     }
 
@@ -379,6 +395,37 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     p.dialogueDuck    = apvts.getRawParameterValue ("dialogue_duck")->load() > 0.5f;
     p.modeNotch       = static_cast<int> (apvts.getRawParameterValue ("mode_notch")->load());
 
+    // 3D stage: distance, and the motion path (locked to the host's bars when it's playing).
+    float stageDistance = apvts.getRawParameterValue ("stage_distance")->load();
+    if (apvts.getRawParameterValue ("motion_on")->load() > 0.5f)
+    {
+        bool playing = false; double ppq = 0.0, beatsPerBar = 4.0;
+        if (auto* ph = getPlayHead())
+            if (auto pos = ph->getPosition())
+            {
+                playing = pos->getIsPlaying();
+                if (auto q = pos->getPpqPosition()) ppq = *q; else playing = false;
+                if (auto ts = pos->getTimeSignature()) beatsPerBar = ts->numerator * 4.0 / std::max (1, ts->denominator);
+            }
+        const int rate = static_cast<int> (apvts.getRawParameterValue ("motion_rate")->load());
+        const double bars = SolutionDSP::MotionPlayer::rateBars[(size_t) juce::jlimit (0, 6, rate)];
+        SolutionDSP::MotionPoint mp;
+        if (motion.evaluate (SolutionDSP::MotionPlayer::phaseFor (playing, ppq, beatsPerBar, bars, motionFreeSeconds), mp))
+        {
+            p.azimuthDeg = mp.az; p.elevationDeg = juce::jlimit (-90.0f, 90.0f, mp.el); stageDistance = mp.dist;
+        }
+        motionFreeSeconds += numSamples / std::max (1.0, preparedSampleRate);
+    }
+    animAz.store (p.azimuthDeg, std::memory_order_relaxed);
+    animEl.store (p.elevationDeg, std::memory_order_relaxed);
+    animDist.store (stageDistance, std::memory_order_relaxed);
+    if (rackSlot >= 0)
+    {
+        auto& slot = rackLinkBus->slots[(size_t) rackSlot];
+        slot.posAz.store (p.azimuthDeg, std::memory_order_relaxed); slot.posEl.store (p.elevationDeg, std::memory_order_relaxed);
+        slot.posDist.store (stageDistance, std::memory_order_relaxed); slot.posWidth.store (p.width, std::memory_order_relaxed);
+    }
+
     // Binaural mode places the sound around the head itself, so the engine's pan/Haas steps aside.
     const bool binauralOn = apvts.getRawParameterValue ("binaural_mode")->load() > 0.5f;
     const float binauralAz = p.azimuthDeg, binauralWidth = p.width;
@@ -396,6 +443,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             smoother.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, apvts.getRawParameterValue ("smooth_amount")->load());
             smoothDb.store (smoother.getReductionDb(), std::memory_order_relaxed);
             phoneBass.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, apvts.getRawParameterValue ("phone_bass")->load());
+            distanceStage.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, stageDistance);   // real distance
         }
     }
     if (stemOn && ! stemListen)
@@ -502,6 +550,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     else
     {
         assistant.tap.push (left, right, numSamples);     // Mix Assistant listens to the final output
+        scopeTap.push (left, right, numSamples);          // real scopes in the UI
 
         // Streaming preview: play it back the way a service's loudness normalisation would.
         const int service = bouncing ? 0 : static_cast<int> (apvts.getRawParameterValue ("stream_preview")->load());
@@ -644,6 +693,46 @@ juce::String SolutionAudioProcessor::setCharacterModel (const juce::String& mode
         return error.isNotEmpty() ? error : "Couldn't load " + modelName;
     character.setModel (std::move (model));
     return {};
+}
+
+void SolutionAudioProcessor::setParamReal (const juce::String& id, float value)
+{
+    if (auto* q = apvts.getParameter (id))
+    {
+        q->beginChangeGesture();
+        q->setValueNotifyingHost (q->convertTo0to1 (juce::jlimit (q->getNormalisableRange().start, q->getNormalisableRange().end, value)));
+        q->endChangeGesture();
+    }
+}
+
+bool SolutionAudioProcessor::requestParamOnSlot (int slot, const juce::String& id, float value)
+{
+    if (slot == rackSlot || slot < 0) { setParamReal (id, value); return true; }
+    if (slot >= SolutionDSP::RackLinkBus::maxSlots || ! rackLinkBus->slots[(size_t) slot].active.load()) return false;
+    const auto& params = getParameters();
+    for (int i = 0; i < params.size(); ++i)
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (params[i]); ranged != nullptr && ranged->getParameterID() == id)
+            return rackLinkBus->slots[(size_t) slot].pushRequest (i, value);
+    return false;
+}
+
+void SolutionAudioProcessor::setMotionPath (const std::vector<SolutionDSP::MotionPoint>& points, bool saveToState)
+{
+    motion.setPath (points);
+    if (! saveToState) return;
+    apvts.state.removeChild (apvts.state.getChildWithName ("MOTION"), nullptr);
+    juce::ValueTree m ("MOTION");
+    for (const auto& pt : points)
+        m.appendChild (juce::ValueTree ("P", { { "az", pt.az }, { "el", pt.el }, { "d", pt.dist } }), nullptr);
+    apvts.state.appendChild (m, nullptr);
+}
+
+std::vector<SolutionDSP::MotionPoint> SolutionAudioProcessor::getMotionPath() const
+{
+    std::vector<SolutionDSP::MotionPoint> pts;
+    for (const auto& c : apvts.state.getChildWithName ("MOTION"))
+        pts.push_back ({ (float) c.getProperty ("az"), (float) c.getProperty ("el"), (float) c.getProperty ("d") });
+    return pts;
 }
 
 int SolutionAudioProcessor::getSessionMonitorCount() const
@@ -1004,6 +1093,9 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
         }
     }
     applyRoomAnalysis (restored, false);
+
+    // 3D stage motion path.
+    setMotionPath (getMotionPath(), false);
 
     // Neural Character model (if the file is still there).
     const auto charModel = apvts.state.getProperty ("charModel").toString();
