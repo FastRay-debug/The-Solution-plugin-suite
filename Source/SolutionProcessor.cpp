@@ -82,6 +82,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "dqs_mode", 14 }, "Quality (DQS)",
                           juce::StringArray { "Auto", "Locked 4x (best)", "Eco (lightest)" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
+    // --- v15: the creature that represents this track in the 3D world
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "stage_creature", 15 }, "Stage Creature",
+                          juce::StringArray { "Auto", "Manta ray", "Phoenix", "Jellyfish", "Serpent", "Firefly swarm", "Orb guardian" }, 0));
     // --- v13: 3D stage - distance and motion paths
     {
         juce::NormalisableRange<float> range (0.5f, 40.0f, 0.01f);
@@ -442,6 +445,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         auto& slot = rackLinkBus->slots[(size_t) rackSlot];
         slot.posAz.store (p.azimuthDeg, std::memory_order_relaxed); slot.posEl.store (p.elevationDeg, std::memory_order_relaxed);
         slot.posDist.store (stageDistance, std::memory_order_relaxed); slot.posWidth.store (p.width, std::memory_order_relaxed);
+        slot.creature.store ((int) apvts.getRawParameterValue ("stage_creature")->load(), std::memory_order_relaxed);
     }
 
     // Binaural mode places the sound around the head itself, so the engine's pan/Haas steps aside.

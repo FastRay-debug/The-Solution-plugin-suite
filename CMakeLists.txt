@@ -55,6 +55,7 @@ if(BUNDLE_SKINS)
     juce_add_binary_data(SolutionSuiteUI SOURCES
         UI/index.html
         UI/remote.html
+        UI/stage3d.bundle.js
         UI/skins/lincoln69.jpg
         UI/skins/camaro71.jpg
         UI/skins/mach1.jpg
@@ -74,6 +75,7 @@ else()
     juce_add_binary_data(SolutionSuiteUI SOURCES
         UI/index.html
         UI/remote.html
+        UI/stage3d.bundle.js
     )
 endif()
 

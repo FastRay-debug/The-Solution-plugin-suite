@@ -1,0 +1,12 @@
+{
+  "name": "solution-stage3d",
+  "private": true,
+  "description": "WebGL creature world for The Solution's 3D stage. Build: npm ci && npm run build (writes ../stage3d.bundle.js)",
+  "scripts": {
+    "build": "esbuild stage3d.js --bundle --minify --format=iife --target=es2020 --legal-comments=eof --alias:three/addons=./node_modules/three/examples/jsm --outfile=../stage3d.bundle.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "three": "0.186.1"
+  }
+}

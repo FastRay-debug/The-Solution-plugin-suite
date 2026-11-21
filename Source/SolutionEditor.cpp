@@ -23,6 +23,9 @@ namespace
         if (cleanUrl == "/" || cleanUrl == "/index.html" || cleanUrl.isEmpty())
             return makeResource (BinaryData::index_html, (size_t) BinaryData::index_htmlSize, "text/html");
 
+        if (cleanUrl == "/stage3d.bundle.js")
+            return makeResource (BinaryData::stage3d_bundle_js, (size_t) BinaryData::stage3d_bundle_jsSize, "text/javascript");
+
         if (cleanUrl.startsWith ("/skins/") && cleanUrl.endsWith (".jpg"))
         {
             const auto baseName = cleanUrl.fromLastOccurrenceOf ("/", false, false).upToLastOccurrenceOf (".", false, false);
@@ -305,6 +308,7 @@ void SolutionAudioProcessorEditor::sendRackState()
         item->setProperty ("dist",   slot.posDist.load());
         item->setProperty ("width",  slot.posWidth.load());
         item->setProperty ("tone",   slot.toneHz.load());
+        item->setProperty ("creature", slot.creature.load());
         juce::Array<juce::var> bands;
         for (auto& bnd : slot.bandDb) bands.add (std::round (bnd.load() * 10.0f) / 10.0f);
         item->setProperty ("bands",  bands);

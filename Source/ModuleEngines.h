@@ -80,6 +80,7 @@ namespace SolutionDSP
 
         // 3D stage: where this track sits and what it sounds like.
         std::atomic<float> posAz { 0.0f }, posEl { 0.0f }, posDist { 2.0f }, posWidth { 1.0f }, toneHz { 1000.0f };
+        std::atomic<int> creature { 0 };      // 0 = auto, 1..6 = the creature picked for this track
         // Parameter change requests from another instance's stage (index into getParameters(), real value).
         static constexpr int maxRequests = 8;
         std::array<std::atomic<int>, maxRequests> reqParam;
@@ -127,7 +128,7 @@ namespace SolutionDSP
                     for (auto& b : s.bandDb) b = -100.0f;
                     s.alignRole = 0; s.alignRingEnd = -1; s.alignRequest = false;
                     s.monitorMask = 0; s.monitorOffRequest = false;
-                    s.posAz = 0.0f; s.posEl = 0.0f; s.posDist = 2.0f; s.posWidth = 1.0f; s.toneHz = 1000.0f;
+                    s.posAz = 0.0f; s.posEl = 0.0f; s.posDist = 2.0f; s.posWidth = 1.0f; s.toneHz = 1000.0f; s.creature = 0;
                     for (auto& q : s.reqParam) q = -1;
                     return i;
                 }

@@ -2,3 +2,4 @@ build/
 deps_cache/
 webview2/
 aax_sdk/
+UI/stage3d/node_modules/

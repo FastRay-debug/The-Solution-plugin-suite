@@ -407,12 +407,17 @@
       <div class="viewport" id="vp">
         <div class="tach left"><div class="tach-needle" id="needleL"></div><div class="tach-lbl">IN / SUB</div></div>
         <div class="tach right"><div class="tach-needle" id="needleR"></div><div class="tach-lbl">OUT / AIR</div></div>
-        <canvas id="stageCanvas" width="560" height="360"></canvas>
+        <canvas id="glCanvas" style="position:absolute;pointer-events:none;display:none;"></canvas>
+        <canvas id="stageCanvas" width="560" height="360" style="position:relative;z-index:1;"></canvas>
         <div class="stage-bar">
           <button class="stage-mode active" onclick="setVizMode(0)" data-tip="3D stage: every Solution track in your session">3D</button>
           <button class="stage-mode" onclick="setVizMode(1)" data-tip="Top view">TOP</button>
           <button class="stage-mode" onclick="setVizMode(2)" data-tip="Real vectorscope (stereo image + phase)">VECTOR</button>
           <button class="stage-mode" onclick="setVizMode(3)" data-tip="Real spectrum analyser">SPECTRUM</button>
+          <button id="flyBtn" onclick="toggleFly()" data-tip="Fly through your mix (Shift+F): WASD move · Q/E down/up · drag to look · click a creature to grab it · wheel pulls/pushes · gamepad works too">✈ FLY</button>
+          <select id="creatureSel" data-sync="stage_creature" onchange="bind('stage_creature', this.value, '', 1)" data-tip="The creature that represents this track in the 3D world" style="font-size:9px;max-width:86px;">
+            <option value="0">🐾 Auto</option><option value="1">Manta ray</option><option value="2">Phoenix</option><option value="3">Jellyfish</option><option value="4">Serpent</option><option value="5">Fireflies</option><option value="6">Orb</option>
+          </select>
           <span class="stage-sep"></span>
           <button id="pathBtn" onclick="togglePathDraw()" data-tip="Draw a motion path on the floor (P)">✎ PATH</button>
           <select onchange="if (this.value) presetPath(this.value); this.value = ''" data-tip="One-click motion shapes">
@@ -1185,6 +1190,7 @@
       if (e.code === 'Escape') {
         if (e.shiftKey) { e.preventDefault(); monitorOff(false); flashHint('Monitoring tools off'); return; }
         if (grabMode) { grabMode = false; const o = selectedStageObject(); if (o && o.self) emit('stageGesture', { phase: 'end' }); return; }
+        if (window.gl3d && window.gl3d.flying) { toggleFly(); return; }
         if (pathDraw) { togglePathDraw(); return; }
         document.getElementById('meterMenu').classList.remove('open');
         document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
@@ -1192,6 +1198,7 @@
       }
       if (typing) return;
       const k = e.key.toLowerCase();
+      if (e.shiftKey && !mod && k === 'f') { e.preventDefault(); toggleFly(); return; }
       // --- universal (every app) ---
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
       if (mod && k === 'y') { e.preventDefault(); doRedo(); return; }
@@ -1945,7 +1952,9 @@
       if (z < 0.2) return null;
       return { x: W / 2 + V.dot(v, basis.rgt) / z * F, y: H / 2 - V.dot(v, basis.up) / z * F, z, s: F / z };
     }
+    const gl3dOn = () => !!(window.gl3d && window.gl3d.active && vizMode <= 1 && !precisionMode);
     function floorHit(mx, my) {                                            // mouse -> point on the floor (y = 0)
+      if (gl3dOn()) return window.gl3d.floorHit(mx, my);
       const dir = V.norm(V.add(V.add(basis.f, V.mul(basis.rgt, (mx - W / 2) / F)), V.mul(basis.up, -(my - H / 2) / F)));
       if (dir[1] > -1e-4) return null;
       const t = -basis.pos[1] / dir[1];
@@ -1965,7 +1974,7 @@
       list.push({ self: true, slot: m.selfSlot !== undefined ? m.selfSlot : -1, name: own ? own.name : '', module: own ? own.module : (params.get('module') || 'This module'),
                   az: moving ? m.animAz : (state.stage_azimuth || 0), el: moving ? m.animEl : (state.stage_elevation || 0),
                   dist: moving ? m.animDist : (state.stage_distance || 2), width: state.stage_width !== undefined ? state.stage_width : 1,
-                  tone: own ? own.tone : 1000, lufs: own ? own.lufs : -20, bands: own ? own.bands : null });
+                  tone: own ? own.tone : 1000, lufs: own ? own.lufs : -20, bands: own ? own.bands : null, creature: Math.round(state.stage_creature || 0) });
       return list;
     }
 
@@ -2196,7 +2205,14 @@
       ctx.clearRect(0, 0, W, H);
       const bg = ctx.createRadialGradient(W / 2, H * 0.6, 10, W / 2, H * 0.6, Math.max(W, H) * 0.75);
       bg.addColorStop(0, 'rgba(20,30,45,0.55)'); bg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-      if (precisionMode) drawOscilloscope(ctx, W, H, '#F59E0B', '#38BDF8');
+      const glc = document.getElementById('glCanvas');
+      if (gl3dOn()) {
+        glc.style.display = 'block'; glc.style.left = cvs.offsetLeft + 'px'; glc.style.top = cvs.offsetTop + 'px'; glc.style.width = cw + 'px'; glc.style.height = ch + 'px';
+        updateCamera(); window._stageObjs = stageObjects();
+        window.gl3d.render(); ctx.clearRect(0, 0, W, H); window.gl3d.drawOverlay(ctx, W, H); clashHits = window.gl3d.clashHits;
+      } else { glc.style.display = 'none'; if (window.gl3d && window.gl3d.flying) toggleFly(); }
+      if (gl3dOn()) {}
+      else if (precisionMode) drawOscilloscope(ctx, W, H, '#F59E0B', '#38BDF8');
       else if (vizMode <= 1) drawStage(t);
       else if (vizMode === 2) drawVectorscope(t);
       else drawSpectrum();
@@ -2211,6 +2227,7 @@
     const emit = (name, data) => { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent(name, data); };
     function canvasPoint(e) { const r = cvs.getBoundingClientRect(); return [(e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height)]; }
     function hitObject(mx, my) {
+      if (gl3dOn()) return window.gl3d.pick(mx, my);
       let best = null, bd = 1e9;
       (window._stageObjs || []).forEach(o => { if (!o._screen) return; const d = Math.hypot(o._screen.x - mx, o._screen.y - my); if (d < o._screen.r && d < bd) { bd = d; best = o; } });
       return best;
@@ -2236,7 +2253,8 @@
                  emit('unmaskPair', { priority: pri.slot, other: oth.slot }); e.preventDefault(); return; }
       if (pathDraw) { const p = floorHit(mx, my); if (p) { pathPts = []; stageDrag = { kind: 'path' }; addPathPoint(p); } e.preventDefault(); return; }
       const o = hitObject(mx, my);
-      if (o) { stageDrag = { kind: 'object', o, sx: mx, sy: my, el0: o.el }; if (o.self) emit('stageGesture', { phase: 'begin' }); }
+      if (o) { stageDrag = { kind: 'object', o, sx: mx, sy: my, el0: o.el }; if (o.self) emit('stageGesture', { phase: 'begin' }); if (gl3dOn()) window.gl3d.beginMouseHold(o); }
+      else if (gl3dOn() && window.gl3d.flying) stageDrag = { kind: 'look', sx: mx, sy: my };
       else stageDrag = { kind: 'orbit', sx: mx, sy: my, yaw0: cam.yaw, pitch0: cam.pitch };
       e.preventDefault();
     });
@@ -2251,13 +2269,17 @@
       const [mx, my] = canvasPoint(e);
       if (stageDrag.kind === 'orbit') { cam.yaw = stageDrag.yaw0 + (mx - stageDrag.sx) * 0.008; cam.pitch = Math.max(0.12, Math.min(1.45, stageDrag.pitch0 + (my - stageDrag.sy) * 0.006)); return; }
       if (stageDrag.kind === 'path') { const p = floorHit(mx, my); if (p) addPathPoint(p); return; }
+      if (stageDrag.kind === 'look') { window.gl3d.look(mx - stageDrag.sx, my - stageDrag.sy); stageDrag.sx = mx; stageDrag.sy = my; return; }
       const o = stageDrag.o; cvs.style.cursor = 'grabbing'; hoverObj = o;
-      if (e.shiftKey) moveObject(o, { el: Math.max(-90, Math.min(90, stageDrag.el0 - (my - stageDrag.sy) * 0.6)) });
+      const carried = gl3dOn() && window.gl3d.dragTarget(mx, my);
+      if (carried) moveObject(o, carried);
+      else if (e.shiftKey) moveObject(o, { el: Math.max(-90, Math.min(90, stageDrag.el0 - (my - stageDrag.sy) * 0.6)) });
       else { const p = floorHit(mx, my); if (p) moveObject(o, { az: Math.atan2(p[0], p[2]) * 180 / Math.PI, dist: rToDist(Math.hypot(p[0], p[2])) }); }
     });
     window.addEventListener('mouseup', () => {
       if (!stageDrag) return;
       if (stageDrag.kind === 'object' && stageDrag.o.self) emit('stageGesture', { phase: 'end' });
+      if (stageDrag.kind === 'object' && window.gl3d) window.gl3d.endMouseHold();
       if (stageDrag.kind === 'path') {
         let pts = pathPts.slice();
         while (pts.length > 32) pts = pts.filter((_, i) => i % 2 === 0);
@@ -2269,6 +2291,7 @@
     cvs.addEventListener('wheel', (e) => {
       if (precisionMode || vizMode > 1) return;
       e.preventDefault(); e.stopPropagation();
+      if (gl3dOn() && window.gl3d.flying && stageDrag && stageDrag.kind === 'object') { window.gl3d.pull(e.deltaY); return; }
       const [mx, my] = canvasPoint(e), o = hitObject(mx, my);
       if (o) moveObject(o, { width: Math.max(0, Math.min(2, (o.width || 1) + (e.deltaY < 0 ? 0.05 : -0.05))) });
       else cam.zoom = Math.max(0.6, Math.min(2.5, cam.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
@@ -2293,8 +2316,25 @@
     function togglePathDraw() { pathDraw = !pathDraw; pathPts = []; document.getElementById('pathBtn').classList.toggle('active', pathDraw); if (pathDraw && vizMode > 1) setVizMode(0); }
     function toggleMotion() { const on = !(state.motion_on > 0.5); bind('motion_on', on ? 1 : 0, '', 1); state.motion_on = on ? 1 : 0; syncMotionUi(); }
     function syncMotionUi() { const b = document.getElementById('motionBtn'); if (b) { b.classList.toggle('active', state.motion_on > 0.5); b.textContent = state.motion_on > 0.5 ? '■ MOTION' : '▶ MOTION'; } }
+    function toggleFly() {
+      const g = window.gl3d;
+      if (!g || !g.active) { flashHint('Fly mode needs WebGL (graphics acceleration is off on this machine)'); return; }
+      if (g.flying) g.exitFly(); else { if (vizMode > 1) setVizMode(0); g.enterFly(); }
+      document.getElementById('flyBtn').classList.toggle('active', g.flying);
+    }
+    window.stageApi = {
+      cam, distToR, rToDist, worldPos, mapRoomPoint, findClashes, flash: flashHint,
+      objects: () => window._stageObjs || stageObjects(), state: () => state, rack: () => window._rackState,
+      vizMode: () => vizMode, pathPoints: () => (pathDraw ? pathPts : ((window._rackState || {}).path || [])), isDrawingPath: () => pathDraw,
+      heldObject: () => (stageDrag && stageDrag.kind === 'object') ? stageDrag.o : null,
+      move: (o, change) => moveObject(o, change),
+      beginHold: (o) => { if (o.self) emit('stageGesture', { phase: 'begin' }); },
+      endHold: (o) => { if (o.self) emit('stageGesture', { phase: 'end' }); },
+      nudgeWidth: (o, d) => moveObject(o, { width: Math.max(0, Math.min(2, (o.width || 1) + d)) }),
+    };
     setVizMode(0);
     draw();
   </script>
+  <script src="stage3d.bundle.js"></script>
 </body>
 </html>
