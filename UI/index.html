@@ -128,6 +128,11 @@
       cursor: grab; min-height: 0; overflow: hidden;
     }
     .viewport:active { cursor: default; }
+    /* ` maximises the panel under the mouse (like Premiere); Ctrl+` sends it fullscreen to another display */
+    .panel-max { position: fixed !important; inset: 6px !important; z-index: 800 !important; width: auto !important; height: auto !important; max-width: none !important; max-height: none !important; }
+    body.has-max::after { content: ''; position: fixed; inset: 0; background: #05070a; z-index: 799; }
+    #fsBadge { position: fixed; top: 10px; right: 12px; z-index: 900; display: none; font: bold 10px monospace; color: #38BDF8; background: rgba(5,7,10,0.8);
+               border: 1px solid rgba(56,189,248,0.5); border-radius: 6px; padding: 4px 8px; pointer-events: none; }
     .stage-bar { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 3px; align-items: center; z-index: 5;
                  background: rgba(5,7,10,0.72); border: 1px solid rgba(212,175,55,0.35); border-radius: 6px; padding: 3px 5px; backdrop-filter: blur(4px); }
     .stage-bar button, .stage-bar select { font-size: 9px; padding: 2px 6px; }
@@ -267,6 +272,7 @@
   </style>
 </head>
 <body>
+  <div id="fsBadge"></div>
   <div class="ribbon">
     <div class="ribbon-title" id="moduleTitle"><span id="secretTrigger" onclick="openSecretMenu(event)" title="Secret Menu" style="cursor:pointer;">T</span><span id="moduleTitleRest" onclick="toggleCalTone()" title="Click title for Tape Calibration Tone (-18 dBFS)">HE SOLUTION · SUITE MODULE</span></div>
     <div class="skin-bar">
@@ -362,7 +368,7 @@
   </div>
 
   <div class="main">
-    <div class="wing">
+    <div class="wing" data-panel="left">
       <div class="knob-grid">
         <div class="knob-cell big" style="grid-column:span 2;" data-tip="Horizontal 3D Azimuth (-180° to +180°)">
           <div class="knob-lbl">AZIMUTH</div>
@@ -404,7 +410,7 @@
     </div>
 
     <div class="center-col">
-      <div class="viewport" id="vp">
+      <div class="viewport" id="vp" data-panel="stage">
         <div class="tach left"><div class="tach-needle" id="needleL"></div><div class="tach-lbl">IN / SUB</div></div>
         <div class="tach right"><div class="tach-needle" id="needleR"></div><div class="tach-lbl">OUT / AIR</div></div>
         <canvas id="glCanvas" style="position:absolute;pointer-events:none;display:none;"></canvas>
@@ -433,7 +439,7 @@
         <div class="vp-badge" id="vizBadge">3D STAGE</div>
       </div>
 
-      <div class="meter-strip" id="meterStrip" onclick="openMeterMenu(event)" ondblclick="toggleMeterPop()" onwheel="wheelZoomMeter(event)" title="Click: Scale Menu · Wheel: Zoom · Double-Click: Expand">
+      <div class="meter-strip" id="meterStrip" data-panel="meters" onclick="openMeterMenu(event)" ondblclick="toggleMeterPop()" onwheel="wheelZoomMeter(event)" title="Click: Scale Menu · Wheel: Zoom · Double-Click: Expand">
         <div class="meter-strip-hdr">
           <span id="meterScaleLabel" style="color:var(--accent2);font-weight:700;">THERMAL LED L/R · FULL (-60 to 0 dB)</span>
           <span id="meterHoldLabel">HOLD: -60.0 dB · DBL-CLICK TO EXPAND</span>
@@ -443,7 +449,7 @@
       </div>
     </div>
 
-    <div class="wing">
+    <div class="wing" data-panel="right">
       <div class="knob-grid">
         <div class="knob-cell big" style="grid-column:span 2;" data-tip="Z-Axis distance, sub drive, or clipper knee">
           <div class="knob-lbl">DEPTH / DRIVE</div>
@@ -929,6 +935,9 @@
         <div><h4>3D STAGE <i>(Photoshop / Blender style)</i></h4>
           <p><kbd>1</kbd>–<kbd>4</kbd> 3D · Top · Vector · Spectrum</p>
           <p><kbd>Tab</kbd> Select next sound (<kbd>Shift</kbd> = previous)</p>
+          <p><kbd>`</kbd> Maximise the panel under the mouse (again = restore), like Premiere</p>
+          <p><kbd>Ctrl</kbd>+<kbd>`</kbd> Send that panel fullscreen to your other display (<kbd>Esc</kbd> brings it back)</p>
+          <p><kbd>Shift</kbd>+<kbd>F</kbd> Fly through the mix · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Q</kbd>/<kbd>E</kbd> down/up · click a creature to grab it</p>
           <p><kbd>←</kbd> <kbd>→</kbd> Move left / right</p>
           <p><kbd>↑</kbd> <kbd>↓</kbd> Nearer / farther · <kbd>Alt</kbd>+<kbd>↑↓</kbd> height</p>
           <p><kbd>[</kbd> <kbd>]</kbd> Narrower / wider <i>(like brush size)</i></p>
@@ -1191,11 +1200,14 @@
         if (e.shiftKey) { e.preventDefault(); monitorOff(false); flashHint('Monitoring tools off'); return; }
         if (grabMode) { grabMode = false; const o = selectedStageObject(); if (o && o.self) emit('stageGesture', { phase: 'end' }); return; }
         if (window.gl3d && window.gl3d.flying) { toggleFly(); return; }
+        if (IS_POPOUT) { emit('fullscreen', { cmd: 'return' }); return; }
+        if (document.querySelector('.panel-max')) { toggleMaxPanel(); return; }
         if (pathDraw) { togglePathDraw(); return; }
         document.getElementById('meterMenu').classList.remove('open');
         document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
         return;
       }
+      if (e.code === 'Backquote' && !typing) { e.preventDefault(); if (mod) popOutPanel(); else toggleMaxPanel(); return; }
       if (typing) return;
       const k = e.key.toLowerCase();
       if (e.shiftKey && !mod && k === 'f') { e.preventDefault(); toggleFly(); return; }
@@ -2322,6 +2334,29 @@
       if (g.flying) g.exitFly(); else { if (vizMode > 1) setVizMode(0); g.enterFly(); }
       document.getElementById('flyBtn').classList.toggle('active', g.flying);
     }
+    // ---------- fullscreen panels ----------
+    const IS_POPOUT = params.get('popout') === '1';
+    let hoverPanel = 'stage';
+    document.addEventListener('mousemove', (e) => { const el = e.target.closest && e.target.closest('[data-panel]'); if (el && !document.querySelector('.panel-max')) hoverPanel = el.dataset.panel; }, true);
+    function showFsBadge(text, ms) { const b = document.getElementById('fsBadge'); b.textContent = text; b.style.display = text ? 'block' : 'none'; clearTimeout(showFsBadge.t); if (ms) showFsBadge.t = setTimeout(() => b.style.display = 'none', ms); }
+    function setMaxPanel(name) {
+      document.querySelectorAll('.panel-max').forEach(el => el.classList.remove('panel-max'));
+      const el = name && document.querySelector(`[data-panel="${name}"]`);
+      document.body.classList.toggle('has-max', !!el);
+      if (el) { el.classList.add('panel-max'); showFsBadge(IS_POPOUT ? 'FULLSCREEN · Esc or Ctrl+` to return' : 'MAXIMISED · ` to restore · Ctrl+` = other display', IS_POPOUT ? 4000 : 2500); }
+      else showFsBadge('');
+    }
+    function toggleMaxPanel() { if (IS_POPOUT) return; setMaxPanel(document.querySelector('.panel-max') ? null : hoverPanel); }
+    function popOutPanel() {
+      if (IS_POPOUT) { emit('fullscreen', { cmd: 'return' }); return; }
+      const maxed = document.querySelector('.panel-max'), panel = maxed ? maxed.dataset.panel : hoverPanel;
+      if (maxed) setMaxPanel(null);
+      if (!window.__JUCE__) { flashHint('Ctrl+` sends a panel fullscreen to your other display (in the plugin)'); return; }
+      emit('fullscreen', { cmd: 'popout', panel });
+    }
+    if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.addEventListener('fullscreenState', (on) => { if (!IS_POPOUT) showFsBadge(on ? '⧉ FULLSCREEN ON OTHER DISPLAY · Ctrl+` to bring back' : '', on ? 0 : 1); });
+    if (IS_POPOUT) setTimeout(() => setMaxPanel(params.get('panel') || 'stage'), 50);
+
     window.stageApi = {
       cam, distToR, rToDist, worldPos, mapRoomPoint, findClashes, flash: flashHint,
       objects: () => window._stageObjs || stageObjects(), state: () => state, rack: () => window._rackState,

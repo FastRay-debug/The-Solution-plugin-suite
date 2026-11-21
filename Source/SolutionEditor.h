@@ -39,5 +39,13 @@ private:
     const bool skinsAvailable;
     juce::WebBrowserComponent webView;
 
+    // Every message to the page goes to the main view and, when open, the fullscreen pop-out.
+    juce::WebBrowserComponent::Options makeOptions();
+    void emitToViews (const juce::Identifier& name, const juce::var& value);
+    void handleFullscreen (const juce::var& data);
+    juce::String baseUrl() const;
+    struct PopoutWindow;
+    std::unique_ptr<PopoutWindow> popout;      // declared after webView: closes first
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SolutionAudioProcessorEditor)
 };

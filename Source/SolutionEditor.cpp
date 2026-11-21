@@ -70,147 +70,212 @@ juce::File SolutionAudioProcessorEditor::findSharedSkinsFolder()
     return {};
 }
 
+juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
+{
+    return juce::WebBrowserComponent::Options{}
+           #if JUCE_WINDOWS
+           .withBackend (juce::WebBrowserComponent::Options::Backend::webview2)
+           .withWinWebView2Options (juce::WebBrowserComponent::Options::WinWebView2{}
+                                        .withUserDataFolder (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("TheSolutionWebView2")))
+           #endif
+           .withNativeIntegrationEnabled()
+           .withResourceProvider ([skinsDir = sharedSkinsDir] (const auto& url) { return getResource (url, skinsDir); })
+           .withEventListener ("setParam", [this] (const juce::var& data)
+           {
+               if (auto* obj = data.getDynamicObject())
+               {
+                   const auto paramId = obj->getProperty ("id").toString();
+                   const float value  = static_cast<float> (obj->getProperty ("value"));
+                   if (auto* param = audioProcessor.apvts.getParameter (paramId))
+                   {
+                       audioProcessor.undoManager.beginNewTransaction (paramId);
+                       param->setValueNotifyingHost (param->convertTo0to1 (value));
+                   }
+               }
+           })
+           .withEventListener ("captureRoomSweep", [this] (const juce::var& data)
+           {
+               float secs = 2.0f;
+               if (auto* obj = data.getDynamicObject())
+                   if (obj->hasProperty ("seconds"))
+                       secs = static_cast<float> (obj->getProperty ("seconds"));
+               audioProcessor.triggerRoomSweep (secs);
+           })
+           .withEventListener ("undoAction", [this] (const juce::var&)
+           {
+               audioProcessor.undoManager.undo();
+           })
+           .withEventListener ("redoAction", [this] (const juce::var&)
+           {
+               audioProcessor.undoManager.redo();
+           })
+           .withEventListener ("midiLearn", [this] (const juce::var& data)
+           {
+               if (auto* obj = data.getDynamicObject())
+                   audioProcessor.armMidiLearn (obj->getProperty ("id").toString());
+           })
+           // Page finished loading: send it the real parameter values + saved UI settings
+           .withEventListener ("uiReady", [this] (const juce::var&)
+           {
+               sendParamState();
+               sendPresetList();
+               sendRoomResult();
+               sendCharacterState();
+               sendRemoteState();
+               {
+                   juce::Array<juce::var> rooms;
+                   for (const auto& room : SolutionDSP::listeningRooms())
+                   {
+                       juce::DynamicObject::Ptr o = new juce::DynamicObject();
+                       o->setProperty ("name", juce::String (room.name));
+                       o->setProperty ("category", juce::String (room.category));
+                       rooms.add (juce::var (o.get()));
+                   }
+                   emitToViews ("roomList", juce::var (rooms));
+               }
+           })
+           .withEventListener ("setUiProp", [this] (const juce::var& data)
+           {
+               if (auto* obj = data.getDynamicObject())
+                   audioProcessor.setUiProperty (obj->getProperty ("key").toString(), obj->getProperty ("value").toString());
+           })
+           .withEventListener ("setMic", [this] (const juce::var& data)
+           {
+               if (auto* obj = data.getDynamicObject())
+                   audioProcessor.setMicProfile (obj->getProperty ("id").toString());
+               sendRoomResult();
+           })
+           .withEventListener ("loadMicCal", [this] (const juce::var&)
+           {
+               micFileChooser = std::make_unique<juce::FileChooser> ("Choose your mic's calibration file", juce::File(), "*.cal;*.txt;*.frd;*.csv");
+               micFileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                            [this] (const juce::FileChooser& fc)
+               {
+                   const auto file = fc.getResult();
+                   if (file.existsAsFile() && ! audioProcessor.loadMicCalibration (file))
+                       emitToViews ("roomNotice", juce::var ("That file doesn't look like a mic calibration file (expected lines of: frequency dB)."));
+                   sendRoomResult();
+               });
+           })
+           .withEventListener ("stageMove",    [this] (const juce::var& d) { handleStage ("move", d); })
+           .withEventListener ("stageGesture", [this] (const juce::var& d) { handleStage ("gesture", d); })
+           .withEventListener ("motionPath",   [this] (const juce::var& d) { handleStage ("path", d); })
+           .withEventListener ("unmaskPair",   [this] (const juce::var& d) { handleStage ("unmask", d); })
+           .withEventListener ("monitorOff", [this] (const juce::var& data)
+           {
+               if ((bool) data.getProperty ("all", false)) audioProcessor.turnOffMonitoringEverywhere();
+               else                                         audioProcessor.turnOffMonitoring();
+           })
+           .withEventListener ("alignNow", [this] (const juce::var&)
+           {
+               emitToViews ("alignResult", juce::var (audioProcessor.alignNow()));
+           })
+           .withEventListener ("autoStage", [this] (const juce::var&) { audioProcessor.startAutoGainStage(); })
+           .withEventListener ("remote", [this] (const juce::var& data)
+           {
+               const auto cmd = data.getProperty ("cmd", {}).toString();
+               juce::String error;
+               if (cmd == "start" && ! audioProcessor.startRemote())
+                   error = "Couldn't open a network port (47800-47999). Another app may be using them, or your firewall/host blocks it.";
+               else if (cmd == "stop")
+                   audioProcessor.stopRemote();
+               sendRemoteState (error);
+           })
+           .withEventListener ("character", [this] (const juce::var& data)
+           {
+               auto* obj = data.getDynamicObject();
+               const auto cmd = obj != nullptr ? obj->getProperty ("cmd").toString() : juce::String();
+               juce::String message;
+               if (cmd == "select")
+               {
+                   const auto name = obj->getProperty ("name").toString();
+                   message = audioProcessor.setCharacterModel (name);
+                   if (message.isEmpty()) message = name.isEmpty() ? "Character off" : "Loaded " + name;
+               }
+               else if (cmd == "reveal")
+               {
+                   SolutionDSP::NeuralCharacter::getModelsFolder().createDirectory();
+                   SolutionDSP::NeuralCharacter::getModelsFolder().startAsProcess();
+               }
+               sendCharacterState (message);
+           })
+           .withEventListener ("assistant", [this] (const juce::var& data) { handleAssistantCommand (data); })
+           .withEventListener ("resetLoudness", [this] (const juce::var&) { audioProcessor.loudness.requestReset(); })
+           .withEventListener ("presetCommand", [this] (const juce::var& data) { handlePresetCommand (data); })
+        .withEventListener ("fullscreen", [this] (const juce::var& data) { handleFullscreen (data); });
+}
+
+// ---------- Ctrl+` : send a panel fullscreen to another display ----------
+struct SolutionAudioProcessorEditor::PopoutWindow final : public juce::Component
+{
+    PopoutWindow (juce::WebBrowserComponent::Options options) : view (std::move (options))
+    {
+        setOpaque (true);
+        addAndMakeVisible (view);
+    }
+    void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0xff05070a)); }
+    void resized() override { view.setBounds (getLocalBounds()); }
+    juce::WebBrowserComponent view;
+};
+
+void SolutionAudioProcessorEditor::emitToViews (const juce::Identifier& name, const juce::var& value)
+{
+    webView.emitEventIfBrowserIsVisible (name, value);
+    if (popout != nullptr)
+        popout->view.emitEventIfBrowserIsVisible (name, value);
+}
+
+void SolutionAudioProcessorEditor::handleFullscreen (const juce::var& data)
+{
+    const auto cmd = data.getProperty ("cmd", {}).toString();
+    // Never delete a browser from inside its own callback: finish on the next message-loop turn.
+    juce::Component::SafePointer<SolutionAudioProcessorEditor> safe (this);
+    juce::MessageManager::callAsync ([safe, cmd, panel = data.getProperty ("panel", "stage").toString()]
+    {
+        if (safe == nullptr) return;
+        auto& ed = *safe;
+        ed.popout.reset();
+        if (cmd == "popout")
+        {
+            const auto& displays = juce::Desktop::getInstance().getDisplays();
+            const auto* here = displays.getDisplayForRect (ed.getScreenBounds());
+            const juce::Displays::Display* target = nullptr;
+            for (const auto& d : displays.displays)                 // prefer a display the plugin isn't on
+                if (here == nullptr || d.totalArea != here->totalArea) { target = &d; break; }
+            if (target == nullptr) target = here != nullptr ? here : displays.getPrimaryDisplay();
+            if (target == nullptr) return;
+
+            ed.popout = std::make_unique<PopoutWindow> (ed.makeOptions());
+            ed.popout->setName (juce::String (SOLUTION_MODULE_NAME) + " - Fullscreen");
+            ed.popout->addToDesktop (juce::ComponentPeer::windowAppearsOnTaskbar);
+            ed.popout->setBounds (target->totalArea);
+            ed.popout->setVisible (true);
+            ed.popout->toFront (true);
+            const auto panelSafe = panel.retainCharacters ("abcdefghijklmnopqrstuvwxyz");
+            ed.popout->view.goToURL (ed.baseUrl() + "&popout=1&panel=" + panelSafe);
+            ed.emitToViews ("fullscreenState", juce::var (true));
+        }
+        else
+            ed.webView.emitEventIfBrowserIsVisible ("fullscreenState", juce::var (false));
+    });
+}
+
+juce::String SolutionAudioProcessorEditor::baseUrl() const
+{
+    const auto escapedName = juce::URL::addEscapeChars (juce::String (SOLUTION_MODULE_NAME), true);
+    return juce::WebBrowserComponent::getResourceProviderRoot() + "?module=" + escapedName + "&skins=" + juce::String (skinsAvailable ? "1" : "0");
+}
+
 SolutionAudioProcessorEditor::SolutionAudioProcessorEditor (SolutionAudioProcessor& p)
     : AudioProcessorEditor (&p),
       audioProcessor (p),
       sharedSkinsDir (findSharedSkinsFolder()),
       skinsAvailable (SOLUTION_BUNDLE_SKINS != 0 || sharedSkinsDir.isDirectory()),
-      webView (juce::WebBrowserComponent::Options{}
-                   #if JUCE_WINDOWS
-                   .withBackend (juce::WebBrowserComponent::Options::Backend::webview2)
-                   .withWinWebView2Options (juce::WebBrowserComponent::Options::WinWebView2{}
-                                                .withUserDataFolder (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("TheSolutionWebView2")))
-                   #endif
-                   .withNativeIntegrationEnabled()
-                   .withResourceProvider ([skinsDir = sharedSkinsDir] (const auto& url) { return getResource (url, skinsDir); })
-                   .withEventListener ("setParam", [this] (const juce::var& data)
-                   {
-                       if (auto* obj = data.getDynamicObject())
-                       {
-                           const auto paramId = obj->getProperty ("id").toString();
-                           const float value  = static_cast<float> (obj->getProperty ("value"));
-                           if (auto* param = audioProcessor.apvts.getParameter (paramId))
-                           {
-                               audioProcessor.undoManager.beginNewTransaction (paramId);
-                               param->setValueNotifyingHost (param->convertTo0to1 (value));
-                           }
-                       }
-                   })
-                   .withEventListener ("captureRoomSweep", [this] (const juce::var& data)
-                   {
-                       float secs = 2.0f;
-                       if (auto* obj = data.getDynamicObject())
-                           if (obj->hasProperty ("seconds"))
-                               secs = static_cast<float> (obj->getProperty ("seconds"));
-                       audioProcessor.triggerRoomSweep (secs);
-                   })
-                   .withEventListener ("undoAction", [this] (const juce::var&)
-                   {
-                       audioProcessor.undoManager.undo();
-                   })
-                   .withEventListener ("redoAction", [this] (const juce::var&)
-                   {
-                       audioProcessor.undoManager.redo();
-                   })
-                   .withEventListener ("midiLearn", [this] (const juce::var& data)
-                   {
-                       if (auto* obj = data.getDynamicObject())
-                           audioProcessor.armMidiLearn (obj->getProperty ("id").toString());
-                   })
-                   // Page finished loading: send it the real parameter values + saved UI settings
-                   .withEventListener ("uiReady", [this] (const juce::var&)
-                   {
-                       sendParamState();
-                       sendPresetList();
-                       sendRoomResult();
-                       sendCharacterState();
-                       sendRemoteState();
-                       {
-                           juce::Array<juce::var> rooms;
-                           for (const auto& room : SolutionDSP::listeningRooms())
-                           {
-                               juce::DynamicObject::Ptr o = new juce::DynamicObject();
-                               o->setProperty ("name", juce::String (room.name));
-                               o->setProperty ("category", juce::String (room.category));
-                               rooms.add (juce::var (o.get()));
-                           }
-                           webView.emitEventIfBrowserIsVisible ("roomList", juce::var (rooms));
-                       }
-                   })
-                   .withEventListener ("setUiProp", [this] (const juce::var& data)
-                   {
-                       if (auto* obj = data.getDynamicObject())
-                           audioProcessor.setUiProperty (obj->getProperty ("key").toString(), obj->getProperty ("value").toString());
-                   })
-                   .withEventListener ("setMic", [this] (const juce::var& data)
-                   {
-                       if (auto* obj = data.getDynamicObject())
-                           audioProcessor.setMicProfile (obj->getProperty ("id").toString());
-                       sendRoomResult();
-                   })
-                   .withEventListener ("loadMicCal", [this] (const juce::var&)
-                   {
-                       micFileChooser = std::make_unique<juce::FileChooser> ("Choose your mic's calibration file", juce::File(), "*.cal;*.txt;*.frd;*.csv");
-                       micFileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                                                    [this] (const juce::FileChooser& fc)
-                       {
-                           const auto file = fc.getResult();
-                           if (file.existsAsFile() && ! audioProcessor.loadMicCalibration (file))
-                               webView.emitEventIfBrowserIsVisible ("roomNotice", juce::var ("That file doesn't look like a mic calibration file (expected lines of: frequency dB)."));
-                           sendRoomResult();
-                       });
-                   })
-                   .withEventListener ("stageMove",    [this] (const juce::var& d) { handleStage ("move", d); })
-                   .withEventListener ("stageGesture", [this] (const juce::var& d) { handleStage ("gesture", d); })
-                   .withEventListener ("motionPath",   [this] (const juce::var& d) { handleStage ("path", d); })
-                   .withEventListener ("unmaskPair",   [this] (const juce::var& d) { handleStage ("unmask", d); })
-                   .withEventListener ("monitorOff", [this] (const juce::var& data)
-                   {
-                       if ((bool) data.getProperty ("all", false)) audioProcessor.turnOffMonitoringEverywhere();
-                       else                                         audioProcessor.turnOffMonitoring();
-                   })
-                   .withEventListener ("alignNow", [this] (const juce::var&)
-                   {
-                       webView.emitEventIfBrowserIsVisible ("alignResult", juce::var (audioProcessor.alignNow()));
-                   })
-                   .withEventListener ("autoStage", [this] (const juce::var&) { audioProcessor.startAutoGainStage(); })
-                   .withEventListener ("remote", [this] (const juce::var& data)
-                   {
-                       const auto cmd = data.getProperty ("cmd", {}).toString();
-                       juce::String error;
-                       if (cmd == "start" && ! audioProcessor.startRemote())
-                           error = "Couldn't open a network port (47800-47999). Another app may be using them, or your firewall/host blocks it.";
-                       else if (cmd == "stop")
-                           audioProcessor.stopRemote();
-                       sendRemoteState (error);
-                   })
-                   .withEventListener ("character", [this] (const juce::var& data)
-                   {
-                       auto* obj = data.getDynamicObject();
-                       const auto cmd = obj != nullptr ? obj->getProperty ("cmd").toString() : juce::String();
-                       juce::String message;
-                       if (cmd == "select")
-                       {
-                           const auto name = obj->getProperty ("name").toString();
-                           message = audioProcessor.setCharacterModel (name);
-                           if (message.isEmpty()) message = name.isEmpty() ? "Character off" : "Loaded " + name;
-                       }
-                       else if (cmd == "reveal")
-                       {
-                           SolutionDSP::NeuralCharacter::getModelsFolder().createDirectory();
-                           SolutionDSP::NeuralCharacter::getModelsFolder().startAsProcess();
-                       }
-                       sendCharacterState (message);
-                   })
-                   .withEventListener ("assistant", [this] (const juce::var& data) { handleAssistantCommand (data); })
-                   .withEventListener ("resetLoudness", [this] (const juce::var&) { audioProcessor.loudness.requestReset(); })
-                   .withEventListener ("presetCommand", [this] (const juce::var& data) { handlePresetCommand (data); }))
+      webView (makeOptions())
 {
     addAndMakeVisible (webView);
     audioProcessor.scopeTap.setEnabled (true);
-    const auto escapedName = juce::URL::addEscapeChars (juce::String (SOLUTION_MODULE_NAME), true);
-    const auto skinsFlag   = juce::String (skinsAvailable ? "1" : "0");
-    webView.goToURL (juce::WebBrowserComponent::getResourceProviderRoot() + "?module=" + escapedName + "&skins=" + skinsFlag);
+    webView.goToURL (baseUrl());
 
     setSize (1080, 640);
     setResizable (true, true);
@@ -236,7 +301,7 @@ void SolutionAudioProcessorEditor::sendParamState()
     payload->setProperty ("values", juce::var (values.get()));
     payload->setProperty ("ui", juce::var (ui.get()));
     payload->setProperty ("preset", audioProcessor.presets.getCurrentPresetName());
-    webView.emitEventIfBrowserIsVisible ("paramState", juce::var (payload.get()));
+    emitToViews ("paramState", juce::var (payload.get()));
 }
 
 void SolutionAudioProcessorEditor::sendPresetList (const juce::String& message)
@@ -255,7 +320,7 @@ void SolutionAudioProcessorEditor::sendPresetList (const juce::String& message)
     payload->setProperty ("current", audioProcessor.presets.getCurrentPresetName());
     payload->setProperty ("folder", audioProcessor.presets.getFolder().getFullPathName());
     payload->setProperty ("message", message);
-    webView.emitEventIfBrowserIsVisible ("presetList", juce::var (payload.get()));
+    emitToViews ("presetList", juce::var (payload.get()));
 }
 
 void SolutionAudioProcessorEditor::handlePresetCommand (const juce::var& data)
@@ -343,7 +408,7 @@ void SolutionAudioProcessorEditor::sendRackState()
     juce::Array<juce::var> dips;
     for (auto& d : audioProcessor.unmaskDipDb) dips.add (std::round (d.load() * 10.0f) / 10.0f);
     payload->setProperty ("unmaskDips", dips);
-    webView.emitEventIfBrowserIsVisible ("rack", juce::var (payload.get()));
+    emitToViews ("rack", juce::var (payload.get()));
 }
 
 SolutionAudioProcessorEditor::~SolutionAudioProcessorEditor()
@@ -461,7 +526,7 @@ void SolutionAudioProcessorEditor::sendScope()
     o->setProperty ("lr", pts);
     o->setProperty ("spec", spec);
     o->setProperty ("corr", (sll + srr) > 1e-9 ? slr / (std::sqrt (sll * srr) + 1e-12) : 1.0);
-    webView.emitEventIfBrowserIsVisible ("scope", juce::var (o.get()));
+    emitToViews ("scope", juce::var (o.get()));
 }
 
 void SolutionAudioProcessorEditor::sendRoomResult()
@@ -497,7 +562,7 @@ void SolutionAudioProcessorEditor::sendRoomResult()
     payload->setProperty ("micName", mic.name);
     payload->setProperty ("fitLow", juce::jmax (25.0f, mic.reliableLowHz));
     payload->setProperty ("fitHigh", juce::jmin (5000.0f, mic.reliableHighHz));
-    webView.emitEventIfBrowserIsVisible ("roomResult", juce::var (payload.get()));
+    emitToViews ("roomResult", juce::var (payload.get()));
 }
 
 void SolutionAudioProcessorEditor::handleAssistantCommand (const juce::var& data)
@@ -562,7 +627,7 @@ void SolutionAudioProcessorEditor::sendAssistantState()
     payload->setProperty ("freqs", freqs);
     payload->setProperty ("suggestions", suggestions);
     payload->setProperty ("genres", genres);
-    webView.emitEventIfBrowserIsVisible ("assistantState", juce::var (payload.get()));
+    emitToViews ("assistantState", juce::var (payload.get()));
 }
 
 void SolutionAudioProcessorEditor::sendCharacterState (const juce::String& message)
@@ -579,7 +644,7 @@ void SolutionAudioProcessorEditor::sendCharacterState (const juce::String& messa
                                              ? "This model was trained at " + juce::String (trained / 1000.0, 1) + " kHz; your session runs at "
                                                + juce::String (host / 1000.0, 1) + " kHz, so its tone may differ slightly."
                                              : juce::String());
-    webView.emitEventIfBrowserIsVisible ("characterState", juce::var (payload.get()));
+    emitToViews ("characterState", juce::var (payload.get()));
 }
 
 void SolutionAudioProcessorEditor::sendRemoteState (const juce::String& error)
@@ -592,7 +657,7 @@ void SolutionAudioProcessorEditor::sendRemoteState (const juce::String& error)
     payload->setProperty ("code", running ? r->getPairingCode() : juce::String());
     payload->setProperty ("devices", running ? r->getConnectedDevices() : 0);
     payload->setProperty ("error", error);
-    webView.emitEventIfBrowserIsVisible ("remoteState", juce::var (payload.get()));
+    emitToViews ("remoteState", juce::var (payload.get()));
 }
 
 void SolutionAudioProcessorEditor::timerCallback()
@@ -666,5 +731,5 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("envFollower",   audioProcessor.getEnvFollower());
     payload->setProperty ("learnedCc",     audioProcessor.getLastLearnedCc());
 
-    webView.emitEventIfBrowserIsVisible ("telemetry", juce::var (payload.get()));
+    emitToViews ("telemetry", juce::var (payload.get()));
 }
