@@ -132,6 +132,12 @@
                  background: rgba(5,7,10,0.72); border: 1px solid rgba(212,175,55,0.35); border-radius: 6px; padding: 3px 5px; backdrop-filter: blur(4px); }
     .stage-bar button, .stage-bar select { font-size: 9px; padding: 2px 6px; }
     .stage-bar button.active { color: #111; background: var(--gold, #D4AF37); }
+    .kbd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; font-size: 11px; color: var(--text); }
+    .kbd-grid h4 { margin: 6px 0 2px; font-size: 10px; letter-spacing: 0.1em; color: var(--accent2); }
+    .kbd-grid h4 i { color: var(--mute); font-weight: normal; letter-spacing: 0; }
+    .kbd-grid p { margin: 2px 0; } .kbd-grid p i { color: var(--mute); }
+    kbd { display: inline-block; min-width: 14px; padding: 0 4px; border: 1px solid #4b5563; border-bottom-width: 2px; border-radius: 3px; background: #111827;
+          color: #F5D27A; font: 10px monospace; text-align: center; line-height: 15px; }
     .stage-sep { width: 1px; height: 14px; background: rgba(212,175,55,0.35); margin: 0 3px; }
     canvas { width: 100%; height: 100%; display: block; }
     .vp-badge {
@@ -320,23 +326,23 @@
           <option value="banff">Banff Emerald Lake</option>
         </optgroup>
       </select>
-      <button id="emuBtn" onclick="openEmulator()" data-tip="Built-in Audio Emulator">▶</button>
+      <button id="emuBtn" onclick="openEmulator()" data-tip="Demo player - plays its own test audio outside your DAW (Shift+A)">▶</button>
       <button onclick="openVault()" data-tip="The Vault: Presets & A/B">🗄 VAULT</button>
       <button onclick="openAssistant()" data-tip="Mix Assistant: compare with a reference track or genre target">🎯</button>
       <button onclick="openCharacter()" data-tip="Neural Character: run a captured model of real hardware on this module">🧠</button>
       <button onclick="openRemote()" data-tip="Control this module from your phone or tablet">📱</button>
       <button onclick="openPro()" data-tip="Pro Tricks: gain staging, mono lows, smooth, phone bass, streaming preview">★ PRO</button>
       <button id="roomsBtnTop" onclick="openRooms()" data-tip="Listening Rooms: hear your mix in studios, venues, cars, phones, earbuds...">🏛 ROOMS</button>
-      <button id="abBtnTop" onclick="toggleParamBtn('ab_bypass')" data-tip="Hear the ORIGINAL at the same loudness - louder no longer fools you">A/B</button>
-      <button id="deltaBtnTop" onclick="toggleParamBtn('delta_listen')" data-tip="Delta: hear only what this module adds or removes">Δ</button>
+      <button id="abBtnTop" onclick="toggleParamBtn('ab_bypass')" data-tip="Hear the ORIGINAL at the same loudness - louder no longer fools you (B)">A/B</button>
+      <button id="deltaBtnTop" onclick="toggleParamBtn('delta_listen')" data-tip="Delta: hear only what this module adds or removes (D)">Δ</button>
       <button onclick="openMatrix()" data-tip="The Matrix: CV & MIDI Learn">⚡ MATRIX</button>
       <button onclick="doUndo()" data-tip="Undo">↩</button>
       <button onclick="doRedo()" data-tip="Redo">↪</button>
-      <button id="precBtn" onclick="togglePrecision()" data-tip="Precision Grid (Shift+Space)">⌖</button>
-      <button id="rearBtn" onclick="toggleRear()" data-tip="180° Rear Patchbay">↻</button>
+      <button id="precBtn" onclick="togglePrecision()" data-tip="Oscilloscope (Shift+Space)">⌖</button>
+      <button id="rearBtn" onclick="toggleRear()" data-tip="180° rear patch bay (Shift+R)">↻</button>
       <button id="classicBtn" onclick="toggleClassicOS()" data-tip="Classic OS Mode">OS</button>
       <button id="tipBtn" class="active" onclick="toggleTooltips()" data-tip="Toggle 0.6s Hover Tooltips ON/OFF">TIP</button>
-      <button id="curBtn" onclick="cycleCursor()" data-tip="Cycle Pointer: Mouse / Right Hand / Left Hand / Pinch (Shortcut: H)">✋</button>
+      <button id="curBtn" onclick="cycleCursor()" data-tip="Pointer style: mouse / right hand / left hand / pinch (Shift+H)">✋</button>
       <button onclick="document.getElementById('manualModal').classList.add('open')" data-tip="Built-in Instruction Manual">?</button>
       <button onclick="document.getElementById('phoneModal').classList.add('open')" data-tip="Phone Sync">📱</button>
     </div>
@@ -408,12 +414,12 @@
           <button class="stage-mode" onclick="setVizMode(2)" data-tip="Real vectorscope (stereo image + phase)">VECTOR</button>
           <button class="stage-mode" onclick="setVizMode(3)" data-tip="Real spectrum analyser">SPECTRUM</button>
           <span class="stage-sep"></span>
-          <button id="pathBtn" onclick="togglePathDraw()" data-tip="Draw a motion path on the floor">✎ PATH</button>
+          <button id="pathBtn" onclick="togglePathDraw()" data-tip="Draw a motion path on the floor (P)">✎ PATH</button>
           <select onchange="if (this.value) presetPath(this.value); this.value = ''" data-tip="One-click motion shapes">
             <option value="">SHAPES…</option><option value="orbit">Orbit</option><option value="figure8">Figure-8</option><option value="flyover">Fly-over</option>
             <option value="pingpong">Ping-pong</option><option value="rise">Rise &amp; fall</option><option value="clear">Clear path</option>
           </select>
-          <button id="motionBtn" onclick="toggleMotion()" data-tip="Play / stop the motion path (locked to your song's tempo)">▶ MOTION</button>
+          <button id="motionBtn" onclick="toggleMotion()" data-tip="Play / stop the motion path, locked to your song's tempo (Shift+P)">▶ MOTION</button>
           <select data-sync="motion_rate" onchange="bind('motion_rate', this.value, '', 1)" data-tip="One trip around the path takes...">
             <option value="0">1/4 bar</option><option value="1">1/2 bar</option><option value="2">1 bar</option><option value="3">2 bars</option>
             <option value="4" selected>4 bars</option><option value="5">8 bars</option><option value="6">16 bars</option>
@@ -864,7 +870,7 @@
           <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;margin-top:4px;">DISPLAY, DUAL-SCREEN &amp; VR</span>
           <button onclick="if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();else document.exitFullscreen?.();" data-tip="Sends active plugin viewport to fullscreen or secondary monitor (Ctrl+~)">Dual-Display Fullscreen (Ctrl+~)</button>
           <button onclick="this.classList.toggle('active');this.textContent=this.classList.contains('active')?'VR Spatial Output: ON':'VR Spatial Output: OFF';" data-tip="Routes 3D soundstage coordinates to VR headset head-tracking output">VR Spatial Output: OFF</button>
-          <button onclick="togglePrecision()" data-tip="Collapses 3D orb into high-contrast vector grid for surgical alignment (Shift+Space)">Surgical Precision Grid (Shift+Space)</button>
+          <button onclick="togglePrecision()" data-tip="Real oscilloscope of the output (Shift+Space)">Oscilloscope (Shift+Space)</button>
           <button onclick="toggleClassicOS()" data-tip="Disables gradients and animations for ultra-low GPU/CPU load">Classic OS High-Contrast Mode</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:5px;">
@@ -897,17 +903,47 @@
   </div>
 
   <div class="modal" id="manualModal" onclick="if(event.target===this)this.classList.remove('open')">
-    <div class="modal-box" style="width:460px;">
-      <strong style="color:var(--gold);letter-spacing:0.1em;">THE SOLUTION · QUICK MANUAL &amp; SHORTCUTS</strong>
-      <div style="font-size:11px;color:var(--mute);line-height:1.5;">
-        <b>• First Letter (T):</b> Open 18-control Secret Menu<br>
-        <b>• Double-Click -0.5 dBFS Badge:</b> Toggle safety ceiling guard<br>
-        <b>• Click / Wheel / Double-Click Meter:</b> Scale menu, zoom (4–60 dB), or pop-out resizable meter<br>
-        <b>• H (or Shift+H):</b> Cycle Pointer (Mouse / Right Hand / Left Hand / Pinch)<br>
-        <b>• Shift + Space:</b> Surgical Precision Grid &nbsp;|&nbsp; <b>Ctrl + ~:</b> Dual-Screen Fullscreen<br>
-        <b>• ↻ Button:</b> 180° Rear Patchbay &nbsp;|&nbsp; <b>▶ AUDIO / 🎙:</b> Built-in Emulator &amp; Live Mic
+    <div class="modal-box" style="width:720px;max-height:560px;overflow-y:auto;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">THE SOLUTION · KEYBOARD SHORTCUTS</strong>
+      <div style="font-size:10px;color:var(--mute);">Work while the plugin window has focus. Ctrl = ⌘ on Mac. Space is left to your DAW (play/stop). Press <b>?</b> or <b>F1</b> any time.</div>
+      <div class="kbd-grid">
+        <div><h4>EVERYWHERE</h4>
+          <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> Undo <i>(every app)</i></p>
+          <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> Redo</p>
+          <p><kbd>Ctrl</kbd>+<kbd>S</kbd> Save preset</p>
+          <p><kbd>,</kbd> <kbd>.</kbd> Previous / next preset</p>
+          <p><kbd>Esc</kbd> Close panel · cancel grab / pen</p>
+          <p><kbd>Shift</kbd>+<kbd>Esc</kbd> Turn OFF all monitoring tools</p>
+          <p><kbd>?</kbd> / <kbd>F1</kbd> This sheet</p>
+          <p><kbd>Ctrl</kbd>+<kbd>`</kbd> Fullscreen</p></div>
+        <div><h4>3D STAGE <i>(Photoshop / Blender style)</i></h4>
+          <p><kbd>1</kbd>–<kbd>4</kbd> 3D · Top · Vector · Spectrum</p>
+          <p><kbd>Tab</kbd> Select next sound (<kbd>Shift</kbd> = previous)</p>
+          <p><kbd>←</kbd> <kbd>→</kbd> Move left / right</p>
+          <p><kbd>↑</kbd> <kbd>↓</kbd> Nearer / farther · <kbd>Alt</kbd>+<kbd>↑↓</kbd> height</p>
+          <p><kbd>[</kbd> <kbd>]</kbd> Narrower / wider <i>(like brush size)</i></p>
+          <p><kbd>Shift</kbd> + any of these = fine steps</p>
+          <p><kbd>G</kbd> Grab: sound follows the mouse, click to drop</p>
+          <p><kbd>Home</kbd> Back to centre · <kbd>F</kbd> / <kbd>Ctrl</kbd>+<kbd>0</kbd> Reset view</p>
+          <p><kbd>P</kbd> Pen: draw a motion path · <kbd>Shift</kbd>+<kbd>P</kbd> Play / stop motion</p>
+          <p><kbd>Shift</kbd>+<kbd>Space</kbd> Oscilloscope</p></div>
+        <div><h4>LISTEN &amp; COMPARE</h4>
+          <p><kbd>B</kbd> A/B (loudness-matched original)</p>
+          <p><kbd>D</kbd> Delta (hear only what changed)</p>
+          <p><kbd>H</kbd> Headphones (binaural)</p>
+          <p><kbd>R</kbd> Rooms · <kbd>&lt;</kbd> <kbd>&gt;</kbd> Previous / next room</p>
+          <p><kbd>Shift</kbd>+<kbd>M</kbd> Mono check</p>
+          <p><kbd>Shift</kbd>+<kbd>T</kbd> Translation Tour</p></div>
+        <div><h4>PANELS</h4>
+          <p><kbd>V</kbd> Vault (presets) · <kbd>A</kbd> Assist · <kbd>C</kbd> Character</p>
+          <p><kbd>X</kbd> Pro Tricks · <kbd>L</kbd> Rack Link · <kbd>M</kbd> Matrix</p>
+          <p><kbd>Shift</kbd>+<kbd>L</kbd> Loudness meter pop-up</p>
+          <p><kbd>S</kbd> Sub safe-zone · <kbd>T</kbd> Tooltips · <kbd>O</kbd> Classic display</p>
+          <p><kbd>Shift</kbd>+<kbd>R</kbd> Rear patch bay · <kbd>Shift</kbd>+<kbd>H</kbd> Pointer style</p>
+          <p><kbd>Shift</kbd>+<kbd>A</kbd> Demo player (plays outside your DAW)</p>
+          <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd> Secret menu</p></div>
       </div>
-      <textarea placeholder="Session engineer notes / feedback..." style="width:100%;height:70px;background:#0B0E13;color:var(--text);border:1px solid var(--bezel);padding:6px;font-size:11px;"></textarea>
+      <textarea placeholder="Session engineer notes..." style="width:100%;height:50px;background:#0B0E13;color:var(--text);border:1px solid var(--bezel);padding:6px;font-size:11px;"></textarea>
       <button onclick="document.getElementById('manualModal').classList.remove('open')">CLOSE</button>
     </div>
   </div>
@@ -1074,32 +1110,128 @@
       const b = document.getElementById('curBtn');
       if (b) { b.textContent = m.label; b.classList.toggle('active', cursorIdx !== 0); b.setAttribute('data-tip', m.title); }
     }
+    // ===================== KEYBOARD SHORTCUTS =====================
+    // Borrowed from apps people already know: Ctrl/Cmd+Z/S (everywhere), [ ] size and P pen (Photoshop),
+    // G grab, F frame, 1-4 views (Blender/Maya), Tab next object (3D apps), , . preset browsing.
+    // Space is deliberately NOT used: it belongs to the DAW's play/stop.
+    let stageSelected = null;                          // slot of the orb the keyboard acts on (null = this track)
+    let grabMode = false;
+    function selectedStageObject() {
+      const objs = window._stageObjs || [];
+      return objs.find(o => stageSelected !== null && o.slot === stageSelected) || objs.find(o => o.self) || null;
+    }
+    function nudgeSelected(delta) {
+      const o = selectedStageObject(); if (!o) return;
+      const change = {};
+      if (delta.az)    change.az = ((o.az + delta.az + 540) % 360) - 180;
+      if (delta.el)    change.el = Math.max(-90, Math.min(90, o.el + delta.el));
+      if (delta.dist)  change.dist = Math.max(0.5, Math.min(40, o.dist * Math.pow(2, delta.dist)));
+      if (delta.width) change.width = Math.max(0, Math.min(2, (o.width || 1) + delta.width));
+      if (o.self) emit('stageGesture', { phase: 'begin' });
+      moveObject(o, change);
+      if (o.self) emit('stageGesture', { phase: 'end' });
+      hoverObj = o;
+    }
+    function cycleStageSelection(back) {
+      const objs = (window._stageObjs || []).slice().sort((a, b) => (a.self ? -1 : b.self ? 1 : a.slot - b.slot));
+      if (!objs.length) return;
+      const cur = Math.max(0, objs.indexOf(selectedStageObject()));
+      const next = objs[(cur + (back ? -1 : 1) + objs.length) % objs.length];
+      stageSelected = next.self ? null : next.slot; hoverObj = next;
+      flashHint('Selected: ' + (next.name || next.module || 'track'));
+    }
+    function startGrab() {
+      const o = selectedStageObject(); if (!o || vizMode > 1) return;
+      grabMode = !grabMode;
+      if (grabMode) { if (o.self) emit('stageGesture', { phase: 'begin' }); flashHint('✋ GRAB: move the mouse over the floor, click to drop (Esc cancels)'); }
+      else if (o.self) emit('stageGesture', { phase: 'end' });
+    }
+    window.addEventListener('mousemove', (e) => {
+      if (!grabMode) return;
+      const [mx, my] = canvasPoint(e), p = floorHit(mx, my), o = selectedStageObject();
+      if (p && o) moveObject(o, { az: Math.atan2(p[0], p[2]) * 180 / Math.PI, dist: rToDist(Math.hypot(p[0], p[2])) });
+    });
+    window.addEventListener('mousedown', () => { if (grabMode) { grabMode = false; const o = selectedStageObject(); if (o && o.self) emit('stageGesture', { phase: 'end' }); } }, true);
+    let hintTimer = null;
+    function flashHint(text) {
+      const b = document.getElementById('vizBadge'); b.textContent = text; b.style.color = 'var(--gold)';
+      clearTimeout(hintTimer); hintTimer = setTimeout(() => { b.style.color = ''; updateVizBadge(); }, 2200);
+    }
+    function stepPreset(dir) {
+      if (!pluginPresets || !pluginPresets.length) return;
+      const i = Math.max(-1, pluginPresets.findIndex(p => p.name === currentPreset));
+      const next = pluginPresets[(i + dir + pluginPresets.length) % pluginPresets.length];
+      presetCmd('load', { name: next.name }); flashHint('Preset: ' + next.name);
+    }
+    function stepRoom(dir) {
+      const n = roomList.length + 1, cur = Math.round(state.listen_room || 0), next = (cur + dir + n) % n;
+      setRoom(next); flashHint(next ? '🏛 ' + roomList[next - 1].name : '🏛 Rooms off');
+    }
+    function toggleMonoCheck() {
+      const idx = roomList.findIndex(r => r.name === 'Mono Check') + 1;
+      setRoom(Math.round(state.listen_room || 0) === idx ? 0 : idx); flashHint(Math.round(state.listen_room) === idx ? 'MONO CHECK ON' : 'Mono check off');
+    }
+    function openShortcuts() { document.getElementById('manualModal').classList.add('open'); }
+
     window.addEventListener('keydown', (e) => {
       const tag = (document.activeElement && document.activeElement.tagName) || '';
-      const typing = (tag === 'INPUT' || tag === 'TEXTAREA');
+      const typing = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
+      const mod = e.ctrlKey || e.metaKey;                 // Ctrl on Windows, Cmd on Mac
       if (e.code === 'Escape') {
+        if (e.shiftKey) { e.preventDefault(); monitorOff(false); flashHint('Monitoring tools off'); return; }
+        if (grabMode) { grabMode = false; const o = selectedStageObject(); if (o && o.self) emit('stageGesture', { phase: 'end' }); return; }
+        if (pathDraw) { togglePathDraw(); return; }
         document.getElementById('meterMenu').classList.remove('open');
         document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
         return;
       }
       if (typing) return;
-      if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
-      if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); doRedo(); return; }
-      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'v') { e.preventDefault(); document.getElementById('secretModal').classList.add('open'); return; }
-      if (e.ctrlKey && e.code === 'Backquote') { e.preventDefault(); if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); return; }
-      if (e.shiftKey && e.code === 'Space') { e.preventDefault(); togglePrecision(); return; }
-      if (e.code === 'Space') { e.preventDefault(); toggleEmulatorPlay(); return; }
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
-      if (k === 'h') { e.preventDefault(); cycleCursor(e.shiftKey); }
-      else if (k === 'r') { e.preventDefault(); toggleRear(); }
-      else if (k === 'v') { e.preventDefault(); openVault(); }
-      else if (k === 'm') { e.preventDefault(); openMatrix(); }
-      else if (k === 'a') { e.preventDefault(); openEmulator(); }
-      else if (k === 'p') { e.preventDefault(); toggleMeterPop(); }
-      else if (k === 'o') { e.preventDefault(); toggleClassicOS(); }
-      else if (k === 't') { e.preventDefault(); toggleTooltips(); }
-      else if (k === 's') { e.preventDefault(); toggleSafeZone(); }
+      // --- universal (every app) ---
+      if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
+      if (mod && k === 'y') { e.preventDefault(); doRedo(); return; }
+      if (mod && k === 's') { e.preventDefault(); openVault(); setTimeout(() => document.getElementById('presetName').focus(), 50); return; }
+      if (mod && k === '0') { e.preventDefault(); cam.yaw = 0; cam.pitch = 0.48; cam.zoom = 1; return; }
+      if (mod && e.altKey && k === 'v') { e.preventDefault(); document.getElementById('secretModal').classList.add('open'); return; }
+      if (e.ctrlKey && e.code === 'Backquote') { e.preventDefault(); if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.(); return; }
+      if (e.key === '?' || e.key === 'F1') { e.preventDefault(); openShortcuts(); return; }
+      if (e.shiftKey && e.code === 'Space') { e.preventDefault(); togglePrecision(); return; }
+      if (mod || (e.altKey && !e.key.startsWith('Arrow'))) return;
+
+      // --- 3D stage: Photoshop / Blender style ---
+      const fine = e.shiftKey ? 0.2 : 1;
+      const stageKeys = { ArrowLeft: { az: -5 * fine }, ArrowRight: { az: 5 * fine }, ArrowUp: e.altKey ? { el: 5 * fine } : { dist: -0.25 * fine }, ArrowDown: e.altKey ? { el: -5 * fine } : { dist: 0.25 * fine } };
+      if (stageKeys[e.key]) { e.preventDefault(); nudgeSelected(stageKeys[e.key]); return; }
+      if (e.key === '[' || e.key === '{') { e.preventDefault(); nudgeSelected({ width: -0.05 * (e.shiftKey ? 0.2 : 1) }); return; }
+      if (e.key === ']' || e.key === '}') { e.preventDefault(); nudgeSelected({ width: 0.05 * (e.shiftKey ? 0.2 : 1) }); return; }
+      if (e.key === 'Tab') { e.preventDefault(); cycleStageSelection(e.shiftKey); return; }
+      if (e.key === 'Home') { e.preventDefault(); const o = selectedStageObject(); if (o) { if (o.self) emit('stageGesture', { phase: 'begin' }); moveObject(o, { az: 0, el: 0, dist: 2, width: 1 }); if (o.self) emit('stageGesture', { phase: 'end' }); } return; }
+      if (['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); setVizMode(+e.key - 1); return; }
+      if (e.key === '<' || (e.shiftKey && e.key === ',')) { e.preventDefault(); stepRoom(-1); return; }
+      if (e.key === '>' || (e.shiftKey && e.key === '.')) { e.preventDefault(); stepRoom(1); return; }
+      if (e.key === ',') { e.preventDefault(); stepPreset(-1); return; }
+      if (e.key === '.') { e.preventDefault(); stepPreset(1); return; }
+
+      const shift = e.shiftKey;
+      const act = {
+        g: () => startGrab(),
+        f: () => { cam.yaw = 0; cam.pitch = 0.48; cam.zoom = 1; },
+        p: () => shift ? toggleMotion() : togglePathDraw(),
+        b: () => toggleParamBtn('ab_bypass'),
+        d: () => toggleParamBtn('delta_listen'),
+        h: () => shift ? cycleCursor() : toggleBinaural(),
+        r: () => shift ? toggleRear() : openRooms(),
+        m: () => shift ? toggleMonoCheck() : openMatrix(),
+        t: () => shift ? (openRooms(), toggleTour()) : toggleTooltips(),
+        l: () => shift ? toggleMeterPop() : openRack(),
+        a: () => shift ? toggleEmulatorPlay() : openAssistant(),
+        c: () => openCharacter(),
+        x: () => openPro(),
+        v: () => openVault(),
+        o: () => toggleClassicOS(),
+        s: () => toggleSafeZone(),
+      };
+      if (act[k]) { e.preventDefault(); act[k](); }
     });
 
     function toggleRear() {
