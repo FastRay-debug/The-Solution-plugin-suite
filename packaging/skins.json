@@ -1,0 +1,54 @@
+{
+ "lincoln69": {
+  "name": "Lincoln Continental '69",
+  "group": "Cars"
+ },
+ "camaro71": {
+  "name": "Camaro '71",
+  "group": "Cars"
+ },
+ "mach1": {
+  "name": "Mustang Mach 1",
+  "group": "Cars"
+ },
+ "eviltwin": {
+  "name": "Evil Twin",
+  "group": "Cars"
+ },
+ "eldorado59": {
+  "name": "Eldorado '59",
+  "group": "Cars"
+ },
+ "cuda70": {
+  "name": "'Cuda '70",
+  "group": "Cars"
+ },
+ "gto67": {
+  "name": "GTO '67",
+  "group": "Cars"
+ },
+ "rome": {
+  "name": "Rome",
+  "group": "Places"
+ },
+ "giza": {
+  "name": "Giza",
+  "group": "Places"
+ },
+ "aztec": {
+  "name": "Aztec",
+  "group": "Places"
+ },
+ "serengeti": {
+  "name": "Serengeti",
+  "group": "Places"
+ },
+ "museum": {
+  "name": "Museum",
+  "group": "Places"
+ },
+ "piano": {
+  "name": "Grand Piano",
+  "group": "Places"
+ }
+}

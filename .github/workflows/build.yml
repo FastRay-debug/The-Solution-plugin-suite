@@ -103,6 +103,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$out/Utility" | Out-Null
           Copy-Item "build/SolutionUtility_artefacts/Release/Solution Utility.exe" "$out/Utility" -Force
           if (-not (Test-Path "$out/Utility/Solution Utility.exe")) { throw "Solution Utility was not built" }
+          New-Item -ItemType Directory -Force -Path "$out/SkinEditor" | Out-Null
+          Copy-Item "build/SkinEditor_artefacts/Release/Skin Editor.exe" "$out/SkinEditor" -Force
+          if (-not (Test-Path "$out/SkinEditor/Skin Editor.exe")) { throw "Skin Editor was not built" }
+          Copy-Item "packaging/skins.json" "$out/Skins" -Force
           $n = (Get-ChildItem "$out/VST3" -Directory).Count
           Write-Host "Collected $n VST3 plugins"
           if ($n -ne 13) { throw "Expected 13 VST3 plugins, found $n" }
@@ -116,11 +120,20 @@ jobs:
           & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" TheSolutionInstaller.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
           Get-Item OutputInstaller/The_Solution_Suite_Setup.exe
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" SkinsInstaller.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed (skins)" }
+          Get-Item OutputInstaller/The_Solution_Skins_Setup.exe
 
       - uses: actions/upload-artifact@v7
         with:
           name: TheSolution-Windows-Installer
           path: OutputInstaller/The_Solution_Suite_Setup.exe
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: TheSolution-Windows-Skins-Installer
+          path: OutputInstaller/The_Solution_Skins_Setup.exe
           retention-days: 30
 
   macos:

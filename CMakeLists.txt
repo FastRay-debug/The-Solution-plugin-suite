@@ -247,6 +247,27 @@ target_link_libraries(SolutionUtility PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
 
+# 3c. Skin Editor - its own program (ships with the Skins pack installer; every plugin can launch it)
+juce_add_binary_data(SkinEditorUI HEADER_NAME "SkinEditorData.h" NAMESPACE SkinEditorData SOURCES SkinEditor/editor.html)
+juce_add_gui_app(SkinEditor
+    PRODUCT_NAME      "Skin Editor"
+    COMPANY_NAME      "Billet Audio"
+    BUNDLE_ID         "com.fastraymedia.thesolution.skineditor"
+    NEEDS_WEB_BROWSER TRUE
+    ICON_BIG          "${CMAKE_CURRENT_SOURCE_DIR}/UI/icon.png"
+    ICON_SMALL        "${CMAKE_CURRENT_SOURCE_DIR}/UI/icon.png")
+target_sources(SkinEditor PRIVATE Source/SkinEditorApp.cpp Source/SkinStore.h)
+target_compile_definitions(SkinEditor PRIVATE
+    JUCE_WEB_BROWSER=1
+    JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
+    JUCE_USE_CURL=0
+    JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:SkinEditor,JUCE_PRODUCT_NAME>"
+    JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:SkinEditor,JUCE_VERSION>")
+if(WIN32)
+    target_link_libraries(SkinEditor PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/webview2/build/native/x64/WebView2LoaderStatic.lib")
+endif()
+target_link_libraries(SkinEditor PRIVATE SkinEditorUI juce::juce_gui_extra juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+
 # 4. Automated tests (cmake -B build -DSOLUTION_BUILD_TESTS=ON && cmake --build build --target SuiteTests)
 if(SOLUTION_BUILD_TESTS)
     juce_add_console_app(SuiteTests PRODUCT_NAME "SuiteTests")

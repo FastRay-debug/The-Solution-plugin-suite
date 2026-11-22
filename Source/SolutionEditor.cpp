@@ -203,7 +203,8 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                if (d.getProperty ("cmd", {}).toString() == "set")
                {
                    juce::StringArray pts;
-                   if (auto* a = d.getProperty ("poly", {}).getArray()) for (auto& p : *a) pts.add (juce::String ((double) p[0], 2) + "," + juce::String ((double) p[1], 2));
+                   const auto aHolder = d.getProperty ("poly", {});
+                   if (auto* a = aHolder.getArray()) for (auto& p : *a) pts.add (juce::String ((double) p[0], 2) + "," + juce::String ((double) p[1], 2));
                    audioProcessor.setVoidShape (pts.joinIntoString (";") + "|" + juce::String (audioProcessor.voidRoomShape.height, 2));
                }
                lastVoidGen = -1;
@@ -280,7 +281,8 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                else if (cmd == "restore")
                {
                    juce::StringArray keep;
-                   if (auto* arr = d.getProperty ("keep", {}).getArray()) for (auto& k : *arr) keep.add (k.toString());
+                   const auto arrHolder = d.getProperty ("keep", {});
+                   if (auto* arr = arrHolder.getArray()) for (auto& k : *arr) keep.add (k.toString());
                    audioProcessor.restoreHistory ((int) d.getProperty ("seq", 0), keep);
                }
                else if (cmd == "clear") audioProcessor.clearHistory();
@@ -717,7 +719,8 @@ void SolutionAudioProcessorEditor::handleStage (const juce::String& type, const 
     else if (type == "path")
     {
         std::vector<SolutionDSP::MotionPoint> pts;
-        if (auto* arr = d.getProperty ("points", {}).getArray())
+        const auto arrHolder = d.getProperty ("points", {});
+        if (auto* arr = arrHolder.getArray())
             for (const auto& p : *arr)
                 if (p.isArray() && p.size() >= 3)
                     pts.push_back ({ (float) p[0], (float) p[1], (float) p[2] });

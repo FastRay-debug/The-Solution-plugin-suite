@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skin Editor</title>
+<style>
+  :root { --bg:#080a0e; --panel:#12161f; --gold:#d4af37; --accent:#f59e0b; --accent2:#38bdf8; --bezel:#303846; --text:#f1f5f9; --mute:#94a3b8; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px "Segoe UI", system-ui, sans-serif; height: 100vh; display: grid; grid-template-columns: 250px 1fr 290px; gap: 10px; padding: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--bezel); border-radius: 8px; padding: 10px; overflow-y: auto; min-height: 0; }
+  h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: .12em; color: var(--gold); }
+  button { background: #1c2330; color: var(--text); border: 1px solid var(--bezel); border-radius: 5px; padding: 6px 9px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--gold); } button.primary { background: var(--gold); color: #000; border-color: var(--gold); font-weight: 600; }
+  .lib { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tile { border: 1px solid var(--bezel); border-radius: 5px; overflow: hidden; cursor: pointer; position: relative; }
+  .tile.sel { outline: 2px solid var(--gold); } .tile img { width: 100%; aspect-ratio: 1280/760; object-fit: cover; display: block; background: #000; }
+  .tile span { display: block; font-size: 10px; padding: 3px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .mine { position: absolute; top: 3px; right: 3px; background: var(--gold); color: #000; font-size: 9px; padding: 0 4px; border-radius: 3px; }
+  #stageWrap { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; border: 1px dashed var(--bezel); border-radius: 8px; position: relative; }
+  #stage canvas { max-width: 100%; max-height: 100%; aspect-ratio: 1280/760; cursor: grab; }
+  #drop { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--mute); font-size: 15px; pointer-events: none; text-align: center; }
+  .row { display: grid; grid-template-columns: 82px 1fr 40px; gap: 6px; align-items: center; margin: 5px 0; font-size: 12px; }
+  .row b { font-weight: normal; color: var(--gold); text-align: right; font-size: 11px; }
+  input[type=text] { width: 100%; background: #0b0e14; color: var(--text); border: 1px solid var(--bezel); border-radius: 4px; padding: 6px; }
+  .sw { display: flex; gap: 6px; align-items: center; margin: 4px 0; } .sw input[type=color] { width: 40px; height: 26px; border: 0; background: none; }
+  #msg { color: var(--gold); font-size: 12px; min-height: 16px; }
+  .hint { color: var(--mute); font-size: 11px; line-height: 1.4; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h2>YOUR SKINS</h2>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
+      <button onclick="pick.click()">＋ New from photo</button><button onclick="cmd('import')">Import pack…</button>
+      <button onclick="exportSel()">Export…</button><button onclick="renameSel()">Rename</button><button onclick="deleteSel()">Delete</button><button onclick="cmd('reveal')" title="Open the skins folder">📂</button>
+    </div>
+    <div class="lib" id="lib"></div>
+  </div>
+  <div id="stageWrap">
+    <div id="stage"><canvas id="cv" width="1280" height="760"></canvas><div id="drop">Drop a photo here, or click <b>＋ New from photo</b><br><small>drag to move · scroll to zoom · double-click to fit</small></div></div>
+    <div style="display:flex;gap:10px;align-items:center;"><label class="hint"><input type="checkbox" id="showUi" checked onchange="draw()"> show the plugin's controls on top</label><span id="msg"></span></div>
+  </div>
+  <div class="card">
+    <h2>ADJUST</h2>
+    <div class="row">Brightness <input type="range" id="bri" min="40" max="160" value="100"><b></b></div>
+    <div class="row">Contrast <input type="range" id="con" min="50" max="160" value="100"><b></b></div>
+    <div class="row">Saturation <input type="range" id="sat" min="0" max="200" value="100"><b></b></div>
+    <div class="row">Warmth <input type="range" id="warm" min="0" max="60" value="0"><b></b></div>
+    <div class="row">Blur <input type="range" id="blur" min="0" max="12" value="0"><b></b></div>
+    <div class="row">Vignette <input type="range" id="vig" min="0" max="100" value="40"><b></b></div>
+    <div class="row" title="Darkens behind the controls so labels stay readable">Readability <input type="range" id="dim" min="0" max="80" value="30"><b></b></div>
+    <h2 style="margin-top:12px">COLOURS</h2>
+    <div class="sw"><input type="color" id="acc" value="#f59e0b"> Accent <input type="color" id="acc2" value="#38bdf8"> Second</div>
+    <button onclick="autoAccents()">✨ Pick from the photo</button>
+    <h2 style="margin-top:12px">SAVE</h2>
+    <input type="text" id="name" placeholder="Name (e.g. Vidalia Friday Night)">
+    <div style="display:flex;gap:6px;margin-top:8px;"><button class="primary" onclick="save()">💾 SAVE SKIN</button><button onclick="reset()">Reset</button></div>
+    <p class="hint">Saved skins appear in every Solution plugin's Appearance menu straight away - no restart. Share them with Export (a .solutionskin pack).</p>
+  </div>
+  <input type="file" id="pick" accept="image/*" style="display:none">
+<script>
+  const emit = (n, d) => { if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent(n, d); };
+  const cmd = (c, extra) => emit('skins', Object.assign({ cmd: c }, extra || {}));
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), W = 1280, H = 760;
+  let img = null, zoom = 1, ox = 0, oy = 0, skins = [], sel = null;
+  const val = (id) => +document.getElementById(id).value;
+  function fit() { if (!img) return; zoom = Math.max(W / img.width, H / img.height); ox = (W - img.width * zoom) / 2; oy = (H - img.height * zoom) / 2; draw(); }
+  function render(c, withUi) {
+    c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+    if (img) {
+      c.filter = `brightness(${val('bri')}%) contrast(${val('con')}%) saturate(${val('sat')}%) sepia(${val('warm')}%) blur(${val('blur')}px)`;
+      c.drawImage(img, ox, oy, img.width * zoom, img.height * zoom); c.filter = 'none';
+    }
+    const v = val('vig') / 100; if (v > 0) { const g = c.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.72); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${v})`); c.fillStyle = g; c.fillRect(0, 0, W, H); }
+    const dim = val('dim') / 100; if (dim > 0) { c.fillStyle = `rgba(0,0,0,${dim})`; c.fillRect(0, 0, 230, H); c.fillRect(W - 230, 0, 230, H); c.fillRect(0, 0, W, 52); c.fillRect(0, H - 54, W, 54); }
+    if (withUi) mockUi(c);
+  }
+  function mockUi(c) {   // where the plugin's controls sit, in the chosen colours
+    const a = document.getElementById('acc').value, b = document.getElementById('acc2').value;
+    c.strokeStyle = a; c.lineWidth = 2; c.strokeRect(8, 8, W - 16, 40); c.fillStyle = a; c.font = '600 20px Segoe UI'; c.fillText('THE STAGE · THE SOLUTION', 150, 35);
+    for (const [x, y, r] of [[115, 120, 34], [60, 220, 24], [170, 220, 24], [60, 310, 24], [170, 310, 24], [W - 115, 120, 34], [W - 170, 220, 24], [W - 60, 220, 24], [W - 115, 310, 24]]) {
+      const g = c.createRadialGradient(x - r / 3, y - r / 3, 2, x, y, r); g.addColorStop(0, '#fde68a'); g.addColorStop(1, '#8a6a12'); c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+      c.strokeStyle = a; c.lineWidth = 3; c.beginPath(); c.arc(x, y, r + 6, Math.PI * 0.75, Math.PI * 1.7); c.stroke(); }
+    c.strokeStyle = b; c.lineWidth = 1.5; c.strokeRect(245, 60, W - 490, H - 130);
+    for (let i = 0; i < 3; i++) { c.beginPath(); c.ellipse(W / 2, H * 0.62, 120 + i * 90, 40 + i * 30, 0, 0, 7); c.stroke(); }
+    c.fillStyle = b; for (let i = 0; i < 40; i++) c.fillRect(260 + i * 19, H - 40, 15, 10);
+  }
+  function draw() { render(ctx, document.getElementById('showUi').checked); document.getElementById('drop').style.display = img ? 'none' : 'flex';
+    document.querySelectorAll('.row').forEach(r => { const i = r.querySelector('input'); r.querySelector('b').textContent = i.value; }); }
+  function loadUrl(url) { const im = new Image(); im.onload = () => { img = im; fit(); autoAccents(); }; im.src = url; }
+  document.getElementById('pick').onchange = (e) => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => loadUrl(r.result); r.readAsDataURL(f);
+    document.getElementById('name').value = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '); e.target.value = ''; };
+  const stage = document.getElementById('stage');
+  stage.addEventListener('dragover', (e) => { e.preventDefault(); stage.style.borderColor = 'var(--gold)'; });
+  stage.addEventListener('dragleave', () => stage.style.borderColor = '');
+  stage.addEventListener('drop', (e) => { e.preventDefault(); stage.style.borderColor = ''; const f = e.dataTransfer.files[0]; if (f && f.type.startsWith('image/')) { const r = new FileReader(); r.onload = () => loadUrl(r.result); r.readAsDataURL(f); } });
+  let drag = null;
+  cv.addEventListener('mousedown', (e) => drag = { x: e.clientX, y: e.clientY, ox, oy });
+  window.addEventListener('mousemove', (e) => { if (!drag) return; const s = W / cv.getBoundingClientRect().width; ox = drag.ox + (e.clientX - drag.x) * s; oy = drag.oy + (e.clientY - drag.y) * s; draw(); });
+  window.addEventListener('mouseup', () => drag = null);
+  cv.addEventListener('wheel', (e) => { if (!img) return; e.preventDefault(); const r = cv.getBoundingClientRect(), s = W / r.width, mx = (e.clientX - r.left) * s, my = (e.clientY - r.top) * s;
+    const f = Math.exp(-e.deltaY * 0.0015), minZ = Math.max(W / img.width, H / img.height); const nz = Math.max(minZ, zoom * f); ox = mx - (mx - ox) * nz / zoom; oy = my - (my - oy) * nz / zoom; zoom = nz; draw(); }, { passive: false });
+  cv.addEventListener('dblclick', fit);
+  document.querySelectorAll('input[type=range], input[type=color]').forEach(i => i.addEventListener('input', draw));
+  function autoAccents() {   // two vivid, different colours from the photo (quick k-means on a thumbnail)
+    if (!img) return; const t = document.createElement('canvas'); t.width = 64; t.height = 38; const c = t.getContext('2d'); c.drawImage(img, 0, 0, 64, 38);
+    const px = c.getImageData(0, 0, 64, 38).data, pts = [];
+    for (let i = 0; i < px.length; i += 4) { const r = px[i], g = px[i + 1], b = px[i + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b); if (mx - mn > 50 && mx > 90) pts.push([r, g, b]); }
+    if (pts.length < 4) return;
+    let cents = [pts[0], pts[Math.floor(pts.length / 2)], pts[pts.length - 1]];
+    for (let it = 0; it < 8; it++) { const sum = cents.map(() => [0, 0, 0, 0]);
+      pts.forEach(p => { let best = 0, bd = 1e9; cents.forEach((c2, k) => { const d = (p[0] - c2[0]) ** 2 + (p[1] - c2[1]) ** 2 + (p[2] - c2[2]) ** 2; if (d < bd) { bd = d; best = k; } }); const s = sum[best]; s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; s[3]++; });
+      cents = sum.map((s, k) => s[3] ? [s[0] / s[3], s[1] / s[3], s[2] / s[3], s[3]] : cents[k]); }
+    const vivid = (c2) => (Math.max(...c2.slice(0, 3)) - Math.min(...c2.slice(0, 3))) * Math.sqrt(c2[3] || 1);
+    cents.sort((a, b) => vivid(b) - vivid(a));
+    const hex = (c2) => '#' + c2.slice(0, 3).map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+    const hue = (c2) => { const [r, g, b2] = c2.map(v => v / 255), mx = Math.max(r, g, b2), mn = Math.min(r, g, b2), d = mx - mn; if (!d) return 0;
+      const h = mx === r ? ((g - b2) / d) % 6 : mx === g ? (b2 - r) / d + 2 : (r - g) / d + 4; return (h * 60 + 360) % 360; };
+    const lift = (c2) => { const m = Math.max(...c2.slice(0, 3)); return c2.slice(0, 3).map(v => v * 235 / Math.max(1, m)); };   // bright enough to read
+    const first = lift(cents[0]);
+    let second = cents.slice(1).map(lift).find(c2 => { const dh = Math.abs(hue(c2) - hue(first)); return Math.min(dh, 360 - dh) > 50; });
+    if (!second) { const h = (hue(first) + 180) % 360, k = (n) => { const x = (n + h / 60) % 6; return 235 * (1 - Math.max(0, Math.min(x, 4 - x, 1)) * 0.75); }; second = [k(5), k(3), k(1)]; }   // complement
+    document.getElementById('acc').value = hex(first); document.getElementById('acc2').value = hex(second); draw();
+  }
+  function save() {
+    const name = document.getElementById('name').value.trim(); if (!img) return say('Open a photo first.'); if (!name) return say('Give it a name first.');
+    const out = document.createElement('canvas'); out.width = W; out.height = H; render(out.getContext('2d'), false);
+    cmd('save', { name, jpeg: out.toDataURL('image/jpeg', 0.9), accent: document.getElementById('acc').value, accent2: document.getElementById('acc2').value });
+  }
+  function reset() { ['bri', 'con', 'sat'].forEach(i => document.getElementById(i).value = 100); document.getElementById('warm').value = 0; document.getElementById('blur').value = 0; document.getElementById('vig').value = 40; document.getElementById('dim').value = 30; fit(); draw(); }
+  function say(t) { document.getElementById('msg').textContent = t; clearTimeout(say.t); say.t = setTimeout(() => document.getElementById('msg').textContent = '', 5000); }
+  function renderLib() {
+    document.getElementById('lib').innerHTML = skins.map(s => `<div class="tile${s.key === sel ? ' sel' : ''}" onclick="selectSkin('${s.key}')" ondblclick="editSkin('${s.key}')" title="Double-click to edit a copy">
+      <img src="/skin/${s.key}.jpg" loading="lazy">${s.custom ? '<em class="mine">MINE</em>' : ''}<span>${(s.name || s.key).replace(/</g, '&lt;')}</span></div>`).join('') || '<p class="hint">No skins found yet.</p>';
+  }
+  function selectSkin(k) { sel = k; renderLib(); }
+  function editSkin(k) { const s = skins.find(x => x.key === k); loadUrl('/skin/' + k + '.jpg'); document.getElementById('name').value = (s && s.name ? s.name : k) + (s && s.custom ? '' : ' (mine)');
+    if (s && s.accent) { document.getElementById('acc').value = s.accent; document.getElementById('acc2').value = s.accent2 || '#38bdf8'; } }
+  const mine = () => skins.find(x => x.key === sel && x.custom);
+  function deleteSel() { const s = mine(); if (!s) return say('Pick one of your own skins.'); if (confirm('Delete "' + s.name + '"?')) cmd('delete', { key: s.key }); }
+  function renameSel() { const s = mine(); if (!s) return say('Pick one of your own skins.'); const n = prompt('New name', s.name); if (n) cmd('rename', { key: s.key, name: n }); }
+  function exportSel() { const ks = sel && mine() ? [sel] : skins.filter(x => x.custom).map(x => x.key); if (!ks.length) return say('Make a skin first.'); cmd('export', { keys: ks }); }
+  document.addEventListener('keydown', (e) => { const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+    if (mod && k === 's') { e.preventDefault(); save(); } else if (mod && k === 'o') { e.preventDefault(); document.getElementById('pick').click(); }
+    else if (mod && k === 'e') { e.preventDefault(); exportSel(); } else if (mod && k === 'i') { e.preventDefault(); cmd('import'); }
+    else if (e.key === 'Delete' && document.activeElement.tagName !== 'INPUT') deleteSel(); else if (e.key === 'F2') renameSel(); else if (k === '0' && mod) { e.preventDefault(); fit(); } });
+  if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.addEventListener('skinList', (m) => { skins = m.skins || []; renderLib(); if (m.message) say(m.message); });
+  cmd('list'); draw();
+</script>
+</body>
+</html>

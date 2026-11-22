@@ -10,6 +10,7 @@
 
 #include "../Source/ModuleEngines.h"
 #include "../Source/SolutionProcessor.h"
+#include "../Source/SkinStore.h"
 #include "../Source/SystemMonitor.h"
 #include "../Source/Vendor.h"
 #include "../Source/VoiceCommands.h"
@@ -2368,6 +2369,24 @@ static void testSidechainLink()
     sender->setPlayHead (nullptr);
 }
 
+
+static void testSkinStore()
+{
+    std::printf ("Skin library: save, rename, pack export / import, delete\n");
+    auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("solution_skins_test"); dir.deleteRecursively();
+    juce::MemoryBlock jpg; { juce::Image img (juce::Image::RGB, 64, 38, true); juce::Graphics g (img); g.fillAll (juce::Colours::orange); juce::MemoryOutputStream mo; juce::JPEGImageFormat f; f.writeImageToStream (img, mo); jpg = mo.getMemoryBlock(); }
+    const auto key = SolutionSkins::save (dir, "Vidalia Night", jpg.getData(), jpg.getSize(), "#ff8800", "nope");
+    EXPECT (key == "custom_vidalia_night" && dir.getChildFile (key + ".jpg").existsAsFile(), "saved as %s", key.toRawUTF8());
+    EXPECT (SolutionSkins::readList (dir)[0]["accent2"].toString() == "#38BDF8", "bad colours fall back safely");
+    EXPECT (SolutionSkins::rename (dir, key, "Vidalia Friday Night") && SolutionSkins::readList (dir)[0]["name"].toString() == "Vidalia Friday Night", "rename");
+    const auto pack = dir.getSiblingFile ("test.solutionskin");
+    EXPECT (SolutionSkins::exportPack (dir, juce::StringArray (key), pack) && pack.getSize() > 100, "pack exported");
+    EXPECT (SolutionSkins::remove (dir, key) && ! dir.getChildFile (key + ".jpg").exists() && SolutionSkins::readList (dir).size() == 0, "deleted");
+    EXPECT (! SolutionSkins::remove (dir, "../../etc"), "refuses anything that isn't one of your skins");
+    EXPECT (SolutionSkins::importPack (dir, pack) == 1 && dir.getChildFile (key + ".jpg").existsAsFile(), "pack imported back");
+    dir.deleteRecursively(); pack.deleteFile();
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2525,6 +2544,7 @@ int main()
     testLandCore();
     testBridgeHosting();
     testSidechainLink();
+    testSkinStore();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

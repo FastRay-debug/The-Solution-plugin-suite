@@ -35,7 +35,7 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 
 ### Features
 - ✅ Mobile Skin Studio: phone camera/library → frame, brightness/contrast/warmth, auto LED colours → sent to the plugin (live), saved for every Solution plugin
-- ☐ Skin Editor as its own program (separate installer), launchable from every plugin (launcher already wired)
+- ✅ Skin Editor is its own program (Skin Editor.exe): library of bundled + your skins with thumbnails; new from photo (open / drag-drop), drag to frame, scroll to zoom; brightness, contrast, saturation, warmth, blur, vignette, readability; auto accent colours from the photo (two distinct hues); live preview of the plugin controls on top; save straight into the shared Skins folder (open plugins pick it up instantly); rename / delete; export / import .solutionskin packs; Ctrl+S / Ctrl+O / Ctrl+E / Ctrl+I / F2 / Del. Launched by every plugin's Skin Editor button. Separate installer (The_Solution_Skins_Setup.exe) with a checkbox per skin; the suite installer keeps only the default skin
 - ✅ Head tracking for binaural: OSC trackers + phone apps (GyrOSC, ZIG SIM, Sensors2OSC; IEM/SPARTA ypr/quaternion), phone remote page sensors, gamepad/joystick; recentre Ctrl+Alt+H; 3D head follows
 - ✅ Drone telemetry: flight-log CSV (lat/lon/alt) becomes a sound's motion path
 - ☐ Webcam face tracking; native VR headset (OpenXR) output
