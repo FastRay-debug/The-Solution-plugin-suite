@@ -1077,7 +1077,7 @@ void SolutionAudioProcessor::updateLatencyNow()
                        + (offloadActive.load() && offload != nullptr ? offload->getLatency() : 0));
 }
 
-bool SolutionAudioProcessor::connectOffload (const juce::String& host, int port, int latencySamples, juce::String& error)
+bool SolutionAudioProcessor::connectOffload (const juce::String& host, int port, int latencyBudget, juce::String& error)
 {
     disconnectOffload();
     auto client = std::make_unique<SolutionNet::OffloadClient>();
