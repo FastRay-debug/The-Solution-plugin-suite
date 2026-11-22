@@ -41,6 +41,10 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ☐ Webcam face tracking; native VR headset (OpenXR) output
 - ✅ Adaptive Learning (suggest only, local file): your usual values per module, "you usually adjust B after A", favourite controls → macro keys; Apply / Not now / Never; on/off, what it learned, forget everything
 - ✅ AI Analyze hub (A, then 1-6): Mix Match (reference/genre) · Spatial Optimization (spreads tracks sharing frequencies, centres bass & dialogue, narrows wide lows; applies across the rack, undoable) · Intelligent Dialogue Ducking (notch follows where the dialogue tracks carry their words, 0.9-4.5 kHz) · Cinematic Cue Tracking (snapshots at timeline positions with SMPTE incl. 29.97 drop-frame, smooth crossfades; Ctrl+Alt+K / voice "cue") · Emotional Resonance Mapping (key mode, brightness, loudness, hit rate -> valence/arousal; optional gentle drive/space/width follow) · Smart Metadata Embedding (records each track's 3D path; writes ADM axml + chna + iXML into a copy of a bounced WAV, or JSON + ADM XML sidecars)
+- ✅ Voice transport keys auto-detected for the DAW in use (host name + program file): Ableton, FL, Reaper, Cubase/Nuendo, Studio One, Pro Tools, LUNA, Bitwig, Cakewalk, Reason, Waveform, Mixbus/Ardour, Samplitude, Audition, Acid, Vegas, Mixcraft, Renoise, DP (Logic/GarageBand with the Mac version); edits remembered per DAW
+- ☐ Holograms show each module's real response curve (EQ/filters/M-S) live, over the spectrum
+- ☐ Auto Safe Mode (Gemini): beginner limiter that holds back extreme drive/clipping
+- ☐ Check / finish the three-way look switch: custom GUI / Vanilla / Classic OS
 - ☐ Interactive Foley synthesizer from picture (Gemini idea - needs a video input; pairs with The Aether)
 - ✅ LAN / local DSP server (AudioGridder-style): Solution Utility runs a DSP Node (auto-discovered on the LAN / this PC); plugins offload with a chosen latency (reported to the DAW), state kept in sync, automatic fallback to local; output matches local processing exactly
 - ✅ Voice: choose the microphone source (Voice settings → Microphone; saved, falls back to the Windows default)

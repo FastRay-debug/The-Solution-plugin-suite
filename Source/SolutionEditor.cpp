@@ -449,6 +449,12 @@ void SolutionAudioProcessorEditor::handleFullscreen (const juce::var& data)
     });
 }
 
+// Custom transport keys are remembered per DAW, so the same session opened in another DAW uses that DAW's keys.
+juce::String SolutionAudioProcessorEditor::voiceKeysProp()
+{
+    return "voiceKeys_" + juce::String::toHexString (SolutionVoice::hostIdentity().trim().toLowerCase().hashCode64());
+}
+
 juce::String SolutionAudioProcessorEditor::baseUrl() const
 {
     const auto escapedName = juce::URL::addEscapeChars (juce::String (SOLUTION_MODULE_NAME), true);
@@ -1092,7 +1098,7 @@ void SolutionAudioProcessorEditor::sendDiagnostics()
     auto* o = payload.getDynamicObject();
     o->setProperty ("plugins", diagPluginList());
     o->setProperty ("log", diagLog);
-    o->setProperty ("host", juce::String (juce::PluginHostType().getHostDescription()));
+    o->setProperty ("host", SolutionVoice::hostIdentity().trim());
     o->setProperty ("sampleRate", audioProcessor.getSampleRate());
     o->setProperty ("blockSize", audioProcessor.getBlockSize());
     emitToViews ("diagData", payload);
@@ -1169,15 +1175,15 @@ void SolutionAudioProcessorEditor::handleVoice (const juce::var& data)
     }
     else if (cmd == "keys")
     {
-        audioProcessor.setUiProperty ("voiceKeys", juce::JSON::toString (data.getProperty ("value", {}), true));
+        audioProcessor.setUiProperty (voiceKeysProp(), juce::JSON::toString (data.getProperty ("value", {}), true));
     }
     else if (cmd == "defaults")
     {
-        const auto k = SolutionVoice::defaultTransportKeys (juce::PluginHostType().getHostDescription());
+        const auto k = SolutionVoice::defaultTransportKeys (SolutionVoice::hostIdentity());
         juce::DynamicObject::Ptr o = new juce::DynamicObject();
-        o->setProperty ("host", juce::String (juce::PluginHostType().getHostDescription()));
+        o->setProperty ("host", SolutionVoice::hostIdentity().trim());
         o->setProperty ("play", k.play); o->setProperty ("stop", k.stop); o->setProperty ("record", k.record); o->setProperty ("start", k.start); o->setProperty ("loop", k.loop);
-        o->setProperty ("saved", juce::JSON::parse (audioProcessor.getUiProperty ("voiceKeys")));
+        o->setProperty ("saved", juce::JSON::parse (audioProcessor.getUiProperty (voiceKeysProp())));
         o->setProperty ("wake", audioProcessor.getUiProperty ("voiceWake") != "0");
         emitToViews ("voiceDefaults", juce::var (o.get()));
     }
@@ -1241,8 +1247,8 @@ juce::String SolutionAudioProcessorEditor::executeVoice (const SolutionVoice::Co
         {
             const bool playing = audioProcessor.hostPlaying.load();
             if ((c.action == "play" && playing) || (c.action == "stop" && ! playing)) return {};   // already there
-            const auto keys = SolutionVoice::defaultTransportKeys (juce::PluginHostType().getHostDescription());
-            const auto saved = juce::JSON::parse (audioProcessor.getUiProperty ("voiceKeys"));
+            const auto keys = SolutionVoice::defaultTransportKeys (SolutionVoice::hostIdentity());
+            const auto saved = juce::JSON::parse (audioProcessor.getUiProperty (voiceKeysProp()));
             const auto custom = saved.getProperty (c.action, {}).toString();
             const auto key = custom.isNotEmpty() ? custom
                            : c.action == "play" ? keys.play : c.action == "stop" ? keys.stop : c.action == "record" ? keys.record : c.action == "start" ? keys.start : keys.loop;

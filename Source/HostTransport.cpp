@@ -9,6 +9,13 @@
 
 namespace SolutionVoice
 {
+juce::String hostIdentity()
+{
+    // JUCE's host name plus the host program's file name (catches DAWs JUCE doesn't know by name, e.g. LUNA).
+    return juce::String (juce::PluginHostType().getHostDescription()) + " "
+         + juce::File::getSpecialLocation (juce::File::hostApplicationPath).getFileNameWithoutExtension();
+}
+
 TransportKeys defaultTransportKeys (const juce::String& host)
 {
     const auto h = host.toLowerCase();
@@ -22,6 +29,20 @@ TransportKeys defaultTransportKeys (const juce::String& host)
     if (h.contains ("pro tools"))                       return { "Space", "Space", "Ctrl+Space", "Enter", "Ctrl+Shift+L" };
     if (h.contains ("luna"))                            return { "Space", "Space", "R", "Home", "L" };      // UAD LUNA (verify in Voice settings)
     if (h.contains ("bitwig"))                          return { "Space", "Space", "Shift+Space", "Home", "Ctrl+L" };
+    if (h.contains ("cakewalk") || h.contains ("sonar")) return { "Space", "Space", "R", "W", "L" };
+    if (h.contains ("reason"))                          return { "Space", "Space", "NumpadMultiply", "NumpadDecimal", "L" };
+    if (h.contains ("waveform") || h.contains ("tracktion")) return { "Space", "Space", "R", "Home", "L" };
+    if (h.contains ("mixbus") || h.contains ("ardour")) return { "Space", "Space", "Shift+R", "Home", "L" };
+    if (h.contains ("samplitude") || h.contains ("sequoia")) return { "Space", "Space", "R", "Home", "L" };
+    if (h.contains ("audition"))                        return { "Space", "Space", "Shift+Space", "Home", "Ctrl+L" };
+    if (h.contains ("acid"))                            return { "Space", "Space", "Ctrl+R", "Ctrl+Home", "Q" };
+    if (h.contains ("vegas"))                           return { "Space", "Space", "Ctrl+R", "Ctrl+Home", "Q" };
+    if (h.contains ("mixcraft"))                        return { "Space", "Space", "R", "Home", "L" };
+    if (h.contains ("renoise"))                         return { "Space", "Space", "Esc", "Home", "" };
+    if (h.contains ("digital performer") || h.contains ("motu")) return { "Space", "Space", "NumpadMultiply", "NumpadEnter", "" };
+    if (h.contains ("logic"))                           return { "Space", "Space", "R", "Enter", "C" };
+    if (h.contains ("garageband"))                      return { "Space", "Space", "R", "Home", "C" };
+    // Unknown host: the keys most DAWs share. Every key can be changed in Voice settings.
     return { "Space", "Space", "R", "Home", "L" };
 }
 

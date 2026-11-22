@@ -15,6 +15,7 @@ public:
     void resized() override;
 
 private:
+    static juce::String voiceKeysProp();
     void sendAiState();
     void emitMeta (const juce::String& message);
     bool aiPanelOpen = false;

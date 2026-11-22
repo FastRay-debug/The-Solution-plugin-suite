@@ -3,6 +3,7 @@
 // Plugins can't start/stop a host's transport directly, so voice commands bring the DAW window to the
 // front and send the shortcut it already uses. Defaults per DAW, every key editable by the user.
 #include <juce_core/juce_core.h>
+#include <juce_audio_processors/juce_audio_processors.h>
 
 namespace SolutionVoice
 {
@@ -10,6 +11,7 @@ namespace SolutionVoice
 
     // Best-known defaults for the DAW we're running in (hostDescription from PluginHostType).
     TransportKeys defaultTransportKeys (const juce::String& hostDescription);
+    juce::String hostIdentity();     // "the DAW we're running in": host name + program file name
 
     // Parses "Ctrl+Shift+R", "Space", "F9", "NumpadMultiply", "Home", "Enter"... and presses it in the
     // window that owns nativeWindow (the plugin's editor). Returns false if unsupported here.
