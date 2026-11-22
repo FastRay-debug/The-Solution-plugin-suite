@@ -36,6 +36,7 @@
 #include "BunkerCore.h"
 #include "AnchorCore.h"
 #include "AetherCore.h"
+#include "MosaicCore.h"
 #include <thread>
 #include <atomic>
 #include <array>
@@ -215,8 +216,17 @@ public:
 
     // Stem Focus adds latency only while it's on; the host is told on the message thread.
     void updateLatencyNow();
-    int getBaseLatency() const { return moduleEngine.getLatencySamples() + anchorLatency() + ceilingLimiter.getLatency(); }
+    int getBaseLatency() const { return moduleEngine.getLatencySamples() + anchorLatency() + mosaicLatency() + ceilingLimiter.getLatency(); }
     int anchorLatency() const { return moduleId == SolutionDSP::ModuleId::Anchor ? anchorCore.getLatency() : 0; }
+    SolutionDSP::ModuleId getModuleId() const { return moduleId; }
+    bool mosaicActive() const { return moduleId == SolutionDSP::ModuleId::Mosaic && apvts.getRawParameterValue ("mosaic_on")->load() > 0.5f; }
+    int mosaicLatency() const { return mosaicLatencyOn ? SolutionDSP::MosaicCore::latency() : 0; }
+    // Mosaic: capture what's playing into a corner of the pad / read the corners back (message thread)
+    void captureMosaicNode (int i) { mosaicCore.setNode (i, mosaicCore.liveFingerprint()); saveMosaicNodes(); }
+    void resetMosaicNode (int i) { mosaicCore.setNode (i, SolutionDSP::MosaicCore::preset (i)); saveMosaicNodes(); }
+    juce::var mosaicNodesJson() const;
+    void saveMosaicNodes();
+    void loadMosaicNodes();
 
     // Which mic did the measuring (message thread). Changing it refits the correction instantly.
     const SolutionDSP::MicProfile& getMicProfile() const { return micProfile; }
@@ -257,6 +267,9 @@ public:
     SolutionDSP::BunkerCore bunkerCore;
     SolutionDSP::AnchorCore anchorCore;
     SolutionDSP::AetherCore aetherCore;
+    SolutionDSP::MosaicCore mosaicCore;
+    std::atomic<float> mosaicTransient { 0.0f };
+    bool mosaicLatencyOn = false;                              // what the reported latency currently includes
     std::atomic<int> aetherGrains { 0 };
     std::atomic<float> aetherDuck { 1.0f };
     std::atomic<double> hostBpm { 120.0 };
@@ -292,7 +305,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 23;  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 24;  // v24: The Mosaic spectral morph  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -324,8 +337,9 @@ private:
         markParamsChanged();
         offloadStateDirty = true;
         if (id == "limiter_lookahead") { lookaheadChanged = true; triggerAsyncUpdate(); }
+        if (id == "mosaic_on") { mosaicChanged = true; triggerAsyncUpdate(); }
     }
-    std::atomic<bool> lookaheadChanged { false };
+    std::atomic<bool> lookaheadChanged { false }, mosaicChanged { false };
     double limiterLookaheadMs() const { return apvts.getRawParameterValue ("limiter_lookahead")->load() > 0.5f ? 5.0 : 1.5; }
 
     std::atomic<bool> paramsChanged { true };
@@ -427,6 +441,14 @@ private:
         {
             suspendProcessing (true);
             ceilingLimiter.prepare (preparedSampleRate, limiterLookaheadMs());
+            suspendProcessing (false);
+        }
+        // Spectral morph switched on/off: its 4096-sample latency comes and goes with it (dry path follows).
+        if (mosaicChanged.exchange (false) && preparedSampleRate > 0.0 && mosaicActive() != mosaicLatencyOn)
+        {
+            suspendProcessing (true);
+            mosaicLatencyOn = mosaicActive(); mosaicCore.reset();
+            dryDelay.prepare (2, moduleEngine.getLatencySamples() + anchorLatency() + mosaicLatency());
             suspendProcessing (false);
         }
         updateLatencyNow();

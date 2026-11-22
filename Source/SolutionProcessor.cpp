@@ -222,6 +222,32 @@ juce::String SolutionAudioProcessor::exportMetadataSidecars (const juce::File& b
     return {};
 }
 
+juce::var SolutionAudioProcessor::mosaicNodesJson() const
+{
+    juce::Array<juce::var> nodes;
+    for (int i = 0; i < 4; ++i) { juce::Array<juce::var> v; for (auto x : mosaicCore.getNode (i)) v.add (std::round (x * 10.0f) / 10.0f); nodes.add (v); }
+    juce::Array<juce::var> live; for (auto x : mosaicCore.liveFingerprint()) live.add (std::round (x * 10.0f) / 10.0f);
+    juce::DynamicObject::Ptr o = new juce::DynamicObject(); o->setProperty ("nodes", nodes); o->setProperty ("live", live);
+    return juce::var (o.get());
+}
+void SolutionAudioProcessor::saveMosaicNodes()
+{
+    juce::StringArray rows;
+    for (int i = 0; i < 4; ++i) { juce::StringArray v; for (auto x : mosaicCore.getNode (i)) v.add (juce::String (x, 2)); rows.add (v.joinIntoString (",")); }
+    apvts.state.setProperty ("mosaicNodes", rows.joinIntoString (";"), nullptr);
+}
+void SolutionAudioProcessor::loadMosaicNodes()
+{
+    const auto rows = juce::StringArray::fromTokens (apvts.state.getProperty ("mosaicNodes").toString(), ";", "");
+    for (int i = 0; i < 4; ++i)
+    {
+        if (i >= rows.size()) { mosaicCore.setNode (i, SolutionDSP::MosaicCore::preset (i)); continue; }
+        auto v = juce::StringArray::fromTokens (rows[i], ",", ""); SolutionDSP::MosaicCore::Print p {};
+        for (int b = 0; b < SolutionDSP::MosaicCore::numBands && b < v.size(); ++b) p[(size_t) b] = v[b].getFloatValue();
+        mosaicCore.setNode (i, v.size() == SolutionDSP::MosaicCore::numBands ? p : SolutionDSP::MosaicCore::preset (i));
+    }
+}
+
 // ===================== Test-tone analyser =====================
 std::unique_ptr<SolutionAudioProcessor> SolutionAudioProcessor::makeMeasurementCopy()
 {
@@ -492,6 +518,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v24: The Mosaic spectral morph (off by default; adds 4096 samples of latency only while on)
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "mosaic_on", 24 },       "Spectral Morph", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "mosaic_morph", 24 },    "Morph (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 60.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "mosaic_x", 24 },        "Morph X", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "mosaic_y", 24 },        "Morph Y", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "mosaic_preserve", 24 }, "Transient Preserve (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 60.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mosaic_fft", 24 },      "Morph FFT Size", juce::StringArray { "1024", "2048", "4096" }, 1));
     // --- v23: The Aether - particle cloud + delay (both mixes 0 by default: the original Aether sound)
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_cloud", 23 }, "Particle Cloud (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_x", 23 }, "Cloud Texture", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
@@ -680,6 +713,8 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     bunkerCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     anchorCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Aether) aetherCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    if (moduleId == SolutionDSP::ModuleId::Mosaic) mosaicCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    mosaicLatencyOn = mosaicActive();
     dcGuardIn.prepare (sampleRate);
     voiceDetector.prepare (sampleRate);
     dialogueDucker.prepare (sampleRate);
@@ -691,7 +726,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 };
     moduleEngine.prepare (spec);
     dryCopy.setSize (2, samplesPerBlock, false, true, true);
-    dryDelay.prepare (2, moduleEngine.getLatencySamples() + anchorLatency());
+    dryDelay.prepare (2, moduleEngine.getLatencySamples() + anchorLatency() + mosaicLatency());
     ceilingLimiter.prepare (sampleRate, limiterLookaheadMs());
     glue.prepare (sampleRate);
     roomCorrector.prepare (sampleRate);
@@ -1119,6 +1154,16 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             anchorDistPct.store (anchorCore.getDistortionPct(), std::memory_order_relaxed);
             anchorCrestLost.store (anchorCore.getCrestLostDb(), std::memory_order_relaxed);
             anchorVerdict.store (ap.on ? anchorCore.verdict() : -1, std::memory_order_relaxed);
+        }
+        if (moduleId == SolutionDSP::ModuleId::Mosaic && mosaicLatencyOn)
+        {
+            SolutionDSP::MosaicCore::Params mp;
+            mp.morph = apvts.getRawParameterValue ("mosaic_morph")->load() / 100.0f;
+            mp.x = apvts.getRawParameterValue ("mosaic_x")->load(); mp.y = apvts.getRawParameterValue ("mosaic_y")->load();
+            mp.preserve = apvts.getRawParameterValue ("mosaic_preserve")->load() / 100.0f;
+            mp.sizeIndex = (int) apvts.getRawParameterValue ("mosaic_fft")->load();
+            mosaicCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, mp);
+            mosaicTransient.store (mosaicCore.lastTransient(), std::memory_order_relaxed);
         }
         if (moduleId == SolutionDSP::ModuleId::Aether)
         {
@@ -1916,6 +1961,7 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
     apvts.replaceState (tree);
     setCcMapString (apvts.state.getProperty ("midimap").toString());
     cueList.fromString (apvts.state.getProperty ("cues").toString());
+    loadMosaicNodes(); mosaicChanged = true; triggerAsyncUpdate();
     trajectory.fromString (apvts.state.getProperty ("traj").toString()); trajectoryDirty = true;
     if (apvts.state.hasProperty ("history")) history.fromString (apvts.state.getProperty ("history").toString());
     else history.rebaseline();                                          // a loaded session is not an edit

@@ -769,6 +769,13 @@
           <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
           <label style="display:flex;gap:2px;align-items:center;" data-tip="WIDE: let the lift's skirt also fill 15-30 Hz. Off = true infrasonics only (the original trick). Shift+I"><input type="checkbox" data-sync="infra_lift_wide" onchange="bind('infra_lift_wide', this.checked ? 1 : 0, '', 1)">WIDE</label>
         </div>
+        <div id="mosaicCore" style="display:none;flex-direction:column;gap:3px;font-size:9px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
+            <label style="display:flex;gap:3px;align-items:center;" data-tip="Spectral morph (adds 85 ms of latency while on - your DAW compensates)"><input type="checkbox" data-sync="mosaic_on" onchange="bind('mosaic_on', this.checked ? 1 : 0, '', 1)">▦ SPECTRAL MORPH</label>
+            <select data-sync="mosaic_fft" onchange="bind('mosaic_fft', +this.value, '', 1)" style="font-size:9px;" data-tip="FFT size: 1024 = tighter in time, 4096 = finer in frequency"><option value="0">1024</option><option value="1">2048</option><option value="2">4096</option></select></div>
+          <canvas id="moXY" width="190" height="96" style="width:100%;height:96px;border:1px solid var(--bezel);border-radius:4px;cursor:crosshair;background:#05070a;" tabindex="0" data-tip="Drag between the four corners. Gold = where the sound is being pushed, blue = what's playing now. Right-click a corner to capture what's playing into it (or reset it)."></canvas>
+          <div class="bk-row" data-tip="How far the sound moves toward the pad position"><span>MORPH</span><input type="range" data-sync="mosaic_morph" min="0" max="100" step="1" value="60" oninput="bind('mosaic_morph', +this.value, '', 1); bkShow('mosaic_morph', +this.value)" ondblclick="this.value=60; bind('mosaic_morph', 60, '', 1); bkShow('mosaic_morph', 60)"><b id="v-mosaic_morph">60%</b></div><div class="bk-row" data-tip="Transient preservation: hits keep their own shape"><span>HITS</span><input type="range" data-sync="mosaic_preserve" min="0" max="100" step="1" value="60" oninput="bind('mosaic_preserve', +this.value, '', 1); bkShow('mosaic_preserve', +this.value)" ondblclick="this.value=60; bind('mosaic_preserve', 60, '', 1); bkShow('mosaic_preserve', 60)"><b id="v-mosaic_preserve">60%</b></div>
+        </div>
         <div id="aetherCore" style="display:none;flex-direction:column;gap:2px;font-size:9px;">
           <div style="display:flex;justify-content:space-between;color:var(--gold);letter-spacing:.08em;"><span>✦ PARTICLE CLOUD</span><span id="aeGrains" style="color:var(--mute)"></span></div>
           <canvas id="aeXY" width="190" height="80" style="width:100%;height:80px;border:1px solid var(--bezel);border-radius:4px;cursor:crosshair;background:#05070a;" data-tip="XY pad: left-right = grain size (texture), down-up = density. Drag it."></canvas>
@@ -2450,7 +2457,7 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
-        if (/^(bunker|anchor|aether)_/.test(id) && typeof bkShow === 'function') bkShow(id, v);
+        if (/^(bunker|anchor|aether|mosaic)_/.test(id) && typeof bkShow === 'function') bkShow(id, v);
         if (id === 'transient_attack' || id === 'transient_sustain') document.getElementById('v-' + id).textContent = (v > 0 ? '+' : '') + Math.round(v) + '%';
         if (id === 'dialogue_duck_db') document.getElementById('v-dialogue_duck_db').textContent = (+v).toFixed(1) + ' dB';
         if (id === 'infra_lift_db') document.getElementById('v-infra_lift_db').textContent = '+' + (+v).toFixed(1) + ' dB';
@@ -4355,6 +4362,32 @@
     // ---------- fullscreen panels ----------
     const IS_POPOUT = params.get('popout') === '1';
     if (/anchor/i.test(params.get('module') || '')) document.getElementById('anchorCore').style.display = 'flex';   // The Anchor only
+    if (/mosaic/i.test(params.get('module') || '')) { document.getElementById('mosaicCore').style.display = 'flex'; startMosaicPad(); }   // The Mosaic only
+    function startMosaicPad() {
+      const cv = document.getElementById('moXY'); let drag = false, nodes = null, live = null;
+      const names = ['AIR', 'WARM', 'HOLLOW', 'RADIO'], custom = [false, false, false, false];
+      const setXY = (e) => { const r = cv.getBoundingClientRect(); const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), y = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
+        bind('mosaic_x', x, '', 1); bind('mosaic_y', y, '', 1); state.mosaic_x = x; state.mosaic_y = y; };
+      cv.addEventListener('mousedown', (e) => { if (e.button === 0) { drag = true; setXY(e); } }); window.addEventListener('mousemove', (e) => { if (drag) setXY(e); }); window.addEventListener('mouseup', () => drag = false);
+      cv.addEventListener('contextmenu', (e) => { e.preventDefault(); const r = cv.getBoundingClientRect(), cx = (e.clientX - r.left) / r.width > 0.5 ? 1 : 0, cy = (e.clientY - r.top) / r.height > 0.5 ? 1 : 0;
+        const i = cy ? 2 + cx : cx; const cap = confirm('Corner ' + names[i] + ':\nOK = capture what is playing now into it\nCancel = reset it to ' + ['Air', 'Warm', 'Hollow', 'Radio'][i]);
+        custom[i] = cap; emit('mosaic', { cmd: cap ? 'capture' : 'reset', node: i }); flashHint(cap ? '▦ Captured into ' + names[i] : '▦ ' + names[i] + ' reset'); });
+      cv.addEventListener('keydown', (e) => { const d = e.shiftKey ? 0.01 : 0.05, k = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, d], ArrowDown: [0, -d] }[e.key]; if (!k) return; e.preventDefault();
+        const x = Math.max(0, Math.min(1, (state.mosaic_x ?? 0.5) + k[0])), y = Math.max(0, Math.min(1, (state.mosaic_y ?? 0.5) + k[1])); bind('mosaic_x', x, '', 1); bind('mosaic_y', y, '', 1); state.mosaic_x = x; state.mosaic_y = y; });
+      if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.addEventListener('mosaicNodes', (m) => { nodes = m.nodes; live = m.live; });
+      emit('mosaic', { cmd: 'get' });
+      (function frame() {
+        const c = cv.getContext('2d'), W = cv.width, H = cv.height, x = state.mosaic_x ?? 0.5, y = state.mosaic_y ?? 0.5, gold = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim() || '#d4af37';
+        c.clearRect(0, 0, W, H); c.fillStyle = '#05070a'; c.fillRect(0, 0, W, H);
+        c.fillStyle = '#6b7280'; c.font = '8px monospace';
+        c.fillText(names[0], 3, 9); c.fillText(names[1], W - 3 - c.measureText(names[1]).width, 9); c.fillText(names[2], 3, H - 3); c.fillText(names[3], W - 3 - c.measureText(names[3]).width, H - 3);
+        const curve = (arr, col, lw) => { if (!arr) return; c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); arr.forEach((v, b) => { const px = 8 + (W - 16) * b / (arr.length - 1), py = H / 2 - Math.max(-24, Math.min(24, v)) * (H / 2 - 12) / 24; b ? c.lineTo(px, py) : c.moveTo(px, py); }); c.stroke(); };
+        if (nodes) { const w = [(1 - x) * y, x * y, (1 - x) * (1 - y), x * (1 - y)]; const t = nodes[0].map((_, b) => w.reduce((a, wi, i) => a + wi * nodes[i][b], 0));
+          curve(live, 'rgba(56,189,248,0.6)', 1); curve(t, gold, 1.8); }
+        c.strokeStyle = '#fff'; c.lineWidth = 1; c.beginPath(); c.arc(x * W, (1 - y) * H, 5, 0, Math.PI * 2); c.stroke();
+        requestAnimationFrame(frame);
+      })();
+    }
     if (/aether/i.test(params.get('module') || '')) { document.getElementById('aetherCore').style.display = 'flex'; startAetherPad(); }   // The Aether only
     function startAetherPad() {
       const cv = document.getElementById('aeXY'), parts = [];

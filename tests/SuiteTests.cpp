@@ -2102,6 +2102,57 @@ static void testAetherCore()
       EXPECT (frozen > -40.0 && frozen > loose + 10.0, "freeze holds the cloud"); EXPECT (oct > 15.0, "octave-up grains sound an octave up"); }
 }
 
+
+static void testMosaicCore()
+{
+    std::printf ("The Mosaic: STFT spectral morph, 4-node pad, transient preservation\n");
+    using SolutionDSP::MosaicCore;
+    const double fs = 48000.0; const int N = 48000 * 3;
+    juce::Random rng (7);
+    auto noise = [&] (std::vector<float>& L, std::vector<float>& R, bool dark) { L.assign (N, 0); R.assign (N, 0); double z = 0;
+        for (int i = 0; i < N; ++i) { const double w = rng.nextFloat() * 2 - 1; z += (w - z) * (dark ? 0.05 : 1.0); L[(size_t) i] = R[(size_t) i] = (float) (dark ? z * 2.0 : w * 0.2); } };
+    auto run = [&] (MosaicCore& c, const MosaicCore::Params& p, std::vector<float>& L, std::vector<float>& R) { for (int o = 0; o < N; o += 512) c.process (L.data() + o, R.data() + o, std::min (512, N - o), p); };
+    // morph 0 reconstructs the input exactly, delayed by 4096, at every FFT size
+    for (int k = 0; k < 3; ++k)
+    { MosaicCore c; c.prepare (fs, 512); MosaicCore::Params p; p.morph = 0; p.sizeIndex = k;
+      std::vector<float> L, R; noise (L, R, false); const auto in = L; run (c, p, L, R);
+      double e = 0, sig = 0; for (int i = 20000; i < N; ++i) { const double d = L[(size_t) i] - in[(size_t) i - 4096]; e += d * d; sig += in[(size_t) i - 4096] * in[(size_t) i - 4096]; }
+      EXPECT (10 * std::log10 (sig / (e + 1e-20)) > 60.0, "FFT %d: morph 0 = the input, 4096 samples later (%.0f dB)", 1024 << k, 10 * std::log10 (sig / (e + 1e-20))); }
+    // band level helper
+    auto tilt = [&] (const std::vector<float>& x) { return toneLevelDb (nullptr, 0, 0, fs), 0.0; };
+    juce::ignoreUnused (tilt);
+    auto bandDb = [&] (const std::vector<float>& x, double lo, double hi) {   // crude: energy of a band via a 2-pole bandpass
+        SolutionDSP::DBiquad h, l; h.set (1, fs, lo, 0.707); l.set (0, fs, hi, 0.707); double e = 0;
+        for (int i = 0; i < N; ++i) { const double y = l.run (h.run (x[(size_t) i])); if (i > 40000) e += y * y; } return 10 * std::log10 (e + 1e-20); };
+    // morph toward Air (corner A: x 0, y 1) tilts white noise up
+    { MosaicCore c; c.prepare (fs, 512); MosaicCore::Params p; p.morph = 1.0f; p.x = 0; p.y = 1; p.preserve = 0;
+      std::vector<float> L, R; noise (L, R, false); const auto in = L; run (c, p, L, R);
+      const double before = bandDb (in, 6000, 12000) - bandDb (in, 100, 200), after = bandDb (L, 6000, 12000) - bandDb (L, 100, 200);
+      std::printf ("  Air node: 8 kHz vs 150 Hz %.1f dB -> %.1f dB\n", before, after);
+      EXPECT (after > before + 8.0, "morphing toward Air brightens"); }
+    // capture: a dark sound captured into corner D becomes that corner's fingerprint
+    { MosaicCore c; c.prepare (fs, 512); MosaicCore::Params p; p.morph = 0;
+      std::vector<float> L, R; noise (L, R, true); run (c, p, L, R);
+      c.setNode (3, c.liveFingerprint()); const auto d = c.getNode (3);
+      EXPECT (d[6] - d[24] > 10.0f, "captured fingerprint is dark (80 Hz %.1f vs 5 kHz %.1f dB)", d[6], d[24]); }
+    // transient preservation: a click keeps more of its original shape with Preserve on
+    { auto clickErr = [&] (float preserve) { MosaicCore c; c.prepare (fs, 512); MosaicCore::Params p; p.morph = 1.0f; p.x = 1; p.y = 0; p.preserve = preserve;
+        std::vector<float> L (N, 0.0f), R (N, 0.0f); for (int i = 0; i < N; ++i) { const double t = std::fmod (i / fs, 0.5); L[(size_t) i] = R[(size_t) i] = (float) (0.03 * (rng.nextFloat() - 0.5) + (t < 0.004 ? 0.8 * std::sin (2 * juce::MathConstants<double>::pi * 3000 * t) : 0.0)); }
+        const auto in = L; run (c, p, L, R);
+        double e = 0, s = 0; for (int k = 2; k < 5; ++k) for (int i = k * 24000; i < k * 24000 + 192; ++i) { const double d = L[(size_t) i + 4096] - in[(size_t) i]; e += d * d; s += in[(size_t) i] * in[(size_t) i]; }
+        return 10 * std::log10 (s / (e + 1e-20)); };
+      const double off = clickErr (0), on = clickErr (1);
+      std::printf ("  click fidelity under a heavy morph: %.1f dB, %.1f dB with transient preserve\n", off, on);
+      EXPECT (on > off + 3.0, "transient preservation keeps hits intact"); }
+    // in the plugin: latency appears only while the morph is on
+    { SolutionAudioProcessor proc ("TheMosaic"); proc.prepareToPlay (48000.0, 512);
+      const int before = proc.getLatencySamples();
+      setParam (proc, "mosaic_on", 1.0f); proc.applyPendingChanges();
+      const int on = proc.getLatencySamples();
+      setParam (proc, "mosaic_on", 0.0f); proc.applyPendingChanges();
+      EXPECT (on - before == 4096 && proc.getLatencySamples() == before, "morph adds 4096 samples of latency only while on (%d -> %d -> %d)", before, on, proc.getLatencySamples()); }
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2252,6 +2303,7 @@ int main()
     testBunkerCore();
     testAnchorCore();
     testAetherCore();
+    testMosaicCore();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

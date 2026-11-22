@@ -198,6 +198,13 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
            .withEventListener ("curveWanted", [this] (const juce::var& d) { audioProcessor.curveWanted = (bool) d.getProperty ("on", false); lastCurveGen = -1; })
+           .withEventListener ("mosaic", [this] (const juce::var& d)
+           {
+               const auto cmd = d.getProperty ("cmd", {}).toString(); const int i = (int) d.getProperty ("node", -1);
+               if (cmd == "capture") audioProcessor.captureMosaicNode (i);
+               else if (cmd == "reset") audioProcessor.resetMosaicNode (i);
+               emitToViews ("mosaicNodes", audioProcessor.mosaicNodesJson());
+           })
            .withEventListener ("aiPanel", [this] (const juce::var& d)
            {
                aiPanelOpen = (bool) d.getProperty ("open", false);
@@ -956,6 +963,7 @@ void SolutionAudioProcessorEditor::timerCallback()
     if (audioProcessor.getHistoryGen() != lastHistoryGen) sendHistory();
     if (audioProcessor.getCurveGen() != lastCurveGen && ! audioProcessor.getResponseCurve().isVoid()) { lastCurveGen = audioProcessor.getCurveGen(); emitToViews ("responseCurve", audioProcessor.getResponseCurve()); }
     if (aiPanelOpen && frameCounter % 12 == 0) sendAiState();
+    if (audioProcessor.getModuleId() == SolutionDSP::ModuleId::Mosaic && frameCounter % 20 == 0) emitToViews ("mosaicNodes", audioProcessor.mosaicNodesJson());
     if (audioProcessor.toneAnalysisRunning() && frameCounter % 6 == 0) emitToViews ("toneProgress", (double) audioProcessor.toneAnalysisProgress());
     if (auto res = audioProcessor.takeToneAnalysisResult(); ! res.isVoid()) emitToViews ("toneAnalysis", res);
     audioProcessor.pollAutoGainStage();          // sets the trims when the 3 s listen is done
