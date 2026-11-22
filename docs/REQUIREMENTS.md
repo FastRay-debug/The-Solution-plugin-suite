@@ -62,7 +62,7 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ☐ The Land: ground reflections; HOA ambisonics (needs multichannel)
 - ✅ The Orbit: triode tube stage with true bypass (grid-conduction asymmetry, bias drift, supply sag, coupling + Miller roll-off; H2 leads at -11.5 dBc) · Regen Throttle clocked loop (tempo-synced or free; throttle = feedback, soft run-away past 1.0; loop clock 2-48 kHz with BBD anti-alias + reconstruction: lower clock = darker, grittier repeats) · Auto-Connect wizard (Ctrl+Alt+O): recognises every track (vocal, bass, drums, guitar/keys, pads, FX) and routes it to a spatial zone, optional dialogue ducking for the music beds
 - ☐ The Bridge: DAW sync, sidechain/CV routing, hosting third-party VST3/AU/CLAP
-- ☐ The Matrix: full modulation matrix (poly LFOs, envelopes, audio followers)
+- ✅ The Matrix: session-wide modulation - 4 LFOs (sine/tri/saw up/down/square/S&H/smooth random; free Hz or locked to the host's bars), ENV 1 (Matrix track level), ENV 2 (Rack Link key), 4 macros, random; up to 32 routes to any control on any Solution track with depth ±100% and per-route phase (poly LFOs); routes saved by track name; live source meters; Ctrl+Alt+X. Every module reads its controls through the modulation layer (no cost when unrouted)
 - ☐ Surround / Atmos output (separate project)
 
 ### Business / separate programs (later)

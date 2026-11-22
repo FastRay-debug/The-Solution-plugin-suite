@@ -209,6 +209,14 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                lastVoidGen = -1;
                emitToViews ("voidState", audioProcessor.voidJson());
            })
+           .withEventListener ("matrix", [this] (const juce::var& d)
+           {
+               if (d.getProperty ("cmd", {}).toString() == "set") audioProcessor.setMatrixRoutes (d.getProperty ("routes", {}));
+               juce::DynamicObject::Ptr o = new juce::DynamicObject();
+               o->setProperty ("routes", audioProcessor.matrixRoutesJson());
+               o->setProperty ("isMatrix", audioProcessor.getModuleId() == SolutionDSP::ModuleId::Matrix);
+               emitToViews ("matrixState", juce::var (o.get()));
+           })
            .withEventListener ("mosaic", [this] (const juce::var& d)
            {
                const auto cmd = d.getProperty ("cmd", {}).toString(); const int i = (int) d.getProperty ("node", -1);
@@ -1065,6 +1073,11 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("aetherGrains", audioProcessor.aetherGrains.load());
     payload->setProperty ("aetherDuck", std::round (audioProcessor.aetherDuck.load() * 100.0f) / 100.0f);
     payload->setProperty ("bpm", audioProcessor.hostBpm.load());
+    {   // The Matrix: live source values (for meters) and how much each of this track's controls is being moved
+        juce::Array<juce::var> mv; auto& mb = audioProcessor.getRackBus().mod;
+        for (int i = 0; i < SolutionDSP::Mod::NumSources; ++i) mv.add (std::round (mb.value[(size_t) i].load() * 100.0f) / 100.0f);
+        payload->setProperty ("mod", mv); payload->setProperty ("modRoutes", mb.routeCount.load());
+    }
     payload->setProperty ("bunkerShelf", std::round (audioProcessor.bunkerShelfDb.load() * 10.0f) / 10.0f);
     payload->setProperty ("autoSafe", std::round (audioProcessor.autoSafeHolding.load() * 100.0f));
     payload->setProperty ("dialogueCarveHz", std::round (audioProcessor.dialogueCarveHz.load()));

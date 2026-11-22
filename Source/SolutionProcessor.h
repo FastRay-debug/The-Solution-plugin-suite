@@ -227,6 +227,11 @@ public:
     void captureMosaicNode (int i) { mosaicCore.setNode (i, mosaicCore.liveFingerprint()); saveMosaicNodes(); }
     void resetMosaicNode (int i) { mosaicCore.setNode (i, SolutionDSP::MosaicCore::preset (i)); saveMosaicNodes(); }
     juce::var mosaicNodesJson() const;
+    float pv (const char* id) const;                           // a control's value including The Matrix's modulation
+    void setMatrixRoutes (const juce::var& routes);            // message thread
+    juce::var matrixRoutesJson() const;
+    void publishMatrixRoutes();
+    float modOffsetFor (const juce::String& id) const { auto* raw = apvts.getRawParameterValue (id); auto it = modIndexOf.find (raw); return it == modIndexOf.end() ? 0.0f : modOffset[(size_t) it->second]; }
     // The Void (message thread)
     SolutionDSP::VoidRoom currentVoidRoom() const;
     void updateVoidRoom();                                     // rebuild taps/tail when the room or a position changed
@@ -278,6 +283,15 @@ public:
     SolutionDSP::MosaicCore mosaicCore;
     SolutionDSP::VoidCore voidCore;
     SolutionDSP::OrbitCore orbitCore;
+    // The Matrix: modulated parameter reads (audio thread)
+    std::map<const std::atomic<float>*, int> modIndexOf;
+    std::vector<float> modOffset, modLo, modHi;
+    std::array<int, 64> modTouched {}; int modTouchedCount = 0; bool modActive = false;
+    std::array<double, 4> lfoPhase {}; double matrixEnv = 0, randomClock = 0; float randomValue = 0; juce::Random matrixRng;
+    struct { std::array<std::atomic<float>*, 4> rate {}, shape {}, sync {}, macro {}; std::atomic<float>* atk = nullptr; std::atomic<float>* rel = nullptr; std::atomic<float>* group = nullptr; } mtxP;
+    void buildModIndex();
+    void applyModRoutes();
+    void runMatrixSources (const juce::AudioBuffer<float>& buffer, int n);
     SolutionDSP::VoidRoom voidRoomShape;                       // the drawn floor plan (message thread)
     double voidHash = -1; int voidGen = 0;
     std::atomic<float> mosaicTransient { 0.0f };
@@ -317,7 +331,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 26;  // v26: The Orbit tube + Regen Throttle loop  // v25: The Void acoustic modeller  // v24: The Mosaic spectral morph  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 27;  // v27: The Matrix modulation  // v26: The Orbit tube + Regen Throttle loop  // v25: The Void acoustic modeller  // v24: The Mosaic spectral morph  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }

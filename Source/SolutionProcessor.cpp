@@ -27,6 +27,7 @@ SolutionAudioProcessor::SolutionAudioProcessor (const juce::String& moduleOverri
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             apvts.addParameterListener (ranged->getParameterID(), this);
 
+    buildModIndex();
     if (! isMeasurementCopy)
     {
         startTimerHz (5);     // picks up alignment requests from other instances
@@ -56,6 +57,7 @@ SolutionAudioProcessor::~SolutionAudioProcessor()
             apvts.removeParameterListener (ranged->getParameterID(), this);
     cueClock.stopTimer();
     if (toneJob != nullptr && toneJob->worker.joinable()) toneJob->worker.join();
+    if (moduleId == SolutionDSP::ModuleId::Matrix && rackSlot >= 0 && rackLinkBus->mod.owner.load() == rackSlot) rackLinkBus->mod.routeCount = 0;   // the Matrix left: its routes go with it
     if (curveJob != nullptr && curveJob->worker.joinable()) curveJob->worker.join();
     if (! isMeasurementCopy)
     {
@@ -279,6 +281,137 @@ juce::var SolutionAudioProcessor::voidJson() const
     o->setProperty ("rt60", room.rt60()); o->setProperty ("volume", room.volume()); o->setProperty ("lis", juce::Array<juce::var> { room.lis.x / room.size, room.lis.y / room.size });
     o->setProperty ("src", juce::Array<juce::var> { room.src.x / room.size, room.src.y / room.size });
     return juce::var (o.get());
+}
+
+// ===================== The Matrix =====================
+void SolutionAudioProcessor::buildModIndex()
+{
+    const auto& ps = getParameters();
+    modOffset.assign ((size_t) ps.size(), 0.0f); modLo.assign ((size_t) ps.size(), 0.0f); modHi.assign ((size_t) ps.size(), 1.0f);
+    for (int i = 0; i < ps.size(); ++i)
+        if (auto* q = dynamic_cast<juce::RangedAudioParameter*> (ps[i]))
+        {
+            modIndexOf[apvts.getRawParameterValue (q->getParameterID())] = i;
+            modLo[(size_t) i] = q->getNormalisableRange().start; modHi[(size_t) i] = q->getNormalisableRange().end;
+        }
+    for (int i = 0; i < 4; ++i)        // The Matrix's own controls, looked up once (no string work on the audio thread)
+    {
+        const juce::String pre = "mtx_lfo" + juce::String (i + 1);
+        mtxP.rate[(size_t) i] = apvts.getRawParameterValue (pre + "_rate"); mtxP.shape[(size_t) i] = apvts.getRawParameterValue (pre + "_shape");
+        mtxP.sync[(size_t) i] = apvts.getRawParameterValue (pre + "_sync"); mtxP.macro[(size_t) i] = apvts.getRawParameterValue ("mtx_macro" + juce::String (i + 1));
+    }
+    mtxP.atk = apvts.getRawParameterValue ("mtx_env_atk"); mtxP.rel = apvts.getRawParameterValue ("mtx_env_rel"); mtxP.group = apvts.getRawParameterValue ("link_group");
+}
+
+float SolutionAudioProcessor::pv (const char* id) const
+{
+    auto* raw = apvts.getRawParameterValue (id);
+    const float v = raw->load (std::memory_order_relaxed);
+    if (! modActive) return v;
+    auto it = modIndexOf.find (raw);
+    if (it == modIndexOf.end() || modOffset[(size_t) it->second] == 0.0f) return v;
+    const auto i = (size_t) it->second;
+    return juce::jlimit (modLo[i], modHi[i], v + modOffset[i]);
+}
+
+void SolutionAudioProcessor::applyModRoutes()
+{
+    for (int k = 0; k < modTouchedCount; ++k) modOffset[(size_t) modTouched[(size_t) k]] = 0.0f;
+    modTouchedCount = 0; modActive = false;
+    auto& mb = rackLinkBus->mod;
+    const int n = std::min (mb.routeCount.load (std::memory_order_acquire), SolutionDSP::Mod::Bus::maxRoutes);
+    for (int r = 0; r < n; ++r)
+    {
+        const auto& route = mb.routes[(size_t) r];
+        const int slot = route.slot.load (std::memory_order_relaxed), param = route.param.load (std::memory_order_relaxed);
+        if (slot != rackSlot || ! juce::isPositiveAndBelow (param, (int) modOffset.size())) continue;
+        const int src = route.src.load (std::memory_order_relaxed);
+        const float val = mb.sourceValue (src, route.phase.load (std::memory_order_relaxed));
+        const float span = modHi[(size_t) param] - modLo[(size_t) param];
+        const bool bipolar = src <= SolutionDSP::Mod::Lfo4 || src == SolutionDSP::Mod::Random;
+        const float off = route.depth.load (std::memory_order_relaxed) * val * span * (bipolar ? 0.5f : 1.0f);
+        if (modOffset[(size_t) param] == 0.0f && modTouchedCount < (int) modTouched.size()) modTouched[(size_t) modTouchedCount++] = param;
+        modOffset[(size_t) param] += off; modActive = true;
+    }
+}
+
+void SolutionAudioProcessor::runMatrixSources (const juce::AudioBuffer<float>& buffer, int n)
+{
+    auto& mb = rackLinkBus->mod;
+    const double fs = getSampleRate() > 0 ? getSampleRate() : 48000.0;
+    double ppq = -1;
+    if (auto* ph = getPlayHead()) if (auto pos = ph->getPosition()) if (pos->getIsPlaying()) if (auto q = pos->getPpqPosition()) ppq = *q;
+    for (int i = 0; i < 4; ++i)
+    {
+        const int sync = (int) mtxP.sync[(size_t) i]->load();
+        if (sync > 0 && ppq >= 0) lfoPhase[(size_t) i] = ppq / SolutionDSP::Mod::syncBeats (sync);           // locked to the host's bars
+        else lfoPhase[(size_t) i] += (sync > 0 ? hostBpm.load() / 60.0 / SolutionDSP::Mod::syncBeats (sync) : mtxP.rate[(size_t) i]->load()) * n / fs;
+        mb.lfoShape[(size_t) i].store ((int) mtxP.shape[(size_t) i]->load(), std::memory_order_relaxed);
+        mb.lfoPhase[(size_t) i].store (lfoPhase[(size_t) i], std::memory_order_relaxed);
+        mb.value[(size_t) i].store (SolutionDSP::Mod::shape (mb.lfoShape[(size_t) i].load(), lfoPhase[(size_t) i]), std::memory_order_relaxed);
+    }
+    const float pk = std::max (buffer.getMagnitude (0, 0, n), buffer.getMagnitude (1, 0, n));
+    const double atk = std::exp (-n / (mtxP.atk->load() * 0.001 * fs)), rel = std::exp (-n / (mtxP.rel->load() * 0.001 * fs));
+    matrixEnv = pk > matrixEnv ? pk + (matrixEnv - pk) * atk : pk + (matrixEnv - pk) * rel;
+    mb.value[SolutionDSP::Mod::Env1].store ((float) juce::jlimit (0.0, 1.0, matrixEnv * 1.4), std::memory_order_relaxed);
+    const int grp = (int) mtxP.group->load();
+    mb.value[SolutionDSP::Mod::Env2].store (grp > 0 ? juce::jlimit (0.0f, 1.0f, rackLinkBus->groupKey (grp, rackSlot) * 1.4f) : 0.0f, std::memory_order_relaxed);
+    for (int m = 0; m < 4; ++m) mb.value[(size_t) (SolutionDSP::Mod::Macro1 + m)].store (mtxP.macro[(size_t) m]->load(), std::memory_order_relaxed);
+    randomClock += n / fs * 4.0;                                    // RANDOM: a new value 4x a second
+    if (randomClock >= 1.0) { randomClock -= std::floor (randomClock); randomValue = matrixRng.nextFloat() * 2.0f - 1.0f; }
+    mb.value[SolutionDSP::Mod::Random].store (randomValue, std::memory_order_relaxed);
+}
+
+// Routes are saved with the Matrix's session by track name (slots can change between sessions).
+void SolutionAudioProcessor::setMatrixRoutes (const juce::var& routes)
+{
+    juce::StringArray rows;
+    if (auto* a = routes.getArray())
+        for (auto& r : *a)
+            rows.add (juce::String ((int) r.getProperty ("slot", -1)) + "|" + r.getProperty ("track", {}).toString().removeCharacters ("|;") + "|" + r.getProperty ("id", {}).toString()
+                      + "|" + juce::String ((int) r.getProperty ("src", 0)) + "|" + juce::String ((double) r.getProperty ("depth", 0.0), 4) + "|" + juce::String ((double) r.getProperty ("phase", 0.0), 4));
+    apvts.state.setProperty ("matrixRoutes", rows.joinIntoString (";"), nullptr);
+    publishMatrixRoutes();
+}
+
+juce::var SolutionAudioProcessor::matrixRoutesJson() const
+{
+    juce::Array<juce::var> out;
+    for (auto& row : juce::StringArray::fromTokens (apvts.state.getProperty ("matrixRoutes").toString(), ";", ""))
+    {
+        auto f = juce::StringArray::fromTokens (row, "|", ""); if (f.size() < 6) continue;
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("slot", f[0].getIntValue()); o->setProperty ("track", f[1]); o->setProperty ("id", f[2]);
+        o->setProperty ("src", f[3].getIntValue()); o->setProperty ("depth", f[4].getDoubleValue()); o->setProperty ("phase", f[5].getDoubleValue());
+        out.add (juce::var (o.get()));
+    }
+    return out;
+}
+
+void SolutionAudioProcessor::publishMatrixRoutes()
+{
+    if (moduleId != SolutionDSP::ModuleId::Matrix || rackSlot < 0) return;
+    auto& mb = rackLinkBus->mod;
+    const auto& ps = getParameters();
+    int n = 0;
+    mb.routeCount.store (0, std::memory_order_release);              // nothing is read while the table changes
+    const auto list = matrixRoutesJson();                             // keep it alive while we read it
+    if (auto* a = list.getArray())
+        for (auto& r : *a)
+        {
+            if (n >= SolutionDSP::Mod::Bus::maxRoutes) break;
+            int slot = (int) r["slot"]; const auto track = r["track"].toString();
+            if (track.isNotEmpty())                                   // find the track by name if its slot moved
+                for (int i = 0; i < SolutionDSP::RackLinkBus::maxSlots; ++i)
+                    if (rackLinkBus->slots[(size_t) i].active.load() && rackLinkBus->slots[(size_t) i].trackName == track) { slot = i; break; }
+            if (slot == -2) slot = rackSlot;                          // "this track"
+            int param = -1; for (int i = 0; i < ps.size(); ++i) if (auto* q = dynamic_cast<juce::RangedAudioParameter*> (ps[i]); q && q->getParameterID() == r["id"].toString()) { param = i; break; }
+            if (param < 0 || slot < 0) continue;
+            auto& route = mb.routes[(size_t) n++];
+            route.slot = slot; route.param = param; route.src = (int) r["src"]; route.depth = (float) (double) r["depth"]; route.phase = (float) (double) r["phase"];
+        }
+    mb.owner = rackSlot;
+    mb.routeCount.store (n, std::memory_order_release);
 }
 
 // ===================== Test-tone analyser =====================
@@ -551,6 +684,25 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v27: The Matrix modulation sources (routes live in the session state)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_lfo1_rate", 27 }, "LFO 1 Rate (Hz)", juce::NormalisableRange<float> (0.01f, 20.0f, 0.001f, 0.3f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mtx_lfo1_shape", 27 }, "LFO 1 Shape", juce::StringArray { "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "S&H", "Smooth Random" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mtx_lfo1_sync", 27 }, "LFO 1 Sync", juce::StringArray { "Free", "1/16", "1/8", "1/4", "1/2", "1 Bar", "2 Bars", "4 Bars" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_lfo2_rate", 27 }, "LFO 2 Rate (Hz)", juce::NormalisableRange<float> (0.01f, 20.0f, 0.001f, 0.3f), 1.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mtx_lfo2_shape", 27 }, "LFO 2 Shape", juce::StringArray { "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "S&H", "Smooth Random" }, 1));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mtx_lfo2_sync", 27 }, "LFO 2 Sync", juce::StringArray { "Free", "1/16", "1/8", "1/4", "1/2", "1 Bar", "2 Bars", "4 Bars" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_lfo3_rate", 27 }, "LFO 3 Rate (Hz)", juce::NormalisableRange<float> (0.01f, 20.0f, 0.001f, 0.3f), 0.25f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mtx_lfo3_shape", 27 }, "LFO 3 Shape", juce::StringArray { "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "S&H", "Smooth Random" }, 5));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mtx_lfo3_sync", 27 }, "LFO 3 Sync", juce::StringArray { "Free", "1/16", "1/8", "1/4", "1/2", "1 Bar", "2 Bars", "4 Bars" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_lfo4_rate", 27 }, "LFO 4 Rate (Hz)", juce::NormalisableRange<float> (0.01f, 20.0f, 0.001f, 0.3f), 2.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mtx_lfo4_shape", 27 }, "LFO 4 Shape", juce::StringArray { "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "S&H", "Smooth Random" }, 6));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mtx_lfo4_sync", 27 }, "LFO 4 Sync", juce::StringArray { "Free", "1/16", "1/8", "1/4", "1/2", "1 Bar", "2 Bars", "4 Bars" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_env_atk", 27 }, "ENV Attack (ms)", juce::NormalisableRange<float> (1.0f, 500.0f, 0.1f, 0.4f), 10.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_env_rel", 27 }, "ENV Release (ms)", juce::NormalisableRange<float> (10.0f, 2000.0f, 1.0f, 0.4f), 250.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_macro1", 27 }, "Macro 1", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_macro2", 27 }, "Macro 2", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_macro3", 27 }, "Macro 3", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_macro4", 27 }, "Macro 4", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f));
     // --- v26: The Orbit - tube stage (true bypass when off) + Regen Throttle clocked loop (mix 0 by default)
     params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "orbit_tube_on", 26 }, "Tube Stage", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "orbit_tube_drive", 26 }, "Tube Drive (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 40.00f));
@@ -845,8 +997,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             if (sl.active.load (std::memory_order_relaxed)) { summed += sl.cpuLoad.load (std::memory_order_relaxed); ++active; }
         const float suite = SolutionDSP::DqsController::suiteLoad (summed, active, juce::SystemStats::getNumCpus());
         dqsSuiteLoad.store (suite, std::memory_order_relaxed);
-        const int level = dqs.update (static_cast<int> (apvts.getRawParameterValue ("dqs_mode")->load()), isNonRealtime(), suite,
-                                      apvts.getRawParameterValue ("dqs_threshold")->load() / 100.0f,
+        const int level = dqs.update (static_cast<int> (pv ("dqs_mode")), isNonRealtime(), suite,
+                                      pv ("dqs_threshold") / 100.0f,
                                       buffer.getNumSamples() / std::max (1.0, preparedSampleRate));
         moduleEngine.setQualityLevel (level);
         dqsLevel.store (moduleEngine.getQualityLevel(), std::memory_order_relaxed);
@@ -898,12 +1050,14 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const int numSamples = buffer.getNumSamples();
     if (buffer.getNumChannels() < 2 || numSamples == 0)
         return;
+    if (moduleId == SolutionDSP::ModuleId::Matrix) runMatrixSources (buffer, numSamples);
+    applyModRoutes();
 
     if (dryCopy.getNumSamples() < numSamples)
         dryCopy.setSize (2, numSamples, false, false, true);
 
     // Safe Bounce: during an offline render the monitoring tools step aside (settings are kept).
-    const bool bouncing = isNonRealtime() && apvts.getRawParameterValue ("safe_bounce")->load() > 0.5f;
+    const bool bouncing = isNonRealtime() && pv ("safe_bounce") > 0.5f;
     auto monitorOn = [&] (const char* id) { return apvts.getRawParameterValue (id)->load() > 0.5f; };
     {
         int mask = 0;
@@ -912,7 +1066,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         if (monitorOn ("stream_preview"))  mask |= monStream;
         if (monitorOn ("listen_room"))     mask |= monRoom;
         if (monitorOn ("room_correct_on")) mask |= monCorrection;
-        if (monitorOn ("stem_listen") && apvts.getRawParameterValue ("stem_focus")->load() > 0.5f) mask |= monStemSolo;
+        if (monitorOn ("stem_listen") && pv ("stem_focus") > 0.5f) mask |= monStemSolo;
         if (monitorOn ("tape_cal_tone"))   mask |= monCalTone;
         if (monitorOn ("binaural_mode"))   mask |= monBinaural;
         monitorMask.store (mask, std::memory_order_relaxed);
@@ -921,7 +1075,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // Auto-Align: share the raw input (timeline-stamped) and apply this track's alignment.
     {
-        const int alignRole = static_cast<int> (apvts.getRawParameterValue ("align_role")->load());
+        const int alignRole = static_cast<int> (pv ("align_role"));
         if (rackSlot >= 0 && alignRole != 0)
         {
             long long t = ownTimeline;
@@ -947,8 +1101,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             rackLinkBus->slots[(size_t) rackSlot].alignRole.store (0, std::memory_order_relaxed);
         ownTimeline += numSamples;
 
-        const float delaySamples = apvts.getRawParameterValue ("align_delay_ms")->load() * 0.001f * (float) preparedSampleRate;
-        const bool invert = apvts.getRawParameterValue ("align_invert")->load() > 0.5f;
+        const float delaySamples = pv ("align_delay_ms") * 0.001f * (float) preparedSampleRate;
+        const bool invert = pv ("align_invert") > 0.5f;
         if (delaySamples > 0.001f || invert)
         {
             alignDelayLine.setDelay (delaySamples);
@@ -978,7 +1132,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     }
 
     // DC Guard (input): remove any DC offset before it can push the saturators off-centre.
-    const bool dcGuardOn = apvts.getRawParameterValue ("dc_guard")->load() > 0.5f;
+    const bool dcGuardOn = pv ("dc_guard") > 0.5f;
     if (dcGuardOn)
     {
         dcGuardIn.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples);
@@ -989,7 +1143,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     else { dcGuardIn.reset(); inputDcFlag = false; }
 
     // Input trim (gain staging into the module).
-    trimInGain.setTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("trim_in_db")->load()));
+    trimInGain.setTargetValue (juce::Decibels::decibelsToGain (pv ("trim_in_db")));
     if (trimInGain.isSmoothing() || trimInGain.getTargetValue() != 1.0f)
         for (int i = 0; i < numSamples; ++i)
         {
@@ -999,7 +1153,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // Dialogue source: detect speech on this track and tell the music tracks (Rack Link).
     {
-        const bool isDialogue = apvts.getRawParameterValue ("dialogue_source")->load() > 0.5f;
+        const bool isDialogue = pv ("dialogue_source") > 0.5f;
         if (isDialogue) voiceDetector.process (buffer.getReadPointer (0), buffer.getReadPointer (1), numSamples);
         else            voiceDetector.reset();
         voiceConfidence.store (isDialogue ? voiceDetector.getConfidence() : 0.0f, std::memory_order_relaxed);
@@ -1021,8 +1175,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                              measureOut.getWritePointer (0), measureOut.getWritePointer (1), numSamples);
 
     // Rack Link: publish this instance's group / duck key (taken from its input).
-    const int linkGroup   = static_cast<int> (apvts.getRawParameterValue ("link_group")->load());
-    const bool duckSender = apvts.getRawParameterValue ("link_duck_send")->load() > 0.5f;
+    const int linkGroup   = static_cast<int> (pv ("link_group"));
+    const bool duckSender = pv ("link_duck_send") > 0.5f;
     const float keyLevel  = duckKey.process (dryCopy.getReadPointer (0), dryCopy.getReadPointer (1), numSamples);
     if (rackSlot >= 0)
     {
@@ -1033,7 +1187,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         slot.heartbeat.fetch_add (1, std::memory_order_relaxed);
 
         // Unmask: a priority track publishes its band levels (from its input).
-        const int role = static_cast<int> (apvts.getRawParameterValue ("unmask_role")->load());
+        const int role = static_cast<int> (pv ("unmask_role"));
         slot.unmaskRole.store (role, std::memory_order_relaxed);
         {   // every track publishes its band levels: Unmask uses the priority's, the 3D stage colours and clash detection use all
             std::array<float, SolutionDSP::Unmask::numBands> levels;
@@ -1050,7 +1204,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     }
 
     // Stem Focus: split the input; the module processes only the focus stem, the rest passes through.
-    const int stemMode = static_cast<int> (apvts.getRawParameterValue ("stem_focus")->load());
+    const int stemMode = static_cast<int> (pv ("stem_focus"));
     if (stemMode != lastStemMode)
     {
         if ((stemMode != 0) != (lastStemMode != 0)) { stemSplitter.reset(); restDelay.reset(); stemActive = stemMode != 0; triggerAsyncUpdate(); }
@@ -1075,25 +1229,25 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     dryDelay.process (dryCopy, numSamples);
 
     SolutionDSP::ProcessParams p;
-    p.azimuthDeg      = apvts.getRawParameterValue ("stage_azimuth")->load();
-    p.elevationDeg    = apvts.getRawParameterValue ("stage_elevation")->load();
-    p.depth           = apvts.getRawParameterValue ("stage_depth")->load();
-    p.haasMs          = apvts.getRawParameterValue ("stage_haas_itd")->load();
-    p.width           = apvts.getRawParameterValue ("stage_width")->load();
-    p.anchorHz        = apvts.getRawParameterValue ("stage_anchor_hz")->load();
-    p.midDb           = apvts.getRawParameterValue ("stage_ms_mid")->load();
-    p.sideDb          = apvts.getRawParameterValue ("stage_ms_side")->load();
-    p.roomMix         = apvts.getRawParameterValue ("room_match_mix")->load();
-    p.roomProfile     = static_cast<int> (apvts.getRawParameterValue ("room_profile")->load());
-    p.patchOrder      = static_cast<int> (apvts.getRawParameterValue ("patch_order")->load());
-    p.wetMix          = apvts.getRawParameterValue ("global_mix")->load();
-    p.ultraWide       = apvts.getRawParameterValue ("ultra_wide")->load();
+    p.azimuthDeg      = pv ("stage_azimuth");
+    p.elevationDeg    = pv ("stage_elevation");
+    p.depth           = pv ("stage_depth");
+    p.haasMs          = pv ("stage_haas_itd");
+    p.width           = pv ("stage_width");
+    p.anchorHz        = pv ("stage_anchor_hz");
+    p.midDb           = pv ("stage_ms_mid");
+    p.sideDb          = pv ("stage_ms_side");
+    p.roomMix         = pv ("room_match_mix");
+    p.roomProfile     = static_cast<int> (pv ("room_profile"));
+    p.patchOrder      = static_cast<int> (pv ("patch_order"));
+    p.wetMix          = pv ("global_mix");
+    p.ultraWide       = pv ("ultra_wide");
     p.tapeCalTone     = monitorOn ("tape_cal_tone") && ! bouncing;
-    p.cvModDepth      = apvts.getRawParameterValue ("cv_mod_depth")->load();
-    p.clipperShape    = static_cast<int> (apvts.getRawParameterValue ("clipper_shape")->load());
-    p.regenThrottle   = apvts.getRawParameterValue ("regen_throttle")->load();
-    p.modeNotch       = static_cast<int> (apvts.getRawParameterValue ("mode_notch")->load());
-    const bool infraOn = moduleId == SolutionDSP::ModuleId::Bunker && apvts.getRawParameterValue ("infra_lift")->load() > 0.5f;
+    p.cvModDepth      = pv ("cv_mod_depth");
+    p.clipperShape    = static_cast<int> (pv ("clipper_shape"));
+    p.regenThrottle   = pv ("regen_throttle");
+    p.modeNotch       = static_cast<int> (pv ("mode_notch"));
+    const bool infraOn = moduleId == SolutionDSP::ModuleId::Bunker && pv ("infra_lift") > 0.5f;
     p.infraLift       = infraOn;
 
     // 3D stage: distance, and the motion path (locked to the host's bars when it's playing).
@@ -1112,8 +1266,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         p.width   = juce::jlimit (0.0f, 2.0f, p.width   + moodWidthOff.load (std::memory_order_relaxed));
     }
 
-    float stageDistance = apvts.getRawParameterValue ("stage_distance")->load();
-    if (apvts.getRawParameterValue ("motion_on")->load() > 0.5f)
+    float stageDistance = pv ("stage_distance");
+    if (pv ("motion_on") > 0.5f)
     {
         bool playing = false; double ppq = 0.0, beatsPerBar = 4.0;
         if (auto* ph = getPlayHead())
@@ -1123,7 +1277,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 if (auto q = pos->getPpqPosition()) ppq = *q; else playing = false;
                 if (auto ts = pos->getTimeSignature()) beatsPerBar = ts->numerator * 4.0 / std::max (1, ts->denominator);
             }
-        const int rate = static_cast<int> (apvts.getRawParameterValue ("motion_rate")->load());
+        const int rate = static_cast<int> (pv ("motion_rate"));
         const double bars = SolutionDSP::MotionPlayer::rateBars[(size_t) juce::jlimit (0, 6, rate)];
         SolutionDSP::MotionPoint mp;
         if (motion.evaluate (SolutionDSP::MotionPlayer::phaseFor (playing, ppq, beatsPerBar, bars, motionFreeSeconds), mp))
@@ -1140,11 +1294,11 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         auto& slot = rackLinkBus->slots[(size_t) rackSlot];
         slot.posAz.store (p.azimuthDeg, std::memory_order_relaxed); slot.posEl.store (p.elevationDeg, std::memory_order_relaxed);
         slot.posDist.store (stageDistance, std::memory_order_relaxed); slot.posWidth.store (p.width, std::memory_order_relaxed);
-        slot.creature.store ((int) apvts.getRawParameterValue ("stage_creature")->load(), std::memory_order_relaxed);
+        slot.creature.store ((int) pv ("stage_creature"), std::memory_order_relaxed);
     }
 
     // Binaural mode places the sound around the head itself, so the engine's pan/Haas steps aside.
-    const bool binauralOn = apvts.getRawParameterValue ("binaural_mode")->load() > 0.5f;
+    const bool binauralOn = pv ("binaural_mode") > 0.5f;
     float binauralAz = p.azimuthDeg, binauralEl = p.elevationDeg;
     const float binauralWidth = p.width;
     if (headTracker->enabled.load (std::memory_order_relaxed) && headTracker->isFresh())
@@ -1163,8 +1317,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     {
         // Auto Safe Mode: extreme drive, character and transient settings are eased back, and if the output
         // keeps slamming the ceiling the drive backs off further until it doesn't.
-        const bool safeOn = apvts.getRawParameterValue ("auto_safe")->load() > 0.5f;
-        float tAtk = apvts.getRawParameterValue ("transient_attack")->load() / 100.0f, tSus = apvts.getRawParameterValue ("transient_sustain")->load() / 100.0f;
+        const bool safeOn = pv ("auto_safe") > 0.5f;
+        float tAtk = pv ("transient_attack") / 100.0f, tSus = pv ("transient_sustain") / 100.0f;
         if (safeOn)
         {
             const float hit = limiterGainReductionDb.load (std::memory_order_relaxed);          // last block's ceiling reduction (negative dB)
@@ -1185,7 +1339,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             autoSafeLastPad = juce::Decibels::decibelsToGain (-autoSafePadDb);
         }
         else { autoSafeBackoff = 0.0f; autoSafePadDb = 0.0f; autoSafeLastPad = 1.0f; autoSafeHolding.store (0.0f, std::memory_order_relaxed); }
-        if (apvts.getRawParameterValue ("transient_sculpt")->load() > 0.5f)      // before the saturators, so they see the shaped hits
+        if (pv ("transient_sculpt") > 0.5f)      // before the saturators, so they see the shaped hits
             transientShaper.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, tAtk, tSus);
         else
             transientShaper.reset();
@@ -1193,18 +1347,18 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         if (moduleId == SolutionDSP::ModuleId::Anchor)
         {
             SolutionDSP::AnchorCore::Params ap;
-            ap.on = apvts.getRawParameterValue ("anchor_on")->load() > 0.5f;
-            ap.driveDb = apvts.getRawParameterValue ("anchor_drive")->load();
-            ap.curve = (int) apvts.getRawParameterValue ("anchor_curve")->load();
-            ap.knee = apvts.getRawParameterValue ("anchor_knee")->load() / 100.0f;
-            ap.ceilingDb = apvts.getRawParameterValue ("anchor_ceiling")->load();
-            ap.outDb = apvts.getRawParameterValue ("anchor_out")->load();
-            ap.blend = apvts.getRawParameterValue ("anchor_blend")->load() / 100.0f;
-            ap.osIndex = (int) apvts.getRawParameterValue ("anchor_os")->load();
-            ap.multiband = apvts.getRawParameterValue ("anchor_bands")->load() > 0.5f;
-            ap.dynamic = apvts.getRawParameterValue ("anchor_dyn")->load() > 0.5f;
-            ap.limitMode = apvts.getRawParameterValue ("anchor_limit")->load() > 0.5f;
-            ap.pam = apvts.getRawParameterValue ("anchor_pam")->load() > 0.5f;
+            ap.on = pv ("anchor_on") > 0.5f;
+            ap.driveDb = pv ("anchor_drive");
+            ap.curve = (int) pv ("anchor_curve");
+            ap.knee = pv ("anchor_knee") / 100.0f;
+            ap.ceilingDb = pv ("anchor_ceiling");
+            ap.outDb = pv ("anchor_out");
+            ap.blend = pv ("anchor_blend") / 100.0f;
+            ap.osIndex = (int) pv ("anchor_os");
+            ap.multiband = pv ("anchor_bands") > 0.5f;
+            ap.dynamic = pv ("anchor_dyn") > 0.5f;
+            ap.limitMode = pv ("anchor_limit") > 0.5f;
+            ap.pam = pv ("anchor_pam") > 0.5f;
             if (safeOn) ap.driveDb = std::min (ap.driveDb, 6.0f);             // Auto Safe Mode
             anchorCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, ap);
             anchorDistPct.store (anchorCore.getDistortionPct(), std::memory_order_relaxed);
@@ -1214,7 +1368,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         if (moduleId == SolutionDSP::ModuleId::Orbit)
         {
             SolutionDSP::OrbitCore::Params op;
-            auto v = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
+            auto v = [this] (const char* id) { return pv (id); };
             op.tubeOn = v ("orbit_tube_on") > 0.5f; op.drive = v ("orbit_tube_drive") / 100.0f; op.bias = v ("orbit_tube_bias"); op.tubeMix = v ("orbit_tube_mix") / 100.0f;
             if (safeOn) op.drive = std::min (op.drive, 0.5f);
             op.regenMix = v ("orbit_regen_mix") / 100.0f; op.regen = v ("regen_throttle"); op.clockHz = v ("orbit_regen_clock");
@@ -1222,23 +1376,23 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             op.regenMs = div >= 7 ? v ("orbit_regen_ms") : (float) SolutionDSP::AetherCore::tempoMs (div, hostBpm.load());
             orbitCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, op);
         }
-        if (moduleId == SolutionDSP::ModuleId::Void && apvts.getRawParameterValue ("void_on")->load() > 0.5f)
+        if (moduleId == SolutionDSP::ModuleId::Void && pv ("void_on") > 0.5f)
             voidCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples,
-                              apvts.getRawParameterValue ("void_mix")->load() / 100.0f, apvts.getRawParameterValue ("void_scramble")->load() / 100.0f);
+                              pv ("void_mix") / 100.0f, pv ("void_scramble") / 100.0f);
         if (moduleId == SolutionDSP::ModuleId::Mosaic && mosaicLatencyOn)
         {
             SolutionDSP::MosaicCore::Params mp;
-            mp.morph = apvts.getRawParameterValue ("mosaic_morph")->load() / 100.0f;
-            mp.x = apvts.getRawParameterValue ("mosaic_x")->load(); mp.y = apvts.getRawParameterValue ("mosaic_y")->load();
-            mp.preserve = apvts.getRawParameterValue ("mosaic_preserve")->load() / 100.0f;
-            mp.sizeIndex = (int) apvts.getRawParameterValue ("mosaic_fft")->load();
+            mp.morph = pv ("mosaic_morph") / 100.0f;
+            mp.x = pv ("mosaic_x"); mp.y = pv ("mosaic_y");
+            mp.preserve = pv ("mosaic_preserve") / 100.0f;
+            mp.sizeIndex = (int) pv ("mosaic_fft");
             mosaicCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, mp);
             mosaicTransient.store (mosaicCore.lastTransient(), std::memory_order_relaxed);
         }
         if (moduleId == SolutionDSP::ModuleId::Aether)
         {
             SolutionDSP::AetherCore::Params ap;
-            auto v = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
+            auto v = [this] (const char* id) { return pv (id); };
             ap.cloudMix = v ("aether_cloud") / 100.0f; ap.x = v ("aether_x"); ap.y = v ("aether_y");
             ap.scatter = v ("aether_scatter") / 100.0f; ap.spread = v ("aether_spread") / 100.0f; ap.pitch = (int) v ("aether_pitch"); ap.freeze = v ("aether_freeze") > 0.5f;
             ap.dlyMix = v ("aether_dly_mix") / 100.0f; ap.fb = v ("aether_dly_fb") / 100.0f; ap.focus = v ("aether_dly_focus") / 100.0f;
@@ -1254,13 +1408,13 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         if (moduleId == SolutionDSP::ModuleId::Bunker)
         {
             SolutionDSP::BunkerCore::Params bp;
-            bp.subAmount = apvts.getRawParameterValue ("bunker_sub")->load() / 100.0f;
-            bp.subTrackHz = apvts.getRawParameterValue ("bunker_sub_hz")->load();
-            bp.dynLow = apvts.getRawParameterValue ("bunker_dyn")->load() / 100.0f;
-            bp.wLow = apvts.getRawParameterValue ("bunker_w_low")->load() / 100.0f;
-            bp.wMid = apvts.getRawParameterValue ("bunker_w_mid")->load() / 100.0f;
-            bp.wHigh = apvts.getRawParameterValue ("bunker_w_high")->load() / 100.0f;
-            bp.x1 = apvts.getRawParameterValue ("bunker_x1")->load(); bp.x2 = apvts.getRawParameterValue ("bunker_x2")->load();
+            bp.subAmount = pv ("bunker_sub") / 100.0f;
+            bp.subTrackHz = pv ("bunker_sub_hz");
+            bp.dynLow = pv ("bunker_dyn") / 100.0f;
+            bp.wLow = pv ("bunker_w_low") / 100.0f;
+            bp.wMid = pv ("bunker_w_mid") / 100.0f;
+            bp.wHigh = pv ("bunker_w_high") / 100.0f;
+            bp.x1 = pv ("bunker_x1"); bp.x2 = pv ("bunker_x2");
             bunkerCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, bp);
             bunkerShelfDb.store (bunkerCore.getShelfDb(), std::memory_order_relaxed);
         }
@@ -1268,11 +1422,11 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         if (! p.tapeCalTone)      // neural Character (only does anything once a model is chosen)
         {
             character.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples,
-                               safeOn ? juce::jmin (apvts.getRawParameterValue ("char_drive")->load(), 6.0f) : apvts.getRawParameterValue ("char_drive")->load(),
-                               apvts.getRawParameterValue ("char_amount")->load());
-            smoother.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, apvts.getRawParameterValue ("smooth_amount")->load());
+                               safeOn ? juce::jmin (pv ("char_drive"), 6.0f) : pv ("char_drive"),
+                               pv ("char_amount"));
+            smoother.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, pv ("smooth_amount"));
             smoothDb.store (smoother.getReductionDb(), std::memory_order_relaxed);
-            phoneBass.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, apvts.getRawParameterValue ("phone_bass")->load());
+            phoneBass.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, pv ("phone_bass"));
             distanceStage.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, stageDistance);   // real distance
         }
     }
@@ -1280,7 +1434,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         for (int ch = 0; ch < 2; ++ch)
             buffer.addFrom (ch, 0, stemRest, ch, 0, numSamples);   // processed focus + untouched rest
 
-    const bool ceilingOn   = apvts.getRawParameterValue ("stage_ceiling_guard")->load() > 0.5f;
+    const bool ceilingOn   = pv ("stage_ceiling_guard") > 0.5f;
     const float ceilingLin = juce::Decibels::decibelsToGain ((float) SOLUTION_CEILING_DBFS);
 
     auto* left  = buffer.getWritePointer (0);
@@ -1302,8 +1456,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // Mono the lows + Phase Guard.
     if (! p.tapeCalTone)
     {
-        monoLows.process (left, right, numSamples, apvts.getRawParameterValue ("mono_lows_hz")->load(),
-                          apvts.getRawParameterValue ("phase_guard")->load() > 0.5f);
+        monoLows.process (left, right, numSamples, pv ("mono_lows_hz"),
+                          pv ("phase_guard") > 0.5f);
         guardDb.store (monoLows.getGuardReductionDb(), std::memory_order_relaxed);
     }
 
@@ -1311,20 +1465,20 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (! p.tapeCalTone)
     {
         // Unmask: make room only where the group's priority track is loud right now.
-        if (linkGroup > 0 && static_cast<int> (apvts.getRawParameterValue ("unmask_role")->load()) == 2)
+        if (linkGroup > 0 && static_cast<int> (pv ("unmask_role")) == 2)
         {
             std::array<float, SolutionDSP::Unmask::numBands> priority;
             rackLinkBus->groupPriorityBands (linkGroup, rackSlot, priority);
-            unmask.apply (left, right, numSamples, priority, apvts.getRawParameterValue ("unmask_depth")->load());
+            unmask.apply (left, right, numSamples, priority, pv ("unmask_depth"));
         }
         for (size_t b = 0; b < unmaskDipDb.size(); ++b) unmaskDipDb[b].store (unmask.getDipsDb()[b], std::memory_order_relaxed);
 
         const float key = (linkGroup > 0 && ! duckSender) ? rackLinkBus->groupKey (linkGroup, rackSlot) : 0.0f;
-        ducker.process (left, right, numSamples, key, apvts.getRawParameterValue ("link_duck_depth")->load());
+        ducker.process (left, right, numSamples, key, pv ("link_duck_depth"));
         duckGainReductionDb.store (ducker.getGainReductionDb(), std::memory_order_relaxed);
 
         // Duck under dialogue: follow the loudest voice among the session's dialogue tracks.
-        if (apvts.getRawParameterValue ("dialogue_duck")->load() > 0.5f)
+        if (pv ("dialogue_duck") > 0.5f)
         {
             float voice = 0.0f; int sources = 0;
             double pres = 0.0, presW = 0.0;              // where the dialogue's intelligibility energy sits (1.1 - 5.4 kHz)
@@ -1342,17 +1496,17 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             }
             dialogueSources.store (sources, std::memory_order_relaxed);
             const float carveHz = presW > 1e-12 ? (float) std::pow (2.0, pres / presW) : 2200.0f;
-            dialogueDucker.process (left, right, numSamples, voice, apvts.getRawParameterValue ("dialogue_duck_db")->load(), carveHz);
+            dialogueDucker.process (left, right, numSamples, voice, pv ("dialogue_duck_db"), carveHz);
             dialogueCarveHz.store (dialogueDucker.getCarveHz(), std::memory_order_relaxed);
             dialogueDuckDb.store (dialogueDucker.getReductionDb(), std::memory_order_relaxed);
         }
         else { dialogueDucker.reset(); dialogueDuckDb.store (0.0f, std::memory_order_relaxed); }
 
         // Glue: The Scope sets the suite-wide amount; other modules can follow it.
-        const float localGlue = apvts.getRawParameterValue ("glue_amount")->load();
+        const float localGlue = pv ("glue_amount");
         if (moduleId == SolutionDSP::ModuleId::Scope)
             rackLinkBus->suiteGlue.store (localGlue, std::memory_order_relaxed);
-        const bool followSuite = apvts.getRawParameterValue ("glue_follow_suite")->load() > 0.5f;
+        const bool followSuite = pv ("glue_follow_suite") > 0.5f;
         glue.process (left, right, numSamples, followSuite ? rackLinkBus->suiteGlue.load (std::memory_order_relaxed) : localGlue);
         glueGainReductionDb.store (glue.getGainReductionDb(), std::memory_order_relaxed);
     }
@@ -1361,8 +1515,8 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // (so the boosted 7 Hz energy never drives distortion or pumping), before the true-peak limiter
     // (so the ceiling still holds).
     if (infraOn)
-        infraLift.process (left, right, numSamples, apvts.getRawParameterValue ("infra_lift_db")->load(),
-                           apvts.getRawParameterValue ("infra_lift_wide")->load() > 0.5f);
+        infraLift.process (left, right, numSamples, pv ("infra_lift_db"),
+                           pv ("infra_lift_wide") > 0.5f);
     else
         infraLift.reset();
 
@@ -1382,17 +1536,17 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // Monitoring stages (after A/B and Delta so both sides are heard the same way).
     if (! p.tapeCalTone)
-        listeningRoom.process (left, right, numSamples, bouncing ? -1 : static_cast<int> (apvts.getRawParameterValue ("listen_room")->load()) - 1);
+        listeningRoom.process (left, right, numSamples, bouncing ? -1 : static_cast<int> (pv ("listen_room")) - 1);
     if (binauralOn && ! p.tapeCalTone)
         binaural.process (left, right, numSamples, binauralAz, binauralEl, binauralWidth);
 
     // Measured room correction (for your monitoring chain).
     roomCorrector.process (left, right, numSamples,
-                           apvts.getRawParameterValue ("room_correct_amount")->load(),
+                           pv ("room_correct_amount"),
                            monitorOn ("room_correct_on") && ! p.tapeCalTone && ! bouncing);
 
     // Output trim.
-    trimOutGain.setTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("trim_out_db")->load()));
+    trimOutGain.setTargetValue (juce::Decibels::decibelsToGain (pv ("trim_out_db")));
     if (trimOutGain.isSmoothing() || trimOutGain.getTargetValue() != 1.0f)
         for (int i = 0; i < numSamples; ++i) { const float g = trimOutGain.getNextValue(); left[i] *= g; right[i] *= g; }
 
@@ -1434,7 +1588,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         scopeTap.push (left, right, numSamples);          // real scopes in the UI
 
         // Streaming preview: play it back the way a service's loudness normalisation would.
-        const int service = bouncing ? 0 : static_cast<int> (apvts.getRawParameterValue ("stream_preview")->load());
+        const int service = bouncing ? 0 : static_cast<int> (pv ("stream_preview"));
         float previewDb = 0.0f;
         if (service > 0)
             previewDb = SolutionDSP::streamingGainDb (SolutionDSP::streamingServices()[(size_t) (service - 1)],
@@ -2032,6 +2186,7 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
     setCcMapString (apvts.state.getProperty ("midimap").toString());
     cueList.fromString (apvts.state.getProperty ("cues").toString());
     loadMosaicNodes(); mosaicChanged = true; triggerAsyncUpdate();
+    publishMatrixRoutes();
     voidRoomShape = {}; voidRoomShape.fromString (apvts.state.getProperty ("voidRoom").toString()); voidHash = -1;
     trajectory.fromString (apvts.state.getProperty ("traj").toString()); trajectoryDirty = true;
     if (apvts.state.hasProperty ("history")) history.fromString (apvts.state.getProperty ("history").toString());

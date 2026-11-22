@@ -2227,6 +2227,52 @@ static void testOrbitCore()
       EXPECT (hf3 < hf1 - 15.0, "a lower loop clock darkens the repeats (bucket-brigade)"); }
 }
 
+
+static void testMatrix()
+{
+    std::printf ("The Matrix: LFOs / envelopes / macros routed to any control on any track\n");
+    using namespace SolutionDSP;
+    EXPECT (std::abs (Mod::shape (0, 0.25) - 1.0f) < 1e-5f && std::abs (Mod::shape (1, 0.5) - 1.0f) < 1e-5f && Mod::shape (4, 0.1) == 1.0f && Mod::shape (4, 0.6) == -1.0f, "LFO shapes");
+    bool smooth = true; for (double ph = 0; ph < 5; ph += 0.001) smooth &= std::abs (Mod::shape (6, ph + 0.001) - Mod::shape (6, ph)) < 0.02f;
+    EXPECT (smooth, "smooth random never jumps");
+    auto matrix = std::make_unique<SolutionAudioProcessor> ("TheMatrix"); matrix->prepareToPlay (48000.0, 512);
+    auto a = std::make_unique<SolutionAudioProcessor> ("TheStage"), b = std::make_unique<SolutionAudioProcessor> ("TheStage");
+    a->prepareToPlay (48000.0, 512); b->prepareToPlay (48000.0, 512);
+    juce::Array<juce::var> routes;
+    auto route = [&] (int slot, const char* id, int src, double depth, double phase) { juce::DynamicObject::Ptr o = new juce::DynamicObject(); o->setProperty ("slot", slot); o->setProperty ("id", id);
+        o->setProperty ("src", src); o->setProperty ("depth", depth); o->setProperty ("phase", phase); routes.add (juce::var (o.get())); };
+    route (a->getRackSlot(), "stage_width", Mod::Lfo1, 1.0, 0.0);
+    route (b->getRackSlot(), "stage_width", Mod::Lfo1, 1.0, 0.5);                 // same LFO, half a cycle later ("poly")
+    route (a->getRackSlot(), "global_mix", Mod::Macro1, -0.5, 0.0);
+    setParam (*matrix, "mtx_lfo1_rate", 1.0f); setParam (*matrix, "mtx_lfo1_shape", 0.0f); setParam (*matrix, "mtx_macro1", 0.6f);
+    matrix->setMatrixRoutes (routes);
+    juce::MidiBuffer midi; juce::AudioBuffer<float> buf (2, 512);
+    float minA = 9, maxA = -9; bool opposite = true;
+    for (int k = 0; k < 94; ++k)       // ~1 s
+    {
+        buf.clear(); matrix->processBlock (buf, midi); buf.clear(); a->processBlock (buf, midi); buf.clear(); b->processBlock (buf, midi);
+        const float oa = a->modOffsetFor ("stage_width"), ob = b->modOffsetFor ("stage_width");
+        minA = std::min (minA, oa); maxA = std::max (maxA, oa);
+        if (std::abs (oa) > 0.3f) opposite &= (oa > 0) != (ob > 0);
+    }
+    std::printf ("  LFO 1 on width: offset %.2f .. %.2f; macro 0.6 x -50%% on mix: %.2f\n", minA, maxA, a->modOffsetFor ("global_mix"));
+    EXPECT (minA < -0.9f && maxA > 0.9f, "a 1 Hz sine sweeps width through its whole range in a second");
+    EXPECT (opposite, "phase offset 0.5: the second track moves the opposite way");
+    EXPECT (std::abs (a->modOffsetFor ("global_mix") + 0.3f) < 0.01f, "macro routes are unipolar and scaled (0.6 x -0.5 = -0.3)");
+    EXPECT (std::abs (a->pv ("global_mix") - 0.7f) < 0.01f, "the control the audio reads is moved (1.0 - 0.3)");
+    // tempo lock: 1/4 at the host's beat position
+    { FakePlayHead ph; ph.t = 0; matrix->setPlayHead (&ph); setParam (*matrix, "mtx_lfo1_sync", 3.0f);
+      struct PPQ : juce::AudioPlayHead { double q = 2.25; juce::Optional<PositionInfo> getPosition() const override { PositionInfo p; p.setIsPlaying (true); p.setPpqPosition (q); p.setBpm (120); return p; } } pq;
+      matrix->setPlayHead (&pq); buf.clear(); matrix->processBlock (buf, midi);
+      EXPECT (std::abs (matrix->getRackBus().mod.lfoPhase[0].load() - 2.25) < 1e-6, "1/4-synced LFO follows the host's beat (phase %.3f)", matrix->getRackBus().mod.lfoPhase[0].load());
+      matrix->setPlayHead (nullptr); }
+    // saved with the Matrix's session
+    { juce::MemoryBlock st; matrix->getStateInformation (st); EXPECT (juce::String::fromUTF8 ((const char*) st.getData(), (int) st.getSize()).isNotEmpty() && matrix->matrixRoutesJson().size() == 3, "routes kept in the session"); }
+    // the Matrix leaves: its routes stop
+    matrix.reset(); buf.clear(); a->processBlock (buf, midi);
+    EXPECT (a->modOffsetFor ("stage_width") == 0.0f, "removing the Matrix removes its modulation");
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2380,6 +2426,7 @@ int main()
     testMosaicCore();
     testVoidCore();
     testOrbitCore();
+    testMatrix();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

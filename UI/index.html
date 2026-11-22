@@ -769,6 +769,24 @@
           <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
           <label style="display:flex;gap:2px;align-items:center;" data-tip="WIDE: let the lift's skirt also fill 15-30 Hz. Off = true infrasonics only (the original trick). Shift+I"><input type="checkbox" data-sync="infra_lift_wide" onchange="bind('infra_lift_wide', this.checked ? 1 : 0, '', 1)">WIDE</label>
         </div>
+        <div id="matrixCore" style="display:none;flex-direction:column;gap:2px;font-size:9px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;"><span>⚡ MODULATION SOURCES</span>
+            <button onclick="openModMatrix()" style="font-size:9px;padding:1px 6px;" data-tip="Route any source to any control on any track (Ctrl+Alt+X)">ROUTES…</button></div>
+          <canvas id="modMeters" width="190" height="34" style="width:100%;height:34px;border:1px solid var(--bezel);border-radius:3px;background:#05070a;"></canvas>
+          <div style="display:grid;grid-template-columns:28px 1fr 1fr;gap:2px;align-items:center;"><span>LFO1</span>
+      <select data-sync="mtx_lfo1_shape" onchange="bind('mtx_lfo1_shape', +this.value, '', 1)" style="font-size:8px;"><option value="0">Sine</option><option value="1">Tri</option><option value="2">Saw ↑</option><option value="3">Saw ↓</option><option value="4">Square</option><option value="5">S&amp;H</option><option value="6">Smooth rnd</option></select>
+      <select data-sync="mtx_lfo1_sync" onchange="bind('mtx_lfo1_sync', +this.value, '', 1)" style="font-size:8px;"><option value="0">Free</option><option value="1">1/16</option><option value="2">1/8</option><option value="3">1/4</option><option value="4">1/2</option><option value="5">1 Bar</option><option value="6">2 Bars</option><option value="7">4 Bars</option></select></div>
+    <div class="bk-row" data-tip="LFO 1 rate when Free"><span>Hz</span><input type="range" data-sync="mtx_lfo1_rate" min="0.01" max="20" step="0.01" value="0.5" oninput="bind('mtx_lfo1_rate', +this.value, '', 1); bkShow('mtx_lfo1_rate', +this.value)" ondblclick="this.value=0.5; bind('mtx_lfo1_rate', 0.5, '', 1); bkShow('mtx_lfo1_rate', 0.5)"><b id="v-mtx_lfo1_rate">0.50</b></div><div style="display:grid;grid-template-columns:28px 1fr 1fr;gap:2px;align-items:center;"><span>LFO2</span>
+      <select data-sync="mtx_lfo2_shape" onchange="bind('mtx_lfo2_shape', +this.value, '', 1)" style="font-size:8px;"><option value="0">Sine</option><option value="1">Tri</option><option value="2">Saw ↑</option><option value="3">Saw ↓</option><option value="4">Square</option><option value="5">S&amp;H</option><option value="6">Smooth rnd</option></select>
+      <select data-sync="mtx_lfo2_sync" onchange="bind('mtx_lfo2_sync', +this.value, '', 1)" style="font-size:8px;"><option value="0">Free</option><option value="1">1/16</option><option value="2">1/8</option><option value="3">1/4</option><option value="4">1/2</option><option value="5">1 Bar</option><option value="6">2 Bars</option><option value="7">4 Bars</option></select></div>
+    <div class="bk-row" data-tip="LFO 2 rate when Free"><span>Hz</span><input type="range" data-sync="mtx_lfo2_rate" min="0.01" max="20" step="0.01" value="1" oninput="bind('mtx_lfo2_rate', +this.value, '', 1); bkShow('mtx_lfo2_rate', +this.value)" ondblclick="this.value=1; bind('mtx_lfo2_rate', 1, '', 1); bkShow('mtx_lfo2_rate', 1)"><b id="v-mtx_lfo2_rate">1.00</b></div><div style="display:grid;grid-template-columns:28px 1fr 1fr;gap:2px;align-items:center;"><span>LFO3</span>
+      <select data-sync="mtx_lfo3_shape" onchange="bind('mtx_lfo3_shape', +this.value, '', 1)" style="font-size:8px;"><option value="0">Sine</option><option value="1">Tri</option><option value="2">Saw ↑</option><option value="3">Saw ↓</option><option value="4">Square</option><option value="5">S&amp;H</option><option value="6">Smooth rnd</option></select>
+      <select data-sync="mtx_lfo3_sync" onchange="bind('mtx_lfo3_sync', +this.value, '', 1)" style="font-size:8px;"><option value="0">Free</option><option value="1">1/16</option><option value="2">1/8</option><option value="3">1/4</option><option value="4">1/2</option><option value="5">1 Bar</option><option value="6">2 Bars</option><option value="7">4 Bars</option></select></div>
+    <div class="bk-row" data-tip="LFO 3 rate when Free"><span>Hz</span><input type="range" data-sync="mtx_lfo3_rate" min="0.01" max="20" step="0.01" value="0.25" oninput="bind('mtx_lfo3_rate', +this.value, '', 1); bkShow('mtx_lfo3_rate', +this.value)" ondblclick="this.value=0.25; bind('mtx_lfo3_rate', 0.25, '', 1); bkShow('mtx_lfo3_rate', 0.25)"><b id="v-mtx_lfo3_rate">0.25</b></div><div style="display:grid;grid-template-columns:28px 1fr 1fr;gap:2px;align-items:center;"><span>LFO4</span>
+      <select data-sync="mtx_lfo4_shape" onchange="bind('mtx_lfo4_shape', +this.value, '', 1)" style="font-size:8px;"><option value="0">Sine</option><option value="1">Tri</option><option value="2">Saw ↑</option><option value="3">Saw ↓</option><option value="4">Square</option><option value="5">S&amp;H</option><option value="6">Smooth rnd</option></select>
+      <select data-sync="mtx_lfo4_sync" onchange="bind('mtx_lfo4_sync', +this.value, '', 1)" style="font-size:8px;"><option value="0">Free</option><option value="1">1/16</option><option value="2">1/8</option><option value="3">1/4</option><option value="4">1/2</option><option value="5">1 Bar</option><option value="6">2 Bars</option><option value="7">4 Bars</option></select></div>
+    <div class="bk-row" data-tip="LFO 4 rate when Free"><span>Hz</span><input type="range" data-sync="mtx_lfo4_rate" min="0.01" max="20" step="0.01" value="2" oninput="bind('mtx_lfo4_rate', +this.value, '', 1); bkShow('mtx_lfo4_rate', +this.value)" ondblclick="this.value=2; bind('mtx_lfo4_rate', 2, '', 1); bkShow('mtx_lfo4_rate', 2)"><b id="v-mtx_lfo4_rate">2.00</b></div><div class="bk-grid2"><div class="bk-row" data-tip="Macro 1: one knob that can move many controls on many tracks"><span>M1</span><input type="range" data-sync="mtx_macro1" min="0" max="1" step="0.001" value="0" oninput="bind('mtx_macro1', +this.value, '', 1); bkShow('mtx_macro1', +this.value)" ondblclick="this.value=0; bind('mtx_macro1', 0, '', 1); bkShow('mtx_macro1', 0)"><b id="v-mtx_macro1">0.00</b></div><div class="bk-row" data-tip="Macro 2: one knob that can move many controls on many tracks"><span>M2</span><input type="range" data-sync="mtx_macro2" min="0" max="1" step="0.001" value="0" oninput="bind('mtx_macro2', +this.value, '', 1); bkShow('mtx_macro2', +this.value)" ondblclick="this.value=0; bind('mtx_macro2', 0, '', 1); bkShow('mtx_macro2', 0)"><b id="v-mtx_macro2">0.00</b></div><div class="bk-row" data-tip="Macro 3: one knob that can move many controls on many tracks"><span>M3</span><input type="range" data-sync="mtx_macro3" min="0" max="1" step="0.001" value="0" oninput="bind('mtx_macro3', +this.value, '', 1); bkShow('mtx_macro3', +this.value)" ondblclick="this.value=0; bind('mtx_macro3', 0, '', 1); bkShow('mtx_macro3', 0)"><b id="v-mtx_macro3">0.00</b></div><div class="bk-row" data-tip="Macro 4: one knob that can move many controls on many tracks"><span>M4</span><input type="range" data-sync="mtx_macro4" min="0" max="1" step="0.001" value="0" oninput="bind('mtx_macro4', +this.value, '', 1); bkShow('mtx_macro4', +this.value)" ondblclick="this.value=0; bind('mtx_macro4', 0, '', 1); bkShow('mtx_macro4', 0)"><b id="v-mtx_macro4">0.00</b></div><div class="bk-row" data-tip="Envelope attack"><span>ATK</span><input type="range" data-sync="mtx_env_atk" min="1" max="500" step="1" value="10" oninput="bind('mtx_env_atk', +this.value, '', 1); bkShow('mtx_env_atk', +this.value)" ondblclick="this.value=10; bind('mtx_env_atk', 10, '', 1); bkShow('mtx_env_atk', 10)"><b id="v-mtx_env_atk">10 ms</b></div><div class="bk-row" data-tip="Envelope release"><span>REL</span><input type="range" data-sync="mtx_env_rel" min="10" max="2000" step="1" value="250" oninput="bind('mtx_env_rel', +this.value, '', 1); bkShow('mtx_env_rel', +this.value)" ondblclick="this.value=250; bind('mtx_env_rel', 250, '', 1); bkShow('mtx_env_rel', 250)"><b id="v-mtx_env_rel">250 ms</b></div></div>
+        </div>
         <div id="orbitCore" style="display:none;flex-direction:column;gap:3px;font-size:9px;">
           <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
             <label style="display:flex;gap:3px;align-items:center;" data-tip="Tube stage. Off = true bypass."><input type="checkbox" data-sync="orbit_tube_on" onchange="bind('orbit_tube_on', this.checked ? 1 : 0, '', 1)">◉ TUBE</label>
@@ -1384,6 +1402,7 @@
   <div class="modal" id="matrixModal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box">
       <strong style="color:var(--accent2);letter-spacing:0.1em;">THE MATRIX · CV, MIDI &amp; CLIPPER</strong>
+      <button onclick="document.getElementById('matrixModal').classList.remove('open'); openModMatrix()" style="margin:6px 0;">⚡ MODULATION MATRIX… (Ctrl+Alt+X)</button>
       <div class="ctrl">
         <label>CV LFO MOD DEPTH <span id="v-cv_mod_depth">0%</span></label>
         <input data-sync="cv_mod_depth" type="range" min="0" max="1" step="0.01" value="0" oninput="bind('cv_mod_depth', this.value, '%', 100)">
@@ -1574,6 +1593,16 @@
       <div id="lanNodes" style="margin-top:8px;"></div>
       <div class="dg-hint" style="font-size:11px;margin-top:8px;">Note: while offloaded, this plugin's Rack Link features (unmask, ducking, auto-align) don't reach the tracks still in your DAW. Bounces work normally.</div>
       <div style="display:flex;gap:6px;margin-top:10px;"><button onclick="emit('offload', { cmd: 'disconnect' }); setTimeout(openLan, 300)">PROCESS LOCALLY</button><button onclick="document.getElementById('lanModal').classList.remove('open')">CLOSE</button></div>
+    </div>
+  </div>
+
+  <div class="modal" id="modMatrixModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:min(760px,95vw);max-height:86vh;overflow-y:auto;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">⚡ MODULATION MATRIX · whole session</strong>
+      <div class="dg-hint" id="mmHint" style="font-size:11px;margin:6px 0;">Source → track → control, with depth (−100..+100 %) and phase (LFOs: offset each track to make movement ripple across the mix). Routes are kept in The Matrix's session.</div>
+      <div class="km-row" style="grid-template-columns:130px 150px 1fr 120px 70px 26px;font-size:10px;opacity:.7;"><span>SOURCE</span><span>TRACK</span><span>CONTROL</span><span>DEPTH</span><span>PHASE</span><span></span></div>
+      <div id="mmList"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;"><button id="mmAdd" onclick="mmRoutes.push({ src: 0, slot: -2, track: '', id: 'stage_width', depth: 0.5, phase: 0 }); renderModMatrix(); saveModMatrix()">+ ADD ROUTE</button><span style="flex:1"></span><button onclick="document.getElementById('modMatrixModal').classList.remove('open')">CLOSE</button></div>
     </div>
   </div>
 
@@ -1963,6 +1992,7 @@
       }
       if (e.code === 'Backquote' && !typing && e.altKey && !mod) { e.preventDefault(); toggleTilePick(hoverPanel); return; }
       if (e.code === 'Backquote' && !typing) { e.preventDefault(); if (mod) popOutPanel(); else toggleMaxPanel(); return; }
+      if (mod && e.altKey && e.key.toLowerCase() === 'x') { e.preventDefault(); openModMatrix(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'o') { e.preventDefault(); openAutoConnect(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'g') { e.preventDefault(); toggleAutoSafe(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); addCueHere(); return; }
@@ -2485,7 +2515,7 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
-        if ((/^(bunker|anchor|aether|mosaic|void|orbit)_/.test(id) || id === 'regen_throttle') && typeof bkShow === 'function') bkShow(id, v);
+        if ((/^(bunker|anchor|aether|mosaic|void|orbit|mtx)_/.test(id) || id === 'regen_throttle') && typeof bkShow === 'function') bkShow(id, v);
         if (id === 'transient_attack' || id === 'transient_sustain') document.getElementById('v-' + id).textContent = (v > 0 ? '+' : '') + Math.round(v) + '%';
         if (id === 'dialogue_duck_db') document.getElementById('v-dialogue_duck_db').textContent = (+v).toFixed(1) + ' dB';
         if (id === 'infra_lift_db') document.getElementById('v-infra_lift_db').textContent = '+' + (+v).toFixed(1) + ' dB';
@@ -3597,6 +3627,7 @@
       ['addCue', 'Ctrl+Alt+K', 'Add a cinematic cue at the playhead', () => addCueHere()],
       ['autoSafe', 'Ctrl+Alt+G', 'Auto Safe Mode (beginner guard)', () => toggleAutoSafe()],
       ['autoConnect', 'Ctrl+Alt+O', 'Auto-Connect: tracks to spatial zones', () => openAutoConnect()],
+      ['modMatrix', 'Ctrl+Alt+X', 'Modulation matrix (routes)', () => openModMatrix()],
       ['aiSpatial', '', 'AI Analyze: spatial optimization', () => { openAssistant('spatial'); spatialPlanRes = planSpatial(); renderSpatial(); }],
       ['aiCues', '', 'AI Analyze: cinematic cues', () => openAssistant('cues')],
       ['aiMood', '', 'AI Analyze: emotional resonance', () => openAssistant('mood')],
@@ -3926,6 +3957,38 @@
       window.__JUCE__.backend.addEventListener('metaState', (d) => { metaData = Object.assign({}, metaData, d); if (!d.message) delete metaData.message; else metaData.message = d.message; if (aiTab === 'meta') renderMeta(); });
     }
 
+    // ===================== MODULATION MATRIX (The Matrix) =====================
+    const MOD_SOURCES = ['LFO 1', 'LFO 2', 'LFO 3', 'LFO 4', 'ENV 1 (Matrix track)', 'ENV 2 (link key)', 'MACRO 1', 'MACRO 2', 'MACRO 3', 'MACRO 4', 'RANDOM'];
+    let mmRoutes = [], mmIsMatrix = /matrix/i.test(params.get('module') || '');
+    function openModMatrix() { emit('matrix', { cmd: 'get' }); renderModMatrix(); document.getElementById('modMatrixModal').classList.add('open'); }
+    function saveModMatrix() { if (mmIsMatrix) emit('matrix', { cmd: 'set', routes: mmRoutes }); }
+    function renderModMatrix() {
+      const tracks = [{ slot: -2, label: 'This track' }].concat(((window._rackState || {}).instances || []).filter(o => !o.self).map(o => ({ slot: o.slot, label: (o.name || o.module) + ' · ' + o.module, name: o.name || '' })));
+      const ctl = (paramInfo.length ? paramInfo : Object.keys(knobRegistry).map(id => ({ id, name: paramLabel(id) }))).filter(p => !/^mtx_/.test(p.id));
+      document.getElementById('mmAdd').style.display = mmIsMatrix ? '' : 'none';
+      document.getElementById('mmHint').textContent = mmIsMatrix ? document.getElementById('mmHint').textContent : 'These routes are set in The Matrix plugin - open it to change them.';
+      document.getElementById('mmList').innerHTML = mmRoutes.map((r, i) => `<div class="km-row" style="grid-template-columns:130px 150px 1fr 120px 70px 26px;">
+        <select ${mmIsMatrix ? '' : 'disabled'} onchange="mmRoutes[${i}].src=+this.value;saveModMatrix()">${MOD_SOURCES.map((s, k) => `<option value="${k}" ${k === r.src ? 'selected' : ''}>${s}</option>`).join('')}</select>
+        <select ${mmIsMatrix ? '' : 'disabled'} onchange="const t=JSON.parse(this.value);mmRoutes[${i}].slot=t.slot;mmRoutes[${i}].track=t.name||'';saveModMatrix()">${tracks.map(t => `<option value='${JSON.stringify({ slot: t.slot, name: t.name || '' }).replace(/'/g, '&#39;')}' ${t.slot === r.slot ? 'selected' : ''}>${escapeHtml(t.label)}</option>`).join('')}</select>
+        <select ${mmIsMatrix ? '' : 'disabled'} onchange="mmRoutes[${i}].id=this.value;saveModMatrix()">${ctl.map(p => `<option value="${p.id}" ${p.id === r.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select>
+        <span style="display:flex;gap:4px;align-items:center;"><input type="range" min="-1" max="1" step="0.01" value="${r.depth}" ${mmIsMatrix ? '' : 'disabled'} oninput="mmRoutes[${i}].depth=+this.value;this.nextElementSibling.textContent=Math.round(this.value*100)+'%'" onchange="saveModMatrix()" style="width:70px"><b style="font-weight:normal;font-size:10px">${Math.round(r.depth * 100)}%</b></span>
+        <input type="number" min="0" max="1" step="0.05" value="${r.phase}" ${mmIsMatrix && r.src < 4 ? '' : 'disabled'} onchange="mmRoutes[${i}].phase=+this.value;saveModMatrix()" style="width:56px">
+        <button ${mmIsMatrix ? '' : 'disabled'} onclick="mmRoutes.splice(${i},1);renderModMatrix();saveModMatrix()">✕</button></div>`).join('') || '<div class="dg-hint">No routes yet.</div>';
+    }
+    if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.addEventListener('matrixState', (m) => { mmRoutes = (m.routes || []).map(r => Object.assign({}, r)); mmIsMatrix = !!m.isMatrix; if (document.getElementById('modMatrixModal').classList.contains('open')) renderModMatrix(); });
+    if (mmIsMatrix) {
+      document.getElementById('matrixCore').style.display = 'flex';
+      (function meters() {
+        const cv = document.getElementById('modMeters'), c = cv.getContext('2d'), W = cv.width, H = cv.height, v = (window._tele || {}).mod || [];
+        c.fillStyle = '#05070a'; c.fillRect(0, 0, W, H); const n = MOD_SOURCES.length, bw = W / n;
+        const gold = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim() || '#d4af37';
+        for (let i = 0; i < n; i++) { const x = (v[i] || 0), bipolar = i < 4 || i === 10, mid = bipolar ? H / 2 : H - 8;
+          c.fillStyle = i < 4 ? gold : i < 6 ? '#38bdf8' : i < 10 ? '#a78bfa' : '#f472b6';
+          const h = bipolar ? -x * (H / 2 - 9) : -x * (H - 10); c.fillRect(i * bw + 2, mid, bw - 4, h);
+          c.fillStyle = '#6b7280'; c.font = '7px monospace'; c.fillText(['L1', 'L2', 'L3', 'L4', 'E1', 'E2', 'M1', 'M2', 'M3', 'M4', 'R'][i], i * bw + 3, H - 1); }
+        requestAnimationFrame(meters);
+      })();
+    }
     // ===================== AUTO-CONNECT WIZARD (The Orbit): sources -> spatial zones =====================
     const AC_ZONES = { 'Front centre': { az: 0, el: 0, dist: 1.6, width: 0.8 }, 'Front left': { az: -30, el: 0, dist: 2.2, width: 1 }, 'Front right': { az: 30, el: 0, dist: 2.2, width: 1 },
       'Side left': { az: -90, el: 5, dist: 2.5, width: 1.1 }, 'Side right': { az: 90, el: 5, dist: 2.5, width: 1.1 }, 'Rear left': { az: -145, el: 10, dist: 3, width: 1.3 },
@@ -4543,6 +4606,9 @@
     if (/bunker/i.test(params.get('module') || '')) { document.getElementById('infraRow').style.display = 'flex'; document.getElementById('bunkerCore').style.display = 'flex'; }   // The Bunker only
     function bkShow(id, v) {
       const el = document.getElementById('v-' + id); if (!el) return;
+      if (/^mtx_lfo\d_rate$/.test(id)) { el.textContent = (+v).toFixed(v < 1 ? 2 : 1); return; }
+      if (/^mtx_macro/.test(id)) { el.textContent = (+v).toFixed(2); return; }
+      if (id === 'mtx_env_atk' || id === 'mtx_env_rel') { el.textContent = Math.round(v) + ' ms'; return; }
       if (id === 'orbit_regen_clock') { el.textContent = (v / 1000).toFixed(1) + ' kHz'; return; }
       if (id === 'orbit_tube_bias' || id === 'regen_throttle') { el.textContent = (+v).toFixed(2); return; }
       if (id === 'orbit_regen_ms') { el.textContent = Math.round(v) + ' ms'; return; }
