@@ -492,6 +492,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v22: The Anchor clipper suite (off by default: the original Anchor sound, time-aligned)
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "anchor_on", 22 },      "Clipper Suite", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "anchor_drive", 22 },   "Clip Drive (dB)",  juce::NormalisableRange<float> (0.0f, 24.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "anchor_curve", 22 },   "Clip Curve", juce::StringArray { "Soft", "Gold", "Tube", "Hard", "Arctan", "Sine Fold" }, 1));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "anchor_knee", 22 },    "Clip Knee (%)",    juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "anchor_ceiling", 22 }, "Clip Ceiling (dB)", juce::NormalisableRange<float> (-12.0f, 0.0f, 0.1f), -0.3f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "anchor_out", 22 },     "Clip Output (dB)",  juce::NormalisableRange<float> (-24.0f, 12.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "anchor_blend", 22 },   "Clip Blend (%)",    juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "anchor_os", 22 },      "Clip Oversampling", juce::StringArray { "1x", "2x", "4x", "8x", "16x" }, 2));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "anchor_bands", 22 },   "4-Band Clipping", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "anchor_dyn", 22 },     "Dynamic Multiband", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "anchor_limit", 22 },   "Transparent Limiter Mode", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "anchor_pam", 22 },     "PAM Phase Alignment", true));
     // --- v21: The Bunker low-end core (all neutral by default: the original Bunker sound is unchanged)
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_sub", 21 },    "Sub Harmonics (%)",     juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_sub_hz", 21 }, "Sub Tracking (Hz)",     juce::NormalisableRange<float> (50.0f, 160.0f, 1.0f), 110.0f));
@@ -648,6 +661,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     preparedBlockSize = samplesPerBlock;
     infraLift.prepare (sampleRate);
     bunkerCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    anchorCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     dcGuardIn.prepare (sampleRate);
     voiceDetector.prepare (sampleRate);
     dialogueDucker.prepare (sampleRate);
@@ -659,7 +673,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 };
     moduleEngine.prepare (spec);
     dryCopy.setSize (2, samplesPerBlock, false, true, true);
-    dryDelay.prepare (2, moduleEngine.getLatencySamples());
+    dryDelay.prepare (2, moduleEngine.getLatencySamples() + anchorLatency());
     ceilingLimiter.prepare (sampleRate, limiterLookaheadMs());
     glue.prepare (sampleRate);
     roomCorrector.prepare (sampleRate);
@@ -1066,6 +1080,27 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         else
             transientShaper.reset();
         moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
+        if (moduleId == SolutionDSP::ModuleId::Anchor)
+        {
+            SolutionDSP::AnchorCore::Params ap;
+            ap.on = apvts.getRawParameterValue ("anchor_on")->load() > 0.5f;
+            ap.driveDb = apvts.getRawParameterValue ("anchor_drive")->load();
+            ap.curve = (int) apvts.getRawParameterValue ("anchor_curve")->load();
+            ap.knee = apvts.getRawParameterValue ("anchor_knee")->load() / 100.0f;
+            ap.ceilingDb = apvts.getRawParameterValue ("anchor_ceiling")->load();
+            ap.outDb = apvts.getRawParameterValue ("anchor_out")->load();
+            ap.blend = apvts.getRawParameterValue ("anchor_blend")->load() / 100.0f;
+            ap.osIndex = (int) apvts.getRawParameterValue ("anchor_os")->load();
+            ap.multiband = apvts.getRawParameterValue ("anchor_bands")->load() > 0.5f;
+            ap.dynamic = apvts.getRawParameterValue ("anchor_dyn")->load() > 0.5f;
+            ap.limitMode = apvts.getRawParameterValue ("anchor_limit")->load() > 0.5f;
+            ap.pam = apvts.getRawParameterValue ("anchor_pam")->load() > 0.5f;
+            if (safeOn) ap.driveDb = std::min (ap.driveDb, 6.0f);             // Auto Safe Mode
+            anchorCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, ap);
+            anchorDistPct.store (anchorCore.getDistortionPct(), std::memory_order_relaxed);
+            anchorCrestLost.store (anchorCore.getCrestLostDb(), std::memory_order_relaxed);
+            anchorVerdict.store (ap.on ? anchorCore.verdict() : -1, std::memory_order_relaxed);
+        }
         if (moduleId == SolutionDSP::ModuleId::Bunker)
         {
             SolutionDSP::BunkerCore::Params bp;

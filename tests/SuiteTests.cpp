@@ -1987,6 +1987,68 @@ static void testBunkerCore()
       EXPECT (side60 < -5.3 - 20.0 && side6k > -12.0, "lows collapse to mono (side 20+ dB down), highs stay wide"); }
 }
 
+
+static void testAnchorCore()
+{
+    std::printf ("The Anchor clipper suite: curves, 16x, 4-band, PAM, limiter, squash detector\n");
+    using SolutionDSP::AnchorCore;
+    const double fs = 48000.0; const int N = 48000;
+    auto run = [&] (AnchorCore::Params p, std::function<float (int)> gen, std::vector<float>& L, AnchorCore* keep = nullptr) {
+        AnchorCore local; AnchorCore& c = keep ? *keep : local; c.prepare (fs, 512);
+        L.assign (N, 0); std::vector<float> R (N);
+        for (int i = 0; i < N; ++i) L[(size_t) i] = R[(size_t) i] = gen (i);
+        for (int o = 0; o < N; o += 512) c.process (L.data() + o, R.data() + o, std::min (512, N - o), p);
+        return c.getLatency();
+    };
+    auto sine = [&] (double hz, double a) { return [=] (int i) { return (float) (a * std::sin (2 * juce::MathConstants<double>::pi * hz * i / fs)); }; };
+    std::vector<float> L;
+    // off = original, exactly delayed
+    { AnchorCore::Params p; const int lat = run (p, sine (440, 0.5), L); bool ok = true;
+      for (int i = lat; i < N; ++i) ok &= std::abs (L[(size_t) i] - sine (440, 0.5) (i - lat)) < 1e-6f;
+      EXPECT (ok && lat > 0, "off: untouched, just delayed by the fixed %d samples", lat); }
+    // same latency and alignment at every oversampling setting: an impulse lands on the same sample
+    { int where[5];
+      for (int k = 0; k < 5; ++k) { AnchorCore::Params p; p.on = true; p.osIndex = k; p.curve = AnchorCore::Hard; p.ceilingDb = 0;
+        run (p, [] (int i) { return i == 1000 ? 0.5f : 0.0f; }, L);
+        where[k] = (int) (std::max_element (L.begin(), L.end(), [] (float a, float b) { return std::abs (a) < std::abs (b); }) - L.begin()); }
+      EXPECT (where[0] == where[1] && where[1] == where[2] && where[2] == where[3] && where[3] == where[4], "1x..16x all line up (%d %d %d %d %d)", where[0], where[1], where[2], where[3], where[4]); }
+    // ceiling holds, drive > 100%
+    { AnchorCore::Params p; p.on = true; p.driveDb = 18.0f; p.curve = AnchorCore::Hard; p.ceilingDb = -1.0f; p.osIndex = 4;
+      run (p, sine (997, 0.9), L); float pk = 0; for (int i = 4000; i < N; ++i) pk = std::max (pk, std::abs (L[(size_t) i]));
+      EXPECT (pk < juce::Decibels::decibelsToGain (-1.0f) * 1.12f, "ceiling holds at +18 dB drive, 16x (peak %.3f)", pk); }
+    // PAM: 4-band at 50% blend, no drive -> flat; without PAM the dry/wet phase combs
+    { auto gainAt = [&] (bool pam, double hz) { AnchorCore::Params p; p.on = true; p.multiband = true; p.blend = 0.5f; p.pam = pam; p.ceilingDb = 0; p.driveDb = 0;
+        run (p, sine (hz, 0.1), L); return toneLevelDb (L.data() + 24000, 24000, hz, fs) - 20 * std::log10 (0.1); };
+      float worstPam = 0, worstNo = 0;
+      for (double hz : { 80.0, 120.0, 400.0, 1000.0, 3000.0, 6000.0 }) { worstPam = std::max (worstPam, (float) std::abs (gainAt (true, hz))); worstNo = std::max (worstNo, (float) std::abs (gainAt (false, hz))); }
+      std::printf ("  50%% blend, 4-band: worst deviation %.2f dB with PAM, %.2f dB without\n", worstPam, worstNo);
+      EXPECT (worstPam < 0.3f && worstNo > 2.0f, "PAM keeps a parallel blend flat (comb without it)"); }
+    // transparent limiter vs clipper at the same drive
+    { AnchorCore c1, c2; AnchorCore::Params p; p.on = true; p.driveDb = 12.0f; p.curve = AnchorCore::Hard; p.ceilingDb = -1.0f;
+      run (p, sine (200, 0.5), L, &c1); const float clipDist = c1.getDistortionPct();
+      p.limitMode = true; run (p, sine (200, 0.5), L, &c2); const float limDist = c2.getDistortionPct();
+      float pk = 0; for (int i = 4000; i < N; ++i) pk = std::max (pk, std::abs (L[(size_t) i]));
+      std::printf ("  +12 dB into -1 dB: clipper %.1f%% distortion, limiter %.2f%% (peak %.3f)\n", clipDist, limDist, pk);
+      EXPECT (limDist < clipDist * 0.25f && pk <= juce::Decibels::decibelsToGain (-1.0f) + 1e-4f, "limiter mode is far cleaner and still holds the ceiling"); }
+    // squash / crest detector
+    { AnchorCore a, b; AnchorCore::Params p; p.on = true; p.ceilingDb = 0; p.curve = AnchorCore::Hard;
+      auto drums = [&] (int i) { const double t = std::fmod (i / fs, 0.25); return (float) (0.9 * std::exp (-t * 40) * std::sin (2 * juce::MathConstants<double>::pi * 70 * t) + 0.05 * std::sin (2 * juce::MathConstants<double>::pi * 3000 * i / fs)); };
+      run (p, drums, L, &a);
+      p.driveDb = 20.0f; p.curve = AnchorCore::Hard; run (p, drums, L, &b);
+      std::printf ("  detector: clean %.2f%% / crest -%.1f dB -> verdict %d; slammed %.1f%% / crest -%.1f dB -> verdict %d\n", a.getDistortionPct(), a.getCrestLostDb(), a.verdict(), b.getDistortionPct(), b.getCrestLostDb(), b.verdict());
+      EXPECT (a.verdict() == 0 && b.verdict() == 3 && b.getCrestLostDb() > 6.0f, "detector tells clean from squashed"); }
+    // dynamic multiband: the booming band is driven less
+    { AnchorCore a, b; AnchorCore::Params p; p.on = true; p.multiband = true; p.driveDb = 12.0f; p.curve = AnchorCore::Soft; p.knee = 1.0f; p.ceilingDb = 0;
+      auto mix = [&] (int i) { return (float) (0.7 * std::sin (2 * juce::MathConstants<double>::pi * 60 * i / fs) + 0.05 * std::sin (2 * juce::MathConstants<double>::pi * 3000 * i / fs)); };
+      run (p, mix, L, &a); p.dynamic = true; run (p, mix, L, &b);
+      std::printf ("  bass-heavy mix: %.1f%% distortion static, %.1f%% dynamic multiband\n", a.getDistortionPct(), b.getDistortionPct());
+      EXPECT (b.getDistortionPct() < a.getDistortionPct() * 0.9f, "dynamic multiband eases the hottest band"); }
+    // every curve stays inside the ceiling
+    for (int curve = 0; curve < 6; ++curve) { float lo = 1, hi = -1;
+      for (float u = -4; u <= 4; u += 0.01f) { const float y = AnchorCore::shape (u, curve, 0.6f); lo = std::min (lo, y); hi = std::max (hi, y); }
+      EXPECT (lo >= -1.0001f && hi <= 1.0001f, "curve %d stays within the ceiling", curve); }
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2135,6 +2197,7 @@ int main()
     testEditHistory();
     testAutoSafe();
     testBunkerCore();
+    testAnchorCore();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

@@ -55,7 +55,7 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 
 ### Module engines (real DSP per module)
 - ✅ The Bunker: sub-harmonic synthesizer (octave-down divider following 50-160 Hz), dynamic low tamer (120 Hz shelf dips only when lows boom, up to -12 dB), 3-layer Split-Core M/S (LR4 bands summing flat, per-band width, movable crossovers); all neutral by default so the original tuning is untouched
-- ☐ The Anchor: 4-band soft clipper, Gold Clip-style curves, shapes, drive >100%, squash/crest detector (wanted vs unwanted distortion), transparent limiter option, dynamic multiband, up to 16x oversampling, PAM (Phase Alignment Matrix) button
+- ✅ The Anchor clipper suite: single or 4-band (120 Hz / 1 kHz / 6 kHz LR4), curves Soft / Gold smooth-knee / Tube / Hard / Arctan / Sine Fold + knee, drive to 1585% (+24 dB), ceiling, output, blend; transparent look-ahead limiter mode (1.3% vs 24% distortion); dynamic multiband (eases hot bands, same level: 20% → 4% distortion); 1x-16x oversampling with fixed latency; PAM keeps parallel blend flat (0.01 dB vs 25 dB comb); squash/crest detector shows CLEAN / GLUE / CRUNCH / SQUASHED. Off = original Anchor sound
 - ☐ The Aether: generative soundscape (particle cloud + XY pad, granular), delay engine with Clarity-inspired features (focus/soften, tempo-synced ducking, tape THD), sidechain
 - ☐ The Mosaic: STFT spectral morphing (1024–4096), 4-node XY pad, transient preservation
 - ☐ The Void: procedural acoustic modeller (non-Euclidean spaces, phase scrambling)
