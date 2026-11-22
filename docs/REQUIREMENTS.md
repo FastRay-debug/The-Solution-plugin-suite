@@ -54,7 +54,7 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ✅ Global search / command palette (Ctrl+P or /, 🔍): actions, every control, presets, rooms, themes, skins; fuzzy; "width 120" sets a control; > actions, @ controls, # presets
 
 ### Module engines (real DSP per module)
-- ☐ The Bunker: sub-harmonic synthesizer, dynamic low-end filtering, 3-layer Split-Core M/S
+- ✅ The Bunker: sub-harmonic synthesizer (octave-down divider following 50-160 Hz), dynamic low tamer (120 Hz shelf dips only when lows boom, up to -12 dB), 3-layer Split-Core M/S (LR4 bands summing flat, per-band width, movable crossovers); all neutral by default so the original tuning is untouched
 - ☐ The Anchor: 4-band soft clipper, Gold Clip-style curves, shapes, drive >100%, squash/crest detector (wanted vs unwanted distortion), transparent limiter option, dynamic multiband, up to 16x oversampling, PAM (Phase Alignment Matrix) button
 - ☐ The Aether: generative soundscape (particle cloud + XY pad, granular), delay engine with Clarity-inspired features (focus/soften, tempo-synced ducking, tape THD), sidechain
 - ☐ The Mosaic: STFT spectral morphing (1024–4096), 4-node XY pad, transient preservation

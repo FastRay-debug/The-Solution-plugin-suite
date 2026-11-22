@@ -1937,6 +1937,56 @@ static void testToneAnalyzer()
 }
 
 
+
+static double toneLevelDb (const float* x, int n, double hz, double fs)
+{   // Goertzel: level of one frequency in a signal
+    const double w = 2 * juce::MathConstants<double>::pi * hz / fs, c = 2 * std::cos (w); double s1 = 0, s2 = 0;
+    for (int i = 0; i < n; ++i) { const double s0 = x[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+    const double pw = s1 * s1 + s2 * s2 - c * s1 * s2;
+    return 10 * std::log10 (pw * 4.0 / ((double) n * n) + 1e-20);
+}
+
+static void testBunkerCore()
+{
+    std::printf ("The Bunker core: sub-harmonic synth, dynamic low tamer, split-core M/S\n");
+    const double fs = 48000.0; const int N = 48000;
+    using SolutionDSP::BunkerCore;
+    auto run = [&] (BunkerCore::Params p, std::function<void (int, float&, float&)> gen, std::vector<float>& L, std::vector<float>& R, BunkerCore* keep = nullptr) {
+        BunkerCore local; BunkerCore& c = keep ? *keep : local; c.prepare (fs, 512);
+        L.assign (N, 0); R.assign (N, 0); for (int i = 0; i < N; ++i) gen (i, L[(size_t) i], R[(size_t) i]);
+        for (int o = 0; o < N; o += 512) c.process (L.data() + o, R.data() + o, std::min (512, N - o), p);
+    };
+    auto sine = [&] (double hz, double a) { return [=] (int i, float& l, float& r) { l = r = (float) (a * std::sin (2 * juce::MathConstants<double>::pi * hz * i / fs)); }; };
+    std::vector<float> L, R;
+    // neutral = untouched
+    { BunkerCore::Params p; run (p, sine (80, 0.5), L, R); bool same = true; for (int i = 0; i < N; ++i) same &= L[(size_t) i] == (float) (0.5 * std::sin (2 * juce::MathConstants<double>::pi * 80 * i / fs));
+      EXPECT (same, "neutral settings are a bit-exact pass-through"); }
+    // sub synth: 90 Hz in -> 45 Hz appears
+    { BunkerCore::Params p; p.subAmount = 0.0f; p.dynLow = 0.0f; p.wMid = 1.0001f; run (p, sine (90, 0.3), L, R);
+      const double off = toneLevelDb (L.data() + 24000, 24000, 45, fs);
+      p.subAmount = 0.8f; run (p, sine (90, 0.3), L, R);
+      const double on = toneLevelDb (L.data() + 24000, 24000, 45, fs), fund = toneLevelDb (L.data() + 24000, 24000, 90, fs);
+      std::printf ("  45 Hz: %.1f dB off -> %.1f dB with the sub synth (90 Hz fundamental %.1f dB)\n", off, on, fund);
+      EXPECT (on > off + 30.0 && on > fund - 12.0, "sub synth adds a real octave below (%.1f dB)", on); }
+    // dynamic low tamer: boomy (loud 60 Hz, quiet 2 kHz) dips; balanced doesn't
+    { BunkerCore c; BunkerCore::Params p; p.dynLow = 1.0f;
+      run (p, [&] (int i, float& l, float& r) { l = r = (float) (0.6 * std::sin (2 * juce::MathConstants<double>::pi * 60 * i / fs) + 0.02 * std::sin (2 * juce::MathConstants<double>::pi * 2000 * i / fs)); }, L, R, &c);
+      const float boomy = c.getShelfDb();
+      BunkerCore c2; run (p, [&] (int i, float& l, float& r) { l = r = (float) (0.1 * std::sin (2 * juce::MathConstants<double>::pi * 60 * i / fs) + 0.3 * std::sin (2 * juce::MathConstants<double>::pi * 2000 * i / fs)); }, L, R, &c2);
+      std::printf ("  dynamic low shelf: %.1f dB on a boomy mix, %.1f dB on a balanced one\n", boomy, c2.getShelfDb());
+      EXPECT (boomy < -4.0f && c2.getShelfDb() > -0.5f, "only booming lows get tamed"); }
+    // split core: flat sum for mono, low band goes mono at width 0, highs keep their side
+    { BunkerCore::Params p; p.wHigh = 1.001f;
+      for (double hz : { 50.0, 120.0, 500.0, 2500.0, 9000.0 }) { run (p, sine (hz, 0.5), L, R); const double g = toneLevelDb (L.data() + 24000, 24000, hz, fs) - toneLevelDb (nullptr == L.data() ? nullptr : L.data(), 0, hz, fs) * 0;
+        EXPECT (std::abs (toneLevelDb (L.data() + 24000, 24000, hz, fs) - 20 * std::log10 (0.5)) < 0.15, "crossovers sum flat at %.0f Hz (%.2f dB)", hz, g - 20 * std::log10 (0.5)); }
+      p.wLow = 0.0f; p.wHigh = 1.0f;
+      run (p, [&] (int i, float& l, float& r) { const double t = i / fs; l = (float) (0.4 * std::sin (2 * juce::MathConstants<double>::pi * 60 * t) + 0.2 * std::sin (2 * juce::MathConstants<double>::pi * 6000 * t)); r = (float) (0.4 * std::sin (2 * juce::MathConstants<double>::pi * 60 * t + 1.5) + 0.2 * std::sin (2 * juce::MathConstants<double>::pi * 6000 * t + 1.5)); }, L, R);
+      std::vector<float> S (N); for (int i = 0; i < N; ++i) S[(size_t) i] = L[(size_t) i] - R[(size_t) i];
+      const double side60 = toneLevelDb (S.data() + 24000, 24000, 60, fs), side6k = toneLevelDb (S.data() + 24000, 24000, 6000, fs);
+      std::printf ("  low width 0%%: side at 60 Hz %.1f dB, at 6 kHz %.1f dB\n", side60, side6k);
+      EXPECT (side60 < -5.3 - 20.0 && side6k > -12.0, "lows collapse to mono (side 20+ dB down), highs stay wide"); }
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2084,6 +2134,7 @@ int main()
     testNetworkOffload();
     testEditHistory();
     testAutoSafe();
+    testBunkerCore();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

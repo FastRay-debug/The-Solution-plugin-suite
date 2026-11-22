@@ -14,13 +14,16 @@ namespace SolutionDSP
         double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
         double run (double x) { const double y = b0 * x + z1; z1 = b1 * x - a1 * y + z2; z2 = b2 * x - a2 * y; return y; }
         void clear() { z1 = z2 = 0; }
-        void set (int type, double fs, double f, double q, double gainDb = 0.0)   // 0 LP, 1 HP, 2 peak
+        void set (int type, double fs, double f, double q, double gainDb = 0.0)   // 0 LP, 1 HP, 2 peak, 3 low shelf
         {
             const double w = juce::MathConstants<double>::twoPi * std::min (f, 0.45 * fs) / fs, s = std::sin (w), c = std::cos (w);
             const double al = s / (2 * q), A = std::pow (10.0, gainDb / 40.0);
             double n0, n1, n2, d0, d1, d2;
             if (type == 0)      { n0 = (1 - c) / 2; n1 = 1 - c; n2 = n0; d0 = 1 + al; d1 = -2 * c; d2 = 1 - al; }
             else if (type == 1) { n0 = (1 + c) / 2; n1 = -(1 + c); n2 = n0; d0 = 1 + al; d1 = -2 * c; d2 = 1 - al; }
+            else if (type == 3) { const double sq = 2 * std::sqrt (A) * al;                     // low shelf (RBJ)
+                                  n0 = A * ((A + 1) - (A - 1) * c + sq); n1 = 2 * A * ((A - 1) - (A + 1) * c); n2 = A * ((A + 1) - (A - 1) * c - sq);
+                                  d0 = (A + 1) + (A - 1) * c + sq; d1 = -2 * ((A - 1) + (A + 1) * c); d2 = (A + 1) + (A - 1) * c - sq; }
             else                { n0 = 1 + al * A; n1 = -2 * c; n2 = 1 - al * A; d0 = 1 + al / A; d1 = -2 * c; d2 = 1 - al / A; }
             b0 = n0 / d0; b1 = n1 / d0; b2 = n2 / d0; a1 = d1 / d0; a2 = d2 / d0;
         }

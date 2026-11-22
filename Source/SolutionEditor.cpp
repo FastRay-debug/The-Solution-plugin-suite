@@ -1039,6 +1039,7 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("voice",         audioProcessor.voiceConfidence.load());
     payload->setProperty ("dialogueDuckDb", audioProcessor.dialogueDuckDb.load());
     payload->setProperty ("dialogueSources", audioProcessor.dialogueSources.load());
+    payload->setProperty ("bunkerShelf", std::round (audioProcessor.bunkerShelfDb.load() * 10.0f) / 10.0f);
     payload->setProperty ("autoSafe", std::round (audioProcessor.autoSafeHolding.load() * 100.0f));
     payload->setProperty ("dialogueCarveHz", std::round (audioProcessor.dialogueCarveHz.load()));
     payload->setProperty ("latency",       audioProcessor.getLatencySamples());

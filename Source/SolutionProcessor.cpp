@@ -492,6 +492,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v21: The Bunker low-end core (all neutral by default: the original Bunker sound is unchanged)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_sub", 21 },    "Sub Harmonics (%)",     juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_sub_hz", 21 }, "Sub Tracking (Hz)",     juce::NormalisableRange<float> (50.0f, 160.0f, 1.0f), 110.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_dyn", 21 },    "Dynamic Low Tamer (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_w_low", 21 },  "Core Low Width (%)",    juce::NormalisableRange<float> (0.0f, 200.0f, 0.1f), 100.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_w_mid", 21 },  "Core Mid Width (%)",    juce::NormalisableRange<float> (0.0f, 200.0f, 0.1f), 100.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_w_high", 21 }, "Core High Width (%)",   juce::NormalisableRange<float> (0.0f, 200.0f, 0.1f), 100.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_x1", 21 },     "Core Low/Mid (Hz)",     juce::NormalisableRange<float> (60.0f, 300.0f, 1.0f, 0.5f), 120.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bunker_x2", 21 },     "Core Mid/High (Hz)",    juce::NormalisableRange<float> (800.0f, 6000.0f, 1.0f, 0.5f), 2500.0f));
     // --- v20: Auto Safe Mode (beginner guard, off by default)
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "auto_safe", 20 }, "Auto Safe Mode", false));
     // --- v19: AI Analyze - cinematic cues (on), emotional resonance mapping (off)
@@ -638,6 +647,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     preparedSampleRate = sampleRate;
     preparedBlockSize = samplesPerBlock;
     infraLift.prepare (sampleRate);
+    bunkerCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     dcGuardIn.prepare (sampleRate);
     voiceDetector.prepare (sampleRate);
     dialogueDucker.prepare (sampleRate);
@@ -1056,6 +1066,19 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         else
             transientShaper.reset();
         moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
+        if (moduleId == SolutionDSP::ModuleId::Bunker)
+        {
+            SolutionDSP::BunkerCore::Params bp;
+            bp.subAmount = apvts.getRawParameterValue ("bunker_sub")->load() / 100.0f;
+            bp.subTrackHz = apvts.getRawParameterValue ("bunker_sub_hz")->load();
+            bp.dynLow = apvts.getRawParameterValue ("bunker_dyn")->load() / 100.0f;
+            bp.wLow = apvts.getRawParameterValue ("bunker_w_low")->load() / 100.0f;
+            bp.wMid = apvts.getRawParameterValue ("bunker_w_mid")->load() / 100.0f;
+            bp.wHigh = apvts.getRawParameterValue ("bunker_w_high")->load() / 100.0f;
+            bp.x1 = apvts.getRawParameterValue ("bunker_x1")->load(); bp.x2 = apvts.getRawParameterValue ("bunker_x2")->load();
+            bunkerCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, bp);
+            bunkerShelfDb.store (bunkerCore.getShelfDb(), std::memory_order_relaxed);
+        }
         if (safeOn && autoSafeLastPad < 0.999f) buffer.applyGain (1.0f / autoSafeLastPad);          // Auto Safe make-up
         if (! p.tapeCalTone)      // neural Character (only does anything once a model is chosen)
         {

@@ -33,6 +33,7 @@
 #include "ToneAnalyzer.h"
 #include "CinemaTools.h"
 #include "MetadataExport.h"
+#include "BunkerCore.h"
 #include <thread>
 #include <atomic>
 #include <array>
@@ -250,6 +251,8 @@ public:
     juce::var getResponseCurve() const { return curveResult; }
     juce::var measureResponseCurveNow();                         // blocking (tests)
     juce::var runToneAnalysisNow (float toneHz, float levelDb);  // blocking (tests, offline)
+    SolutionDSP::BunkerCore bunkerCore;
+    std::atomic<float> bunkerShelfDb { 0.0f };                 // the dynamic low tamer's current dip
     std::atomic<float> autoSafeHolding { 0.0f };               // how much drive Auto Safe Mode is holding back (0..1)
     float autoSafeBackoff = 0.0f, autoSafePadDb = 0.0f, autoSafeLastPad = 1.0f;   // audio thread
     std::atomic<float> dialogueCarveHz { 2200.0f };            // where the dialogue notch sits right now
@@ -279,7 +282,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 20;  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 21;  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
