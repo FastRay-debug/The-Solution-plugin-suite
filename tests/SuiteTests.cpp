@@ -2312,7 +2312,9 @@ static void testBridgeHosting()
     std::printf ("The Bridge: hosting a real VST3 (The Stage), latency, dry alignment, CV knobs, session\n");
     auto vst = juce::File::getCurrentWorkingDirectory().getChildFile ("TheStage_artefacts/Release/VST3/The Stage.vst3");
     if (! vst.exists()) vst = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory().getParentDirectory().getParentDirectory().getChildFile ("TheStage_artefacts/Release/VST3/The Stage.vst3");
-    if (! vst.exists()) { std::printf ("  (The Stage VST3 not built - skipped)\n"); return; }
+    const bool hasBinary = vst.findChildFiles (juce::File::findFiles, true, "*.so").size() + vst.findChildFiles (juce::File::findFiles, true, "*.vst3").size()
+                           + vst.findChildFiles (juce::File::findFiles, true, "The Stage").size() > 0;
+    if (! vst.exists() || ! hasBinary) { std::printf ("  (The Stage VST3 not built - skipped)\n"); return; }
     const double fs = 48000.0; const int bs = 512;
     auto proc = std::make_unique<SolutionAudioProcessor> ("TheBridge"); proc->prepareToPlay (fs, bs);
     const int base = proc->getLatencySamples();
