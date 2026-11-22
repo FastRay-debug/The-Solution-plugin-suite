@@ -81,4 +81,5 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 ## Car paint + floating console (this batch)
 - [x] Car skins: any paint colour (colour picker, Ctrl+Alt+C) and finish (Factory, Gloss, Metallic, Pearl, Satin, Flat/Matte, Candy, Chrome; Ctrl+Alt+P cycles). Saved per plugin. Photo cars are tinted as a whole picture until per-car body masks exist.
 - [x] Floating 3D console look (⬢ 3D button, Ctrl+Alt+3): raised chassis with thickness, underglow, machined side plates, gentle hover. Off by default.
-- [ ] True 3D hardware skins rebuilt from the owner's / Gemini concept art (glass domes, bioluminescent traces, rendered hardware knobs) - waiting on the source images.
+- [x] Faceplate fit (▣ FIT, Ctrl+Alt+B): the real knobs, meter, 3D stage and switches sit in the faceplate photo's own sockets. Lincoln done; 12 more faceplates to map.
+- [ ] Faceplate socket maps for the other 12 faceplates (Aztec, Camaro, Cuda, Eldorado, Evil Twin, Giza, GTO, Mach 1, Museum, Piano, Rome, Serengeti).

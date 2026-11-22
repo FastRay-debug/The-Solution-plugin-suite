@@ -605,6 +605,28 @@
     html.console3d .ribbon, html.console3d .footer { border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 3px 0 -1px #11151b, 0 14px 22px -10px rgba(0,0,0,0.95); }
     @keyframes c3dFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
     @media (prefers-reduced-motion: reduce) { html.console3d .main { animation: none; } }
+    /* ===== Faceplate fit (Ctrl+Alt+B): the real controls sit in the faceplate photo's own sockets ===== */
+    #plate { display: none; position: absolute; z-index: 4; background-size: 100% 100%; border-radius: 10px; }
+    html.plate-on #plate { display: block; }
+    html.plate-on .main { background-image: none; background-color: #05070a; }
+    html.plate-on .main > .wing, html.plate-on .main > .center-col { visibility: hidden; }
+    #plate .pslot { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; visibility: visible; }
+    #plate .knob-cell { padding: 0; gap: 0; }
+    #plate .knob-wrap { transform: scale(var(--ks, 1)); filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)); }
+    #plate .knob-cap { background: repeating-conic-gradient(from 0deg, rgba(255,255,255,0.07) 0 3deg, rgba(0,0,0,0.07) 3deg 6deg), radial-gradient(circle at 35% 30%, #ffffff 0%, #dfe3e8 22%, #9aa1aa 58%, #3a3f47 100%); border-color: #1b1f25; }
+    #plate .knob-cap::after { background: #111; box-shadow: 0 0 5px var(--accent); }
+    #plate .knob-lbl { position: absolute; bottom: calc(50% + var(--rpx) + 1px); white-space: nowrap; font-size: max(7px, calc(var(--s) * 11px)); }
+    #plate .knob-val { position: absolute; top: calc(50% + var(--rpx) + 1px); white-space: nowrap; font-size: max(7.5px, calc(var(--s) * 12px)); }
+    #plate #vp { border-radius: 50%; border: none; box-shadow: inset 0 0 40px rgba(0,0,0,0.9); flex: none; background: radial-gradient(circle at 50% 45%, rgba(20,14,6,0.35), rgba(3,3,4,0.75) 75%); }
+    #plate #vp .stage-bar, #plate #vp .vp-badge, #plate #vp .tach { display: none; }
+    #plate #vp::after { content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; z-index: 6;
+      background: radial-gradient(ellipse 60% 35% at 38% 22%, rgba(255,255,255,0.16), transparent 70%); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.08); }
+    #plate #meterStrip { width: 100%; height: 100%; box-sizing: border-box; background: rgba(10,6,2,0.55); border-color: rgba(245,158,11,0.35); }
+    #plate .ptog { position: absolute; transform: translate(-50%, -50%); cursor: pointer; border-radius: 6px; }
+    #plate .ptog:hover { box-shadow: 0 0 0 1px var(--accent); }
+    #plate .ptog i { position: absolute; left: 50%; top: -10px; transform: translateX(-50%); width: 6px; height: 6px; border-radius: 50%; background: #3a2a10; box-shadow: inset 0 1px 1px rgba(0,0,0,0.8); }
+    #plate .ptog.on i { background: #ffcf5a; box-shadow: 0 0 8px #ffb020, 0 0 2px #fff; }
+    #plate .ptog b { position: absolute; left: 50%; bottom: -14px; transform: translateX(-50%); font: 700 max(7px, calc(var(--s) * 10px)) monospace; color: #f5d08a; white-space: nowrap; text-shadow: 0 1px 3px #000; }
   </style>
 </head>
 <body>
@@ -1062,6 +1084,7 @@
         <option value="factory">Paint: Factory</option><option value="gloss">Gloss</option><option value="metallic">Metallic</option><option value="pearl">Pearl</option>
         <option value="satin">Satin</option><option value="flat">Flat / Matte</option><option value="candy">Candy</option><option value="chrome">Chrome</option>
       </select>
+ <button id="plateBtn" class="active" onclick="togglePlateFit()" data-tip="Faceplate fit: the knobs, meter and 3D stage sit in the skin's own sockets (Ctrl+Alt+B). Off = every panel" style="font-size:9px;">▣ FIT</button>
       <button id="c3dBtn" onclick="toggleConsole3d()" data-tip="Floating 3D console look (Ctrl+Alt+3)" style="font-size:9px;">⬢ 3D</button>
       <select id="skinSelect" onchange="applySkin(this.value)" title="Select from 50 /cars & /places skins">
         <optgroup label="/cars (29 Classic & Muscle)">
@@ -1826,7 +1849,7 @@
 
   <script>
     const SKINS = {
-      lincoln69:   { img:true,  bg:'#07090C', accent:'#F59E0B', accent2:'#38BDF8', bezel:'#2E3542' },
+      lincoln69:   { img:true,  bg:'#07090C', accent:'#F59E0B', accent2:'#38BDF8', bezel:'#2E3542' , plate:'lincoln69' },
       camaro71:    { img:true,  bg:'#120D0A', accent:'#FF5E1A', accent2:'#FBBF24', bezel:'#9CA3AF' },
       mach1:       { img:true,  bg:'#0B1018', accent:'#38BDF8', accent2:'#F59E0B', bezel:'#64748B' },
       eviltwin:    { img:true,  bg:'#08080A', accent:'#EF4444', accent2:'#F87171', bezel:'#7F1D1D' },
@@ -1978,7 +2001,7 @@
       if (!s.img && !String(key).startsWith('custom_')) {          // photo installed later (Skins installer / dropped in the folder)? use it
         const probe = new Image(); probe.onload = () => { s.img = true; r.setProperty('--skin-img', "url('/skins/" + key + ".jpg')"); applyPaint(); }; probe.src = '/skins/' + key + '.jpg';
       }
-      currentSkin = key; applyPaint();
+      currentSkin = key; applyPaint(); refreshPlate();
     }
 
     // ----- car paint: any colour, any finish (photo cars are tinted; painted cars are re-sprayed) -----
@@ -2029,6 +2052,76 @@
       const b = document.getElementById('c3dBtn'); if (b) b.classList.toggle('active', on);
       if (!silent) emit('setUiProp', { key: 'console3d', value: on ? '1' : '0' });
     }
+
+    // ----- Faceplate fit: sockets measured on each faceplate photo (image pixels) -----
+    const PLATES = {
+      lincoln69: { w: 1376, h: 768,
+        // the 9 knobs, in page order (left wing then right wing): x, y, socket radius
+        knobs: [[365, 592, 56], [195, 388, 50], [355, 382, 47], [365, 218, 33], [1008, 218, 33], [1015, 592, 56], [1020, 380, 47], [1183, 385, 50], [1205, 588, 56]],
+        window: [687, 378, 206], strip: [152, 56, 1236, 124],
+        toggles: [[165, 225, 'A/B', '#abBtnTop'], [252, 225, 'Δ', '#deltaBtnTop'], [1125, 220, 'MOTION', '#motionBtn'], [1210, 225, 'FLY', '#flyBtn'],
+                  [147, 598, 'BINAURAL', '#binauralBtn'], [232, 598, 'PANELS', 'panels']] } };
+    let plateFit = true, plateHome = [], plateOn = false;
+    function plateMoves() { return [...document.querySelectorAll('.main > .wing .knob-cell')]; }
+    function enterPlate(map) {
+      const main = document.querySelector('.main'); let pl = document.getElementById('plate');
+      if (!pl) { pl = document.createElement('div'); pl.id = 'plate'; main.appendChild(pl); }
+      pl.innerHTML = ''; pl.style.backgroundImage = "url('/skins/" + currentSkin + ".jpg')";
+      plateHome = [];
+      const park = (el) => { plateHome.push([el, el.parentNode, el.nextSibling]); };
+      plateMoves().slice(0, map.knobs.length).forEach((cell, i) => { const slot = document.createElement('div'); slot.className = 'pslot'; slot.dataset.k = i; pl.appendChild(slot); park(cell); slot.appendChild(cell); });
+      const win = document.createElement('div'); win.className = 'pslot'; win.dataset.win = 1; pl.appendChild(win); const vp = document.getElementById('vp'); park(vp); win.appendChild(vp);
+      const strip = document.createElement('div'); strip.className = 'pslot'; strip.dataset.strip = 1; pl.appendChild(strip); const ms = document.getElementById('meterStrip'); park(ms); strip.appendChild(ms);
+      map.toggles.forEach(([x, y, label, target], i) => {
+        const t = document.createElement('div'); t.className = 'ptog'; t.dataset.t = i; t.innerHTML = '<i></i><b>' + label + '</b>';
+        t.title = label === 'PANELS' ? 'Show every panel (Ctrl+Alt+B)' : label; t.onclick = () => { if (target === 'panels') togglePlateFit(); else { const b = document.querySelector(target); if (b) b.click(); } syncPlateToggles(); };
+        pl.appendChild(t);
+      });
+      document.documentElement.classList.add('plate-on'); plateOn = true; layoutPlate(); syncPlateToggles();
+    }
+    function exitPlate() {
+      for (let i = plateHome.length - 1; i >= 0; i--) { const [el, parent, next] = plateHome[i]; parent.insertBefore(el, next && next.parentNode === parent ? next : null); }
+      const vp = document.getElementById('vp'); if (vp) vp.style.width = vp.style.height = '';
+      plateHome = []; plateOn = false; document.documentElement.classList.remove('plate-on');
+      const pl = document.getElementById('plate'); if (pl) pl.innerHTML = '';
+      window.dispatchEvent(new Event('resize'));
+    }
+    function layoutPlate() {
+      if (!plateOn) return; const map = PLATES[(SKINS[currentSkin] || {}).plate]; const pl = document.getElementById('plate'), main = document.querySelector('.main'); if (!map || !pl) return;
+      const W = main.clientWidth - 8, H = main.clientHeight - 8, k = Math.min(W / map.w, H / map.h);
+      pl.style.width = map.w * k + 'px'; pl.style.height = map.h * k + 'px'; pl.style.left = (main.clientWidth - map.w * k) / 2 + 'px'; pl.style.top = (main.clientHeight - map.h * k) / 2 + 'px';
+      pl.style.setProperty('--s', k.toFixed(3));
+      pl.querySelectorAll('.pslot[data-k]').forEach(slot => {
+        const [x, y, r] = map.knobs[+slot.dataset.k], cell = slot.firstChild, big = cell && cell.classList.contains('big');
+        slot.style.left = x * k + 'px'; slot.style.top = y * k + 'px'; slot.style.width = slot.style.height = 2 * r * k + 'px';
+        slot.style.setProperty('--ks', (2 * r * k * 1.04 / (big ? 72 : 58)).toFixed(3)); slot.style.setProperty('--rpx', r * k + 'px');
+      });
+      const [cx, cy, cr] = map.window, win = pl.querySelector('[data-win]');
+      win.style.left = cx * k + 'px'; win.style.top = cy * k + 'px'; const vp = document.getElementById('vp'); vp.style.width = vp.style.height = 2 * cr * k + 'px';
+      const [x0, y0, x1, y1] = map.strip, st = pl.querySelector('[data-strip]');
+      st.style.left = (x0 + x1) / 2 * k + 'px'; st.style.top = (y0 + y1) / 2 * k + 'px'; st.style.width = (x1 - x0) * k + 'px'; st.style.height = (y1 - y0) * k + 'px';
+      pl.querySelectorAll('.ptog').forEach(t => { const [x, y] = map.toggles[+t.dataset.t]; t.style.left = x * k + 'px'; t.style.top = y * k + 'px'; t.style.width = 46 * k + 'px'; t.style.height = 80 * k + 'px'; });
+      window.dispatchEvent(new Event('resize'));
+    }
+    function syncPlateToggles() {
+      if (!plateOn) return; const map = PLATES[(SKINS[currentSkin] || {}).plate]; if (!map) return;
+      document.querySelectorAll('#plate .ptog').forEach(t => { const target = map.toggles[+t.dataset.t][3]; const b = target !== 'panels' && document.querySelector(target);
+        const on = !!b && (b.classList.contains('active') || /: ON/.test(b.textContent)); t.classList.toggle('on', on); });
+    }
+    function refreshPlate() {
+      const want = plateFit && !!PLATES[(SKINS[currentSkin] || {}).plate] && !document.documentElement.hasAttribute('data-theme');
+      if (plateOn) exitPlate();
+      if (want) enterPlate(PLATES[SKINS[currentSkin].plate]);
+    }
+    function togglePlateFit(on, silent) {
+      plateFit = on === undefined ? !plateFit : on; refreshPlate();
+      const b = document.getElementById('plateBtn'); if (b) b.classList.toggle('active', plateFit);
+      if (!silent) emit('setUiProp', { key: 'plateFit', value: plateFit ? '1' : '0' });
+      if (on === undefined && !PLATES[(SKINS[currentSkin] || {}).plate]) flashHint('Faceplate fit: this skin has no socket map yet (the Lincoln has one)');
+    }
+    window.addEventListener('resize', (e) => { if (plateOn && e.isTrusted) layoutPlate(); });
+    setInterval(syncPlateToggles, 400);
+    new MutationObserver(() => refreshPlate()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
     function toggleClassicOS() {
       const on = document.body.classList.toggle('classic-os');
@@ -2157,6 +2250,7 @@
       if (mod && !e.altKey && !e.shiftKey && k === 'p') { e.preventDefault(); openPalette(); return; }
       if (!mod && !e.altKey && e.key === '/' && !e.target.closest('input,select,textarea')) { e.preventDefault(); openPalette(); return; }
       if (mod && e.altKey && k === 'z') { e.preventDefault(); openHistory(); return; }
+      if (mod && e.altKey && k === 'b') { e.preventDefault(); togglePlateFit(); return; }
       if (mod && e.altKey && e.code === 'Digit3') { e.preventDefault(); toggleConsole3d(); return; }
       if (mod && e.altKey && k === 'p') { e.preventDefault(); cyclePaintFinish(); return; }
       if (mod && e.altKey && k === 'c') { e.preventDefault(); document.getElementById('paintColor').click(); return; }
@@ -2716,6 +2810,7 @@
           if (m.ui.lamps) lampSrc = m.ui.lamps.split(',').slice(0, 4);
           if (m.ui.modFocus !== undefined) setModFocus(m.ui.modFocus !== '0', true); if (typeof renderMacros === 'function' && diagOpen) renderMacros(); }
         if (m.ui && (m.ui.paintColor !== undefined || m.ui.paintFinish)) { paint.color = m.ui.paintColor || ''; paint.finish = m.ui.paintFinish || 'factory'; setPaint(null, null, true); }
+        if (m.ui && m.ui.plateFit !== undefined && (m.ui.plateFit === '1') !== plateFit) togglePlateFit(m.ui.plateFit === '1', true);
         if (m.ui && m.ui.console3d !== undefined) toggleConsole3d(m.ui.console3d === '1', true);
         if (m.ui && m.ui.skin && SKINS[m.ui.skin]) {
           const sel = document.getElementById('skinSelect');
