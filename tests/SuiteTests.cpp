@@ -1676,6 +1676,7 @@ static void testVoiceParser()
         { "solution undo", Command::Ui, "undo", 0, -1 },
         { "solution analyzer", Command::Ui, "analyzer", 0, -1 },
         { "solution add cue", Command::Ui, "addCue", 0, -1 },
+        { "solution safe mode", Command::Ui, "autoSafe", 0, -1 },
         { "solution show history", Command::Ui, "history", 0, -1 },
         { "solution midi controllers", Command::Ui, "midi", 0, -1 },
         { "solution turn the monitors off", Command::Ui, "monitorsOff", 0, -1 },
@@ -1935,6 +1936,28 @@ static void testToneAnalyzer()
     std::printf ("  done\n");
 }
 
+
+static void testAutoSafe()
+{
+    std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
+    SolutionAudioProcessor proc ("TheAnchor"); proc.prepareToPlay (48000.0, 512);   // the clipper: Depth / Drive really distorts
+    setParam (proc, "stage_depth", 1.0f);                          // maximum Depth / Drive
+    float lvl = 0;
+    auto thdAt = [&] () { auto r = proc.runToneAnalysisNow (200.0f, -3.0f); lvl = (float) r["transfer"]["l"][19]; return (float) r["harmonics"]["thd"]; };   // transfer[19] = -3 dBFS in
+    const float off = thdAt(); const float lvlOff = lvl;
+    setParam (proc, "auto_safe", 1.0f);
+    const float on = thdAt(); const float lvlOn = lvl;
+    std::printf ("  output at -3 dBFS in: %.1f dB off, %.1f dB with Auto Safe\n", lvlOff, lvlOn);
+    EXPECT (std::abs (lvlOn - lvlOff) < 3.0f, "loudness kept within 3 dB (%.1f vs %.1f)", lvlOn, lvlOff);
+    juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512);
+    for (int k = 0; k < 200; ++k) { fillSine (b, 48000.0, 200.0, 1.0f, 0.0, k * 512); proc.processBlock (b, midi); }
+    std::printf ("  THD at full drive: %.2f%% off, %.2f%% with Auto Safe; holding back %.0f%% drive\n", off, on, proc.autoSafeHolding.load() * 100.0f);
+    EXPECT (on < off * 0.25f, "less distortion with Auto Safe on (%.3f%% vs %.3f%%)", on, off);
+    EXPECT (proc.autoSafeHolding.load() > 0.25f, "it reports how much drive it holds back (%.2f)", proc.autoSafeHolding.load());
+    setParam (proc, "auto_safe", 0.0f); proc.processBlock (b, midi);
+    EXPECT (proc.autoSafeHolding.load() == 0.0f, "off means off");
+}
+
 static void testEditHistory()
 {
     std::printf ("Edit history: selective undo, go back but keep, automation ignored, saved with the session\n");
@@ -2060,6 +2083,7 @@ int main()
     testHeadTracking();
     testNetworkOffload();
     testEditHistory();
+    testAutoSafe();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

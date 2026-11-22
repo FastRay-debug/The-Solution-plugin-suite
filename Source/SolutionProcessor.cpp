@@ -492,6 +492,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v20: Auto Safe Mode (beginner guard, off by default)
+    params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "auto_safe", 20 }, "Auto Safe Mode", false));
     // --- v19: AI Analyze - cinematic cues (on), emotional resonance mapping (off)
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "cues_on", 19 },     "Cinematic Cues", true));
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "mood_follow", 19 }, "Emotional Resonance", false));
@@ -1025,17 +1027,41 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         p.wetMix = 1.0f;         // listen mode: hear exactly what's being targeted, unprocessed
     else
     {
+        // Auto Safe Mode: extreme drive, character and transient settings are eased back, and if the output
+        // keeps slamming the ceiling the drive backs off further until it doesn't.
+        const bool safeOn = apvts.getRawParameterValue ("auto_safe")->load() > 0.5f;
+        float tAtk = apvts.getRawParameterValue ("transient_attack")->load() / 100.0f, tSus = apvts.getRawParameterValue ("transient_sustain")->load() / 100.0f;
+        if (safeOn)
+        {
+            const float hit = limiterGainReductionDb.load (std::memory_order_relaxed);          // last block's ceiling reduction (negative dB)
+            const float target = juce::jlimit (0.0f, 0.35f, (-hit - 1.0f) * 0.07f);             // > 1 dB of limiting: start easing off
+            const float blk = (float) numSamples / (float) juce::jmax (1.0, getSampleRate());
+            autoSafeBackoff += (target - autoSafeBackoff) * juce::jmin (1.0f, blk / (target > autoSafeBackoff ? 0.3f : 2.0f));
+            auto ease = [] (float v, float knee) { return v <= knee ? v : knee + (v - knee) * 0.2f; };
+            const float d0 = p.depth;
+            p.depth = juce::jmax (0.0f, ease (p.depth, 0.45f) - autoSafeBackoff);
+            tAtk = juce::jlimit (-0.6f, 0.6f, tAtk); tSus = juce::jlimit (-0.6f, 0.6f, tSus);
+            autoSafeHolding.store (juce::jmax (0.0f, d0 - p.depth), std::memory_order_relaxed);
+            // Hot input into the saturators: pad it going in and make it up coming out, so the clean ceiling
+            // limiter catches the peaks instead of harsh clipping (same loudness, far less grit).
+            const float rmsDb = juce::Decibels::gainToDecibels (juce::jmax (buffer.getRMSLevel (0, 0, numSamples), buffer.getRMSLevel (1, 0, numSamples)), -100.0f);
+            const float padTarget = juce::jlimit (0.0f, 12.0f, rmsDb + 18.0f);                 // keep the drive stage near -18 dBFS RMS
+            autoSafePadDb += (padTarget - autoSafePadDb) * juce::jmin (1.0f, blk / 0.15f);
+            buffer.applyGainRamp (0, numSamples, autoSafeLastPad, juce::Decibels::decibelsToGain (-autoSafePadDb));
+            autoSafeLastPad = juce::Decibels::decibelsToGain (-autoSafePadDb);
+        }
+        else { autoSafeBackoff = 0.0f; autoSafePadDb = 0.0f; autoSafeLastPad = 1.0f; autoSafeHolding.store (0.0f, std::memory_order_relaxed); }
         if (apvts.getRawParameterValue ("transient_sculpt")->load() > 0.5f)      // before the saturators, so they see the shaped hits
-            transientShaper.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples,
-                                     apvts.getRawParameterValue ("transient_attack")->load() / 100.0f,
-                                     apvts.getRawParameterValue ("transient_sustain")->load() / 100.0f);
+            transientShaper.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, tAtk, tSus);
         else
             transientShaper.reset();
         moduleEngine.process (moduleId, buffer, p, *rackLinkBus);
+        if (safeOn && autoSafeLastPad < 0.999f) buffer.applyGain (1.0f / autoSafeLastPad);          // Auto Safe make-up
         if (! p.tapeCalTone)      // neural Character (only does anything once a model is chosen)
         {
             character.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples,
-                               apvts.getRawParameterValue ("char_drive")->load(), apvts.getRawParameterValue ("char_amount")->load());
+                               safeOn ? juce::jmin (apvts.getRawParameterValue ("char_drive")->load(), 6.0f) : apvts.getRawParameterValue ("char_drive")->load(),
+                               apvts.getRawParameterValue ("char_amount")->load());
             smoother.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, apvts.getRawParameterValue ("smooth_amount")->load());
             smoothDb.store (smoother.getReductionDb(), std::memory_order_relaxed);
             phoneBass.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, apvts.getRawParameterValue ("phone_bass")->load());

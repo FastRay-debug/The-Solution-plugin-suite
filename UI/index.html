@@ -1374,6 +1374,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div style="display:flex;flex-direction:column;gap:5px;">
           <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;">GOLDEN EGGS &amp; CALIBRATION</span>
+          <button id="secSafeBtn" onclick="toggleAutoSafe()" data-tip="Beginner guard: eases extreme drive, character and transient settings, pads hot input into the saturators and makes it back up - polished, distortion-free, same loudness (Ctrl+Alt+G)">Auto Safe Mode: OFF</button>
           <button id="secCalBtn" onclick="toggleCalTone()" data-tip="Generates -18 dBFS 1 kHz test tone for analog saturation alignment (OFF by default)">Tape Cal Tone (-18 dBFS): OFF</button>
           <button id="secUwBtn" onclick="toggleUltraWide()" data-tip="Haas-Kempf 14ms decorrelated stereo widening matrix with mono safety">Ultra Wide (Haas-Kempf): OFF</button>
           <button onclick="triggerCapture()" data-tip="Runs 2s-10s room mode sweep analyzer and notches resonant peaks">Room Mode Sweep Calibration</button>
@@ -1569,6 +1570,7 @@
           <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> Undo <i>(every app)</i></p>
           <p><kbd>Ctrl</kbd>+click panels (or <kbd>Alt</kbd>+<kbd>`</kbd>), then <kbd>`</kbd> - tile them full screen; <kbd>Ctrl</kbd>+<kbd>`</kbd> tiles them on the other display <i>(every app)</i></p>
           <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd> Analog VU meters full screen · <kbd>V</kbd> flips the pop-out meter vertical/horizontal <i>(every app)</i></p>
+          <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd> Auto Safe Mode: tames extreme drive and clipping (Beginner Mode turns it on) <i>(every app)</i></p>
           <p><kbd>A</kbd> AI Analyze (then <kbd>1</kbd>-<kbd>6</kbd>: mix match, spatial, dialogue, cues, mood, metadata) · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd> add a cinematic cue at the playhead <i>(every app)</i></p>
           <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd> Test-tone analyser: frequency/phase response, harmonics &amp; THD with before/after spectra, level transfer <i>(every app)</i></p>
           <p><kbd>Ctrl</kbd>+<kbd>P</kbd> or <kbd>/</kbd> Search everything - type "width 120" to set a control <i>(every app)</i></p>
@@ -1884,6 +1886,7 @@
       }
       if (e.code === 'Backquote' && !typing && e.altKey && !mod) { e.preventDefault(); toggleTilePick(hoverPanel); return; }
       if (e.code === 'Backquote' && !typing) { e.preventDefault(); if (mod) popOutPanel(); else toggleMaxPanel(); return; }
+      if (mod && e.altKey && e.key.toLowerCase() === 'g') { e.preventDefault(); toggleAutoSafe(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); addCueHere(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'a') { e.preventDefault(); openAnalyzer(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'u') { e.preventDefault(); toggleBigVu(); return; }
@@ -2060,7 +2063,7 @@
     function toggleCeilingGuard() {
       guardOn = !guardOn;
       const b = document.getElementById('guardBadge');
-      b.textContent = guardOn ? '-0.5 dBFS GUARD ACTIVE' : '-0.5 dBFS GUARD BYPASSED';
+      b.textContent = (guardOn ? '-0.5 dBFS GUARD ACTIVE' : '-0.5 dBFS GUARD BYPASSED') + (b.dataset.safe || '');
       b.style.borderColor = guardOn ? 'var(--gold)' : '#EF4444';
       b.style.color = guardOn ? 'var(--gold)' : '#EF4444';
       bind('stage_ceiling_guard', guardOn ? 1 : 0, '', 1);
@@ -2224,6 +2227,17 @@
       document.getElementById('monList').textContent = names.join(', ');
     }
     function openPro() { document.getElementById('proModal').classList.add('open'); }
+    function toggleAutoSafe(force) {
+      const on = force !== undefined ? force : !(state.auto_safe > 0.5);
+      bind('auto_safe', on ? 1 : 0, '', 1); state.auto_safe = on ? 1 : 0; updateSafeUi(); flashHint('🛡 Auto Safe Mode: ' + (on ? 'ON - extreme drive and clipping are tamed' : 'OFF'));
+    }
+    function updateSafeUi(holding) {
+      const on = state.auto_safe > 0.5, b = document.getElementById('secSafeBtn');
+      if (b) { b.textContent = 'Auto Safe Mode: ' + (on ? 'ON' : 'OFF'); b.classList.toggle('active', on); }
+      const g = document.getElementById('guardBadge'); if (!g) return;
+      g.dataset.safe = on ? (holding > 0 ? ' · SAFE −' + holding + '% drive' : ' · SAFE') : '';
+      g.textContent = g.textContent.replace(/ · SAFE.*$/, '') + g.dataset.safe;
+    }
     function toggleParamBtn(id) { const on = !(state[id] > 0.5); bind(id, on ? 1 : 0, '', 1); updateMonitorBadges(); }
     function updateMonitorBadges() {
       document.getElementById('abBtnTop').classList.toggle('active', state.ab_bypass > 0.5);
@@ -2424,7 +2438,7 @@
     }
 
     if (window.__JUCE__ && window.__JUCE__.backend) {
-      window.__JUCE__.backend.addEventListener('paramState', (m) => {
+      window.__JUCE__.backend.addEventListener('paramState', (m) => { setTimeout(() => updateSafeUi(window._lastSafe), 0);
         if (m.values) { syncFromPlugin(m.values); window._paramValues = Object.assign(window._paramValues || {}, m.values); }
         if (m.ui) { window._uiProps = Object.assign(window._uiProps || {}, m.ui);
           if (m.ui.beginner !== undefined) setBeginner(m.ui.beginner === '1', true);
@@ -2534,6 +2548,7 @@
         else if (t.analysing) document.getElementById('captureStatus').textContent = 'Analysing measurement...';
         if (t.cvLfo !== undefined) document.getElementById('cvReadout').textContent = `CV LFO: ${t.cvLfo.toFixed(2)} · ENV: ${(t.envFollower || 0).toFixed(2)}`;
         if (t.learnedCc !== undefined && t.learnedCc >= 0) document.getElementById('midiStatus').textContent = 'CC: #' + t.learnedCc;
+        if (t.autoSafe !== undefined && t.autoSafe !== window._lastSafe) { window._lastSafe = t.autoSafe; updateSafeUi(t.autoSafe); }
         if (wizard && t.learnedCc !== undefined && t.learnedCc >= 0) { if (wizard._seen === undefined) wizard._seen = (wizard.lastCc ?? -1) + '|' + (t.learnSeq ?? 0); const sig = t.learnedCc + '|' + (t.learnSeq ?? 0); if (sig !== wizard._seen) { wizard._seen = sig; wizardSawCc(t.learnedCc, sig); } }
         if (t.peak > peakHoldDb) {
           peakHoldDb = t.peak;
@@ -3408,7 +3423,7 @@
           presets: () => openVault(), nextPreset: () => stepPreset(1), prevPreset: () => stepPreset(-1),
           nextRoom: () => stepRoom(1), prevRoom: () => stepRoom(-1), rooms: () => openRooms(), beginner: () => toggleBeginner(),
           prerender: () => openPreRender(), help: () => openShortcuts(), hub: () => toggleFastRayHub(),
-          undo: () => doUndo(), redo: () => doRedo(), history: () => openHistory(), midi: () => openMidi(), analyzer: () => openAnalyzer(), search: () => openPalette(), addCue: () => addCueHere(),
+          undo: () => doUndo(), redo: () => doRedo(), history: () => openHistory(), midi: () => openMidi(), analyzer: () => openAnalyzer(), search: () => openPalette(), addCue: () => addCueHere(), autoSafe: () => toggleAutoSafe(),
           aiSpatial: () => { openAssistant('spatial'); spatialPlanRes = planSpatial(); renderSpatial(); }, aiMood: () => openAssistant('mood'),
           nextTheme: () => cycleTheme(1), prevTheme: () => cycleTheme(-1),
           macroStore: () => macro(Math.round(v.value), true), macroRecall: () => macro(Math.round(v.value), false),
@@ -3490,6 +3505,7 @@
       ['palette', 'Ctrl+P', 'Search everything (command palette)', () => openPalette()],
       ['analyzer', 'Ctrl+Alt+A', 'Test-tone analyser (response, harmonics, transfer)', () => openAnalyzer()],
       ['addCue', 'Ctrl+Alt+K', 'Add a cinematic cue at the playhead', () => addCueHere()],
+      ['autoSafe', 'Ctrl+Alt+G', 'Auto Safe Mode (beginner guard)', () => toggleAutoSafe()],
       ['aiSpatial', '', 'AI Analyze: spatial optimization', () => { openAssistant('spatial'); spatialPlanRes = planSpatial(); renderSpatial(); }],
       ['aiCues', '', 'AI Analyze: cinematic cues', () => openAssistant('cues')],
       ['aiMood', '', 'AI Analyze: emotional resonance', () => openAssistant('mood')],
@@ -4196,7 +4212,7 @@
     function setBeginner(on, fromPlugin) {
       beginnerOn = on; document.body.classList.toggle('beginner', on);
       const b = document.getElementById('beginnerBtn'); if (b) { b.classList.toggle('active', on); b.textContent = 'Beginner Mode: ' + (on ? 'ON' : 'OFF'); }
-      if (!fromPlugin) { emit('setUiProp', { key: 'beginner', value: on ? '1' : '0' }); flashHint(on ? 'Beginner Mode: essentials only (U shows everything)' : 'All controls shown'); }
+      if (!fromPlugin) { emit('setUiProp', { key: 'beginner', value: on ? '1' : '0' }); flashHint(on ? 'Beginner Mode: essentials only, Auto Safe Mode on (U shows everything)' : 'All controls shown'); if (on && !(state.auto_safe > 0.5)) toggleAutoSafe(true); }
     }
     function toggleBeginner() { setBeginner(!beginnerOn); }
     function setModFocus(on, fromPlugin) {
