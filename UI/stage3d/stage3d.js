@@ -322,6 +322,9 @@ function init() {
       fly.pos.y = Math.max(0.15, Math.min(12, fly.pos.y));
       camera.position.copy(fly.pos);
       camera.lookAt(fly.pos.clone().add(fwd));
+    } else if (gl3d.globe) {
+      const cam = api.cam, pitch = 0.3, R = 2.85 / Math.max(0.6, Math.min(1.6, cam.zoom)), cp = Math.cos(pitch);
+      camera.position.set(-R * Math.sin(cam.yaw) * cp, R * Math.sin(pitch), -R * Math.cos(cam.yaw) * cp); camera.lookAt(0, 0, 0);
     } else {
       const top = api.vizMode() === 1, cam = api.cam, pitch = top ? 1.48 : cam.pitch, yaw = top ? 0 : cam.yaw;
       const R = (top ? 12.5 : 8.6) / cam.zoom, cp = Math.cos(pitch), target = new THREE.Vector3(0, top ? 0 : 0.5, top ? 0.4 : 1.8);
@@ -370,7 +373,7 @@ function init() {
     for (const c of creatures.values()) { const h = ray.intersectObject(c.parts.hit, false)[0]; if (h && h.distance < bd) { bd = h.distance; best = c.obj; } }
     return best;
   }
-  gl3d.pick = (mx, my) => { raycaster.setFromCamera(ndc(mx, my), camera); return pick(raycaster); };
+  gl3d.pick = (mx, my) => { if (gl3d.globe) return null; raycaster.setFromCamera(ndc(mx, my), camera); return pick(raycaster); };
   gl3d.floorHit = (mx, my) => {
     raycaster.setFromCamera(ndc(mx, my), camera);
     const p = new THREE.Vector3();
@@ -405,6 +408,18 @@ function init() {
       ctx.fillStyle = colour; ctx.textAlign = 'center'; ctx.fillText(text, x, ry - 4); ctx.textAlign = 'left';
       return { x: x - w / 2, y: ry - h, w, h };
     };
+    if (gl3d.globe) {
+      ctx.font = "600 11px PlateFont, 'Arial Narrow', sans-serif"; ctx.textAlign = 'center';
+      const placed = [];
+      [...gNodes.values()].map(n => ({ n, p: project(n.pos.clone().applyMatrix4(globe.matrixWorld), W, H) })).filter(e => e.p).sort((a, b) => a.p.y - b.p.y).forEach(({ n, p }) => {
+        const o = n.obj, txt = (o.name || o.module || '').toUpperCase().slice(0, 18), w = ctx.measureText(txt).width + 6; let y = p.y - 12;
+        for (let i = 0; i < 8; i++) { const hit = placed.find(r => Math.abs(r.x - p.x) < (r.w + w) / 2 && Math.abs(r.y - y) < 12); if (!hit) break; y = hit.y - 13; }
+        placed.push({ x: p.x, y, w });
+        if (Math.abs(y - (p.y - 12)) > 2) { ctx.strokeStyle = 'rgba(255,210,150,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x, y + 2); ctx.stroke(); }
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(txt, p.x + 1, y + 1); ctx.fillStyle = o.self ? '#FFE2A8' : 'rgba(190,230,255,0.95)'; ctx.fillText(txt, p.x, y);
+      });
+      ctx.textAlign = 'left'; gl3d.clashHits = []; return;
+    }
     const list = [...creatures.values()].map(c => ({ c, p: project(c.group.position.clone().add(new THREE.Vector3(0, -0.55, 0)), W, H), d: camera.position.distanceTo(c.group.position) }))
       .filter(e => e.p).sort((a, b) => a.d - b.d);
     list.forEach(({ c, p }) => { const o = c.obj; pill(((o.name || o.module || '') + (o.self ? ' (you)' : '')).slice(0, 26), p.x, p.y + 16, 'rgba(5,7,10,0.72)', o.self ? '#F5D27A' : 'rgba(229,231,235,0.92)', o.self); });
@@ -522,6 +537,166 @@ function init() {
   // Your head in the 3D view turns with the real one (head tracking).
   gl3d.setHead = (yawDeg, pitchDeg) => { you.rotation.y = -yawDeg * Math.PI / 180; head.rotation.x = -pitchDeg * Math.PI / 180 * 0.6; };
 
+  // ---------- holographic globe (the faceplate's glass window): wireframe world, orbit rings, live waveform, tracks as lights ----------
+  const AB = THREE.AdditiveBlending;
+  const globe = new THREE.Group(); globe.visible = false; scene.add(globe);
+  const gCol = new THREE.Color(0xff9a2e), gCol2 = new THREE.Color(0xffd9a0);
+  const gMats = [], gMats2 = [];
+  const gLine = (op, col = gCol) => { const m = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: op, blending: AB, depthWrite: false, fog: false }); (col === gCol ? gMats : col === gCol2 ? gMats2 : []).push(m); return m; };
+  const merMat = gLine(0.3), parMat = gLine(0.34), orbMat = gLine(0.5), netMat = gLine(0.035), waveMat = gLine(0.85, gCol2), scanMat = gLine(0.7, gCol2);
+  const ring = (n, f) => { const pts = []; for (let i = 0; i <= n; i++) pts.push(f(i / n * Math.PI * 2)); return new THREE.BufferGeometry().setFromPoints(pts); };
+  for (let m = 0; m < 8; m++) { const l = new THREE.Line(ring(96, t => new THREE.Vector3(Math.sin(t), Math.cos(t), 0)), merMat); l.rotation.y = m / 8 * Math.PI; globe.add(l); }
+  const parallels = [];
+  for (let k = -3; k <= 3; k++) {
+    const lat = k * 22.5 * Math.PI / 180, l = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(97 * 3), 3)), parMat);
+    l.userData.lat = lat; globe.add(l); parallels.push(l);
+  }
+  const net = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(1.002, 2)), netMat); globe.add(net);
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), new THREE.ShaderMaterial({
+    uniforms: { c: { value: gCol }, k: { value: 1 } }, transparent: true, depthWrite: false, blending: AB,
+    vertexShader: 'varying vec3 n; varying vec3 v; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); n = normalize(normalMatrix * normal); v = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform vec3 c; uniform float k; varying vec3 n; varying vec3 v; void main(){ float f = pow(1.0 - abs(dot(n, v)), 2.6); gl_FragColor = vec4(c * f * 0.9 * k, f * 0.55 * k); }' }));
+  globe.add(shell);
+  // equator waveform (the live signal wrapped round the world) + a scanning ring
+  const GW = 192, gWave = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array((GW + 1) * 3), 3)), waveMat); globe.add(gWave);
+  const scan = new THREE.Line(ring(96, t => new THREE.Vector3(Math.cos(t), 0, Math.sin(t))), scanMat); globe.add(scan);
+  // orbit rings with travelling sparks
+  const orbits = [[1.22, 0.5, 0.3], [1.12, -0.8, 1.2], [1.3, 1.2, 2.1]].map(([r, tilt, spin], i) => {
+    const g = new THREE.Group(); g.rotation.set(tilt, spin, 0.2 * i);
+    g.add(new THREE.Line(ring(128, t => new THREE.Vector3(Math.cos(t) * r, 0, Math.sin(t) * r * 0.92)), orbMat));
+    const sparks = [0, 1, 2].map(j => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), new THREE.MeshBasicMaterial({ color: gCol2, transparent: true, blending: AB, depthWrite: false })); m.userData = { r, ph: j * 2.1 + i }; g.add(m); return m; });
+    globe.add(g); return { g, sparks, speed: 0.35 + i * 0.17 };
+  });
+  // surface sparkles (twinkle) and the core
+  const spk = (n) => { const a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const v = new THREE.Vector3().randomDirection(); a.set([v.x, v.y, v.z], i * 3); }
+    return new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(a, 3)), new THREE.PointsMaterial({ color: gCol2, size: 0.018, transparent: true, opacity: 0.6, blending: AB, depthWrite: false, fog: false })); };
+  const sparkA = spk(220), sparkB = spk(220); globe.add(sparkA, sparkB);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.045, 16, 12), new THREE.MeshBasicMaterial({ color: 0xfff1d0 })); globe.add(core);
+  const coreGlow = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12), new THREE.MeshBasicMaterial({ color: gCol, transparent: true, opacity: 0.28, blending: AB, depthWrite: false })); globe.add(coreGlow);
+  // tracks: a light at each track's direction (radius = distance), tethered to the centre (you)
+  const glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,0.45)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+  const gNodes = new Map();
+  const nodePos = (o) => { const a = (o.az || 0) * Math.PI / 180, e = (o.el || 0) * Math.PI / 180, d = Math.max(0.5, o.dist || 2);
+    const r = 0.3 + 0.62 * Math.min(1, Math.log(d / 0.5) / Math.log(64)); return new THREE.Vector3(r * Math.cos(e) * Math.sin(a), r * Math.sin(e), r * Math.cos(e) * Math.cos(a)); };
+  function syncGlobeNodes(objs, t) {
+    const seen = new Set();
+    objs.forEach(o => {
+      const key = o.self ? 'self' : 's' + o.slot; seen.add(key);
+      let n = gNodes.get(key);
+      if (!n) {
+        const col = o.self ? gCol2 : new THREE.Color(0x7dd3fc);
+        n = { dot: new THREE.Mesh(new THREE.SphereGeometry(o.self ? 0.026 : 0.02, 12, 8), new THREE.MeshBasicMaterial({ color: col })),
+              halo: new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: col, transparent: true, opacity: 0.7, blending: AB, depthWrite: false })),
+              tether: new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3)), gLine(0.45, col)) };
+        globe.add(n.dot, n.halo, n.tether); gNodes.set(key, n);
+      }
+      const p = nodePos(o); n.obj = o; n.pos = p;
+      n.dot.position.copy(p); n.halo.position.copy(p);
+      const loud = Math.max(0, Math.min(1, ((o.lufs ?? -40) + 50) / 44));
+      n.halo.scale.setScalar((o.self ? 0.16 : 0.12) * (1 + 0.7 * loud + 0.1 * Math.sin(t * 3 + (o.slot || 0))));
+      n.tether.geometry.attributes.position.array.set([0, 0, 0, p.x, p.y, p.z]); n.tether.geometry.attributes.position.needsUpdate = true;
+    });
+    for (const [k, n] of gNodes) if (!seen.has(k)) { globe.remove(n.dot, n.halo, n.tether); gNodes.delete(k); }
+  }
+  function updateGlobe(t, dt, objs) {
+    const sc = window._scope || {}, spec = sc.spec || [];
+    let level = 0; if (spec.length) { for (const db of spec) level += Math.max(0, (db + 70) / 60); level /= spec.length; }
+    globe.rotation.y = Math.sin(t * 0.12) * 0.35;                           // a slow sway; front stays roughly front
+    parallels.forEach((l, i) => {
+      const a = l.geometry.attributes.position.array, lat = l.userData.lat, db = spec.length ? spec[Math.min(spec.length - 1, Math.round(i / (parallels.length - 1) * (spec.length - 1)))] ?? -90 : -90;
+      const bump = 1 + 0.07 * Math.max(0, Math.min(1, (db + 60) / 50)), cr = Math.cos(lat) * bump, y = Math.sin(lat);
+      for (let k = 0; k <= 96; k++) { const th = k / 96 * Math.PI * 2; a.set([Math.cos(th) * cr, y, Math.sin(th) * cr], k * 3); }
+      l.geometry.attributes.position.needsUpdate = true;
+    });
+    const w = gWave.geometry.attributes.position.array, lr = sc.lr || [], step = Math.max(1, Math.floor(lr.length / 2 / GW));
+    for (let k = 0; k <= GW; k++) {
+      const th = k / GW * Math.PI * 2, i0 = (k % GW) * step; let v = 0;
+      if (lr.length) { for (let j = 0; j < step; j++) v += lr[(i0 + j) * 2] || 0; v /= step; } else v = Math.sin(th * 9 + t * 2) * 0.02;
+      const taper = 0.55 + 0.45 * Math.cos(th * 2), r = 1.04 + Math.max(-0.1, Math.min(0.1, v * 0.3)) * taper;
+      w.set([Math.cos(th) * r, Math.max(-0.12, Math.min(0.12, v * 0.35)) * taper, Math.sin(th) * r], k * 3); }
+    gWave.geometry.attributes.position.needsUpdate = true;
+    const sy = Math.sin(t * 0.7); scan.position.y = sy; scan.scale.setScalar(Math.sqrt(Math.max(0, 1 - sy * sy)) * 1.004); scanMat.opacity = 0.25 + 0.4 * (1 - Math.abs(sy));
+    orbits.forEach(o => { o.g.rotation.y += dt * 0.05; o.sparks.forEach(m => { const a = t * o.speed + m.userData.ph; m.position.set(Math.cos(a) * m.userData.r, 0, Math.sin(a) * m.userData.r * 0.92); }); });
+    sparkA.material.opacity = 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(t * 2.3)); sparkB.material.opacity = 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(t * 2.3 + Math.PI));
+    shell.material.uniforms.k.value = 0.8 + 0.6 * level; if (gl3d.globeStyle !== 'glass') merMat.opacity = 0.26 + 0.25 * level;
+    coreGlow.scale.setScalar(1 + 0.6 * level + 0.08 * Math.sin(t * 4));
+    syncGlobeNodes(objs, t);
+    if (gl3d.globeStyle === 'glass') updateGlass(t, dt, objs);
+    applyGlobeStyle();
+  }
+  // ---- 'glass' style (the Abyssal look): a water-filled glass sphere, flowing waveform ribbons, creatures swimming inside ----
+  const glassParts = new THREE.Group(); globe.add(glassParts);
+  const water = new THREE.Mesh(new THREE.SphereGeometry(0.985, 48, 32), new THREE.ShaderMaterial({
+    uniforms: { c: { value: gCol }, t: { value: 0 } }, transparent: true, depthWrite: false, side: THREE.BackSide,
+    vertexShader: 'varying vec3 p; void main(){ p = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform vec3 c; uniform float t; varying vec3 p; void main(){ float h = clamp(p.y * 0.5 + 0.5, 0.0, 1.0); float caust = 0.5 + 0.5 * sin(p.x * 11.0 + t * 1.3) * sin(p.z * 9.0 - t * 1.1); vec3 col = mix(c * 0.02, c * 0.2, pow(h, 2.2)) + c * 0.08 * caust * h * h; gl_FragColor = vec4(col, 0.4); }' }));
+  glassParts.add(water);
+  const rays = [-0.35, 0, 0.3].map((x, i) => { const g = new THREE.ConeGeometry(0.22 + i * 0.05, 1.7, 24, 1, true); g.translate(0, -0.85, 0);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: gCol2, transparent: true, opacity: 0.05, blending: AB, depthWrite: false, side: THREE.DoubleSide }));
+    m.position.set(x, 0.98, 0.1 * i); m.rotation.z = x * 0.6; glassParts.add(m); return m; });
+  const RB = 96, ribbons = [0, 1, 2, 3, 4].map(k => { const l = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array((RB + 1) * 3), 3)), gLine(k ? 0.45 - k * 0.07 : 1, k ? gCol : gCol2)); glassParts.add(l); return l; });
+  const waveHist = [];
+  const NB = 70, bubPos = new Float32Array(NB * 3), bubSeed = [];
+  for (let i = 0; i < NB; i++) { const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * 0.75; bubSeed.push([Math.cos(a) * r, Math.sin(a) * r, Math.random() * 2 - 1, 0.08 + Math.random() * 0.12]); }
+  const bubbles = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(bubPos, 3)), new THREE.PointsMaterial({ color: gCol2, size: 0.02, transparent: true, opacity: 0.55, blending: AB, depthWrite: false, fog: false }));
+  glassParts.add(bubbles);
+  const swimmers = new Map();
+  function updateGlass(t, dt, objs) {
+    water.material.uniforms.t.value = t;
+    rays.forEach((r, i) => r.material.opacity = 0.016 + 0.012 * Math.sin(t * 0.6 + i * 2));
+    const lr = (window._scope || {}).lr || [], cur = new Float32Array(RB + 1), step = Math.max(1, Math.floor(lr.length / 2 / RB));
+    for (let k = 0; k <= RB; k++) { let v = 0; if (lr.length) { const i0 = (k % RB) * step; for (let j = 0; j < step; j++) { const x = lr[(i0 + j) * 2] || 0; if (Math.abs(x) > Math.abs(v)) v = x; } } else v = 0.04 * Math.sin(k / RB * 6.28 * 5 + t * 2); cur[k] = v; }
+    const sm = new Float32Array(RB + 1);
+    for (let pass = 0; pass < 1; pass++) { for (let k = 0; k <= RB; k++) { let a = 0; for (let j = -2; j <= 2; j++) a += cur[(k + j + RB) % RB]; sm[k] = a / 5; } cur.set(sm); }
+    for (let k = 0; k <= RB; k++) cur[k] = Math.tanh(cur[k] * 3) * 0.26;
+    cur[RB] = cur[0];
+    waveHist.unshift(cur); if (waveHist.length > 24) waveHist.pop();
+    ribbons.forEach((l, k) => {
+      const src = waveHist[Math.min(waveHist.length - 1, k * 4)], a = l.geometry.attributes.position.array, off = k * 0.035 * (k % 2 ? 1 : -1);
+      for (let i = 0; i <= RB; i++) { const th = i / RB * Math.PI * 2 + t * 0.15 + k * 0.08, v = src[i] * (1 - k * 0.12), r = 0.97 - Math.abs(v) * 0.25 + k * 0.012;
+        a.set([Math.cos(th) * r, v + off, Math.sin(th) * r], i * 3); }
+      l.geometry.attributes.position.needsUpdate = true;
+    });
+    for (let i = 0; i < NB; i++) { const b = bubSeed[i]; b[2] += dt * b[3]; if (b[2] > 0.95) b[2] = -0.95; const lim = Math.sqrt(Math.max(0, 0.9 - b[2] * b[2])); bubPos.set([b[0] * lim + Math.sin(t + i) * 0.01, b[2], b[1] * lim], i * 3); }
+    bubbles.geometry.attributes.position.needsUpdate = true;
+    // the tracks as little creatures swimming in the sphere (same creature each track has on the big stage)
+    const seen = new Set();
+    objs.forEach(o => {
+      const key = o.self ? 'self' : 's' + o.slot; seen.add(key);
+      const kind = (o.creature > 0 && CREATURES[o.creature]) ? CREATURES[o.creature] : autoKind(o), col = colourFor(o);
+      let c = swimmers.get(key);
+      if (!c || c.kind !== kind) { if (c) glassParts.remove(c.group); const b = build(kind, col); c = { group: b.group, parts: b.parts, kind, pos: null }; glassParts.add(c.group); swimmers.set(key, c); }
+      c.obj = o; animateCreature(c, t, dt);
+      const p = nodePos(o).multiplyScalar(0.92); p.y += Math.sin(t * 1.1 + (o.slot || 0)) * 0.03;
+      c.group.position.copy(p); c.group.scale.setScalar((o.self ? 0.3 : 0.24) * (0.85 + 0.3 * Math.max(0, Math.min(1, ((o.lufs ?? -40) + 50) / 44))));
+      c.group.rotation.y = t * 0.4 + (o.slot || 0);
+    });
+    for (const [k, c] of swimmers) if (!seen.has(k)) { glassParts.remove(c.group); swimmers.delete(k); }
+  }
+  gl3d.globeStyle = 'glass';
+  function applyGlobeStyle() {
+    const glass = gl3d.globeStyle === 'glass';
+    glassParts.visible = glass; net.visible = scan.visible = gWave.visible = !glass; orbits.forEach(o => o.g.visible = !glass);
+    merMat.opacity = glass ? 0.07 : 0.3; parMat.opacity = glass ? 0.06 : 0.34; sparkA.visible = sparkB.visible = !glass;
+    for (const n of gNodes.values()) n.dot.visible = n.tether.visible = !glass;
+  }
+  gl3d.setGlobeStyle = (st) => { gl3d.globeStyle = st === 'wire' ? 'wire' : 'glass'; applyGlobeStyle(); };
+  const bloomNormal = [bloom.strength, bloom.radius, bloom.threshold];
+  gl3d.globe = false;
+  gl3d.setGlobe = (on) => {
+    gl3d.globe = !!on; globe.visible = gl3d.globe;
+    [env, stars, you, holo, roomLines, pathLine].forEach(o => o.visible = !gl3d.globe);
+    if (gl3d.globe) { bloom.strength = 1.15; bloom.radius = 0.55; bloom.threshold = 0.05; scene.fog = null; } else { [bloom.strength, bloom.radius, bloom.threshold] = bloomNormal; scene.fog = new THREE.FogExp2(0x05070b, 0.045); }
+  };
+  gl3d.setGlobeColour = (hex, hex2) => {
+    gCol.setHex(hex); gCol2.set(hex2 !== undefined ? hex2 : new THREE.Color(hex).lerp(new THREE.Color(0xffffff), 0.55));
+    gMats.forEach(m => m.color.copy(gCol)); gMats2.forEach(m => m.color.copy(gCol2));
+    [bubbles, sparkA, sparkB].forEach(o => o.material.color.copy(gCol2)); rays.forEach(r => r.material.color.copy(gCol2)); coreGlow.material.color.copy(gCol);
+    orbits.forEach(o => o.sparks.forEach(m => m.material.color.copy(gCol2)));
+  };
+  if (document.documentElement.classList.contains('plate-on')) { gl3d.setGlobe(true); window.applyGlobeLook && window.applyGlobeLook(); }      // faceplate already up before this script loaded
+
   // ---------- main loop ----------
   let clashes = [], last = performance.now(), frames = 0, fpsT = 0, slowFor = 0, lastHoldSend = 0;
   gl3d.render = () => {
@@ -541,8 +716,9 @@ function init() {
     updateCamera(dt);
     const objs = api.objects();
     syncCreatures(objs);
-    for (const c of creatures.values()) animateCreature(c, t, dt);
-    clashes = api.findClashes(objs);
+    for (const c of creatures.values()) { animateCreature(c, t, dt); c.group.visible = c.parts.shadow.visible = c.parts.heightLine.visible = !gl3d.globe; }
+    if (gl3d.globe) updateGlobe(t, dt, objs);
+    clashes = gl3d.globe ? [] : api.findClashes(objs);
 
     // headphone sphere + room + path + clash arcs
     const state = api.state(), rack = api.rack() || {};

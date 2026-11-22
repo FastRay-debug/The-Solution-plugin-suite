@@ -83,3 +83,4 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - [x] Floating 3D console look (⬢ 3D button, Ctrl+Alt+3): raised chassis with thickness, underglow, machined side plates, gentle hover. Off by default.
 - [x] Faceplate fit (▣ FIT, Ctrl+Alt+B): the real knobs, meter, 3D stage and switches sit in the faceplate photo's own sockets. Lincoln done; 12 more faceplates to map.
 - [ ] Faceplate socket maps for the other 12 faceplates (Aztec, Camaro, Cuda, Eldorado, Evil Twin, Giza, GTO, Mach 1, Museum, Piano, Rome, Serengeti).
+- [x] Faceplate globe: the 3D stage becomes a hologram in the faceplate window. Two styles (lamp left of the window, or Ctrl+Alt+Y): Glass sphere (Abyssal look: water, caustic light, flowing waveform ribbons, the tracks' creatures swimming inside, bubbles) and Holographic wireframe (Lincoln look: lat/long globe, orbit rings with sparks, live waveform round the equator, tracks as lights). Live audio drives both.

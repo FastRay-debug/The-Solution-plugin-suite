@@ -633,6 +633,7 @@
     #plate #meterStrip { width: 100%; height: 100%; box-sizing: border-box; background: rgba(10,6,2,0.55); border-color: rgba(245,158,11,0.35); }
     #plate .meter-strip-hdr, #plate .meter-strip-hdr span { font-family: var(--plate-font) !important; font-weight: 600; letter-spacing: 0.14em; color: #d9d2c2 !important; font-size: max(7px, calc(var(--s) * 12px)); text-shadow: 0 -1px 0 rgba(0,0,0,0.85); }
     #plate .ptog { position: absolute; transform: translate(-50%, -50%); cursor: pointer; border-radius: 6px; }
+    #plate .plamp { border-radius: 50%; }
     #plate .ptog:hover { box-shadow: 0 0 0 1px var(--accent); }
     #plate .ptog i { position: absolute; left: 50%; top: -10px; transform: translateX(-50%); width: 6px; height: 6px; border-radius: 50%; background: #3a2a10; box-shadow: inset 0 1px 1px rgba(0,0,0,0.8); }
     #plate .ptog.on i { background: #ffcf5a; box-shadow: 0 0 8px #ffb020, 0 0 2px #fff; }
@@ -2069,10 +2070,12 @@
       lincoln69: { w: 1376, h: 768,
         // the 9 knobs, in page order (left wing then right wing): x, y, socket radius
         knobs: [[365, 592, 56], [195, 388, 50], [355, 382, 47], [365, 218, 33], [1008, 218, 33], [1015, 592, 56], [1020, 380, 47], [1183, 385, 50], [1205, 588, 56]],
-        window: [687, 378, 206], strip: [152, 56, 1236, 124],
+        window: [687, 378, 206], strip: [152, 56, 1236, 124], globe: 0xff9a2e, styleLamp: [478, 186],
         toggles: [[165, 225, 'A/B', '#abBtnTop'], [252, 225, 'Δ', '#deltaBtnTop'], [1125, 220, 'MOTION', '#motionBtn'], [1210, 225, 'FLY', '#flyBtn'],
                   [147, 598, 'BINAURAL', '#binauralBtn'], [232, 598, 'PANELS', 'panels']] } };
-    let plateFit = true, plateHome = [], plateOn = false;
+    let plateFit = true, plateHome = [], plateOn = false, globeStyle = 'glass';
+    function applyGlobeLook() { const map = PLATES[(SKINS[currentSkin] || {}).plate]; if (!window.gl3d || !window.gl3d.setGlobeStyle) return; window.gl3d.setGlobeStyle(globeStyle); if (map) window.gl3d.setGlobeColour(map.globe || 0x22c5ff); }
+    function cycleGlobeStyle(silent) { globeStyle = globeStyle === 'glass' ? 'wire' : 'glass'; applyGlobeLook(); if (!silent) { emit('setUiProp', { key: 'globeStyle', value: globeStyle }); flashHint(globeStyle === 'glass' ? 'Globe: glass sphere (Ctrl+Alt+Y)' : 'Globe: holographic wireframe (Ctrl+Alt+Y)'); } }
     function plateMoves() { return [...document.querySelectorAll('.main > .wing .knob-cell')]; }
     function enterPlate(map) {
       const main = document.querySelector('.main'); let pl = document.getElementById('plate');
@@ -2088,12 +2091,13 @@
         t.title = label === 'PANELS' ? 'Show every panel (Ctrl+Alt+B)' : label; t.onclick = () => { if (target === 'panels') togglePlateFit(); else { const b = document.querySelector(target); if (b) b.click(); } syncPlateToggles(); };
         pl.appendChild(t);
       });
-      document.documentElement.classList.add('plate-on'); plateOn = true; layoutPlate(); syncPlateToggles();
+      if (map.styleLamp) { const t = document.createElement('div'); t.className = 'ptog plamp'; t.dataset.lamp = 1; t.title = 'Globe style: glass sphere / holographic wireframe (Ctrl+Alt+Y)'; t.onclick = () => cycleGlobeStyle(); pl.appendChild(t); }
+      document.documentElement.classList.add('plate-on'); plateOn = true; if (window.gl3d && window.gl3d.setGlobe) { window.gl3d.setGlobe(true); applyGlobeLook(); } layoutPlate(); syncPlateToggles();
     }
     function exitPlate() {
       for (let i = plateHome.length - 1; i >= 0; i--) { const [el, parent, next] = plateHome[i]; parent.insertBefore(el, next && next.parentNode === parent ? next : null); }
       const vp = document.getElementById('vp'); if (vp) vp.style.width = vp.style.height = '';
-      plateHome = []; plateOn = false; document.documentElement.classList.remove('plate-on');
+      plateHome = []; plateOn = false; document.documentElement.classList.remove('plate-on'); if (window.gl3d && window.gl3d.setGlobe) window.gl3d.setGlobe(false);
       const pl = document.getElementById('plate'); if (pl) pl.innerHTML = '';
       window.dispatchEvent(new Event('resize'));
     }
@@ -2111,12 +2115,13 @@
       win.style.left = cx * k + 'px'; win.style.top = cy * k + 'px'; const vp = document.getElementById('vp'); vp.style.width = vp.style.height = 2 * cr * k + 'px';
       const [x0, y0, x1, y1] = map.strip, st = pl.querySelector('[data-strip]');
       st.style.left = (x0 + x1) / 2 * k + 'px'; st.style.top = (y0 + y1) / 2 * k + 'px'; st.style.width = (x1 - x0) * k + 'px'; st.style.height = (y1 - y0) * k + 'px';
-      pl.querySelectorAll('.ptog').forEach(t => { const [x, y] = map.toggles[+t.dataset.t]; t.style.left = x * k + 'px'; t.style.top = y * k + 'px'; t.style.width = 46 * k + 'px'; t.style.height = 80 * k + 'px'; });
+      const lamp = pl.querySelector('[data-lamp]'); if (lamp) { lamp.style.left = map.styleLamp[0] * k + 'px'; lamp.style.top = map.styleLamp[1] * k + 'px'; lamp.style.width = lamp.style.height = 40 * k + 'px'; }
+      pl.querySelectorAll('.ptog:not([data-lamp])').forEach(t => { const [x, y] = map.toggles[+t.dataset.t]; t.style.left = x * k + 'px'; t.style.top = y * k + 'px'; t.style.width = 46 * k + 'px'; t.style.height = 80 * k + 'px'; });
       window.dispatchEvent(new Event('resize'));
     }
     function syncPlateToggles() {
       if (!plateOn) return; const map = PLATES[(SKINS[currentSkin] || {}).plate]; if (!map) return;
-      document.querySelectorAll('#plate .ptog').forEach(t => { const target = map.toggles[+t.dataset.t][3]; const b = target !== 'panels' && document.querySelector(target);
+      document.querySelectorAll('#plate .ptog:not([data-lamp])').forEach(t => { const target = map.toggles[+t.dataset.t][3]; const b = target !== 'panels' && document.querySelector(target);
         const on = !!b && (b.classList.contains('active') || /: ON/.test(b.textContent)); t.classList.toggle('on', on); });
     }
     function refreshPlate() {
@@ -2261,6 +2266,7 @@
       if (mod && !e.altKey && !e.shiftKey && k === 'p') { e.preventDefault(); openPalette(); return; }
       if (!mod && !e.altKey && e.key === '/' && !e.target.closest('input,select,textarea')) { e.preventDefault(); openPalette(); return; }
       if (mod && e.altKey && k === 'z') { e.preventDefault(); openHistory(); return; }
+      if (mod && e.altKey && k === 'y') { e.preventDefault(); cycleGlobeStyle(); return; }
       if (mod && e.altKey && k === 'b') { e.preventDefault(); togglePlateFit(); return; }
       if (mod && e.altKey && e.code === 'Digit3') { e.preventDefault(); toggleConsole3d(); return; }
       if (mod && e.altKey && k === 'p') { e.preventDefault(); cyclePaintFinish(); return; }
@@ -2822,6 +2828,7 @@
           if (m.ui.modFocus !== undefined) setModFocus(m.ui.modFocus !== '0', true); if (typeof renderMacros === 'function' && diagOpen) renderMacros(); }
         if (m.ui && (m.ui.paintColor !== undefined || m.ui.paintFinish)) { paint.color = m.ui.paintColor || ''; paint.finish = m.ui.paintFinish || 'factory'; setPaint(null, null, true); }
         if (m.ui && m.ui.plateFit !== undefined && (m.ui.plateFit === '1') !== plateFit) togglePlateFit(m.ui.plateFit === '1', true);
+        if (m.ui && m.ui.globeStyle && m.ui.globeStyle !== globeStyle) { globeStyle = m.ui.globeStyle === 'wire' ? 'wire' : 'glass'; applyGlobeLook(); }
         if (m.ui && m.ui.console3d !== undefined) toggleConsole3d(m.ui.console3d === '1', true);
         if (m.ui && m.ui.skin && SKINS[m.ui.skin]) {
           const sel = document.getElementById('skinSelect');
