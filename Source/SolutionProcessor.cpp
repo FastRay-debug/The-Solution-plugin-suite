@@ -684,6 +684,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v28: The Land outdoor acoustics (off by default)
+    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "land_on", 28 }, "Outdoor Acoustics", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "land_ground", 28 }, "Ground", juce::StringArray { "Grass", "Concrete", "Snow", "Water", "Sand", "Forest floor", "Gravel" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "land_terrain", 28 }, "Terrain", juce::StringArray { "Open field", "Valley", "Canyon", "Urban street" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "land_src_h", 28 }, "Source Height (m)", juce::NormalisableRange<float> (0.0f, 20.0f, 0.01f, 0.5f), 1.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "land_lis_h", 28 }, "Listener Height (m)", juce::NormalisableRange<float> (0.2f, 10.0f, 0.01f, 0.5f), 1.7f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "land_dist", 28 }, "Distance (m)", juce::NormalisableRange<float> (1.0f, 200.0f, 0.1f, 0.35f), 10.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "land_wind", 28 }, "Wind (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "land_mix", 28 }, "Outdoor Mix (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "land_air", 28 }, "Air Absorption", true));
     // --- v27: The Matrix modulation sources (routes live in the session state)
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mtx_lfo1_rate", 27 }, "LFO 1 Rate (Hz)", juce::NormalisableRange<float> (0.01f, 20.0f, 0.001f, 0.3f), 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "mtx_lfo1_shape", 27 }, "LFO 1 Shape", juce::StringArray { "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "S&H", "Smooth Random" }, 0));
@@ -920,6 +930,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     anchorCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Aether) aetherCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Mosaic) mosaicCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    if (moduleId == SolutionDSP::ModuleId::Land) landCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Orbit) orbitCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Void) { voidCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock)); voidHash = -1; updateVoidRoom(); }
     mosaicLatencyOn = mosaicActive();
@@ -1364,6 +1375,13 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             anchorDistPct.store (anchorCore.getDistortionPct(), std::memory_order_relaxed);
             anchorCrestLost.store (anchorCore.getCrestLostDb(), std::memory_order_relaxed);
             anchorVerdict.store (ap.on ? anchorCore.verdict() : -1, std::memory_order_relaxed);
+        }
+        if (moduleId == SolutionDSP::ModuleId::Land && pv ("land_on") > 0.5f)
+        {
+            SolutionDSP::LandCore::Params lp;
+            lp.ground = (int) pv ("land_ground"); lp.terrain = (int) pv ("land_terrain"); lp.srcH = pv ("land_src_h"); lp.lisH = pv ("land_lis_h");
+            lp.dist = pv ("land_dist"); lp.wind = pv ("land_wind") / 100.0f; lp.mix = pv ("land_mix") / 100.0f; lp.air = pv ("land_air") > 0.5f;
+            landCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, lp);
         }
         if (moduleId == SolutionDSP::ModuleId::Orbit)
         {

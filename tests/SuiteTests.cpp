@@ -2273,6 +2273,38 @@ static void testMatrix()
     EXPECT (a->modOffsetFor ("stage_width") == 0.0f, "removing the Matrix removes its modulation");
 }
 
+
+static void testLandCore()
+{
+    std::printf ("The Land: ground reflection notch, surfaces, terrain echoes, wind\n");
+    using SolutionDSP::LandCore;
+    const double fs = 48000.0;
+    const float f0 = LandCore::firstNotchHz (10.0f, 1.5f, 1.7f);
+    auto levelAt = [&] (double hz, LandCore::Params p, double from = 0.5, double len = 0.5) {
+        LandCore c; c.prepare (fs, 512); const int N = (int) (fs * (from + len)); std::vector<float> L (N), R (N);
+        for (int i = 0; i < N; ++i) L[(size_t) i] = R[(size_t) i] = (float) (0.3 * std::sin (2 * juce::MathConstants<double>::pi * hz * i / fs));
+        for (int o = 0; o < N; o += 512) c.process (L.data() + o, R.data() + o, std::min (512, N - o), p);
+        return toneLevelDb (L.data() + (int) (from * fs), (int) (len * fs), hz, fs) - 20 * std::log10 (0.3); };
+    LandCore::Params p; p.ground = 1; p.dist = 10; p.srcH = 1.5f; p.lisH = 1.7f; p.air = false;
+    const double notch = levelAt (f0, p), peak = levelAt (2 * f0, p);
+    std::printf ("  concrete, 10 m: notch at %.0f Hz %.1f dB, %.0f Hz %+.1f dB\n", f0, notch, 2 * f0, peak);
+    EXPECT (notch < -15.0 && peak > 4.0, "hard ground: deep notch where the bounce cancels, lift where it adds");
+    p.ground = 2; const double snowNotch = levelAt (f0, p);
+    EXPECT (snowNotch > notch + 8.0, "snow swallows the bounce: shallow notch (%.1f dB)", snowNotch);
+    // canyon: impulse -> echo at 52 ms
+    { LandCore c; c.prepare (fs, 512); LandCore::Params q; q.terrain = 2; q.air = false; q.ground = 2; const int N = 9600; std::vector<float> L (N, 0.0f), R (N, 0.0f); L[0] = R[0] = 1.0f;
+      for (int o = 0; o < N; o += 512) c.process (L.data() + o, R.data() + o, std::min (512, N - o), q);
+      int pk = 1000; for (int i = 1000; i < N; ++i) if (std::abs (L[(size_t) i]) > std::abs (L[(size_t) pk])) pk = i;
+      EXPECT (std::abs (pk / fs * 1000.0 - 52.0) < 0.5, "canyon wall echo at %.1f ms", pk / fs * 1000.0); }
+    // wind moves the notch: the level at f0 changes over time
+    { LandCore c; c.prepare (fs, 512); LandCore::Params q = p; q.ground = 1; q.wind = 1.0f; const int N = (int) (fs * 6); std::vector<float> L (N), R (N);
+      for (int i = 0; i < N; ++i) L[(size_t) i] = R[(size_t) i] = (float) (0.3 * std::sin (2 * juce::MathConstants<double>::pi * f0 * i / fs));
+      for (int o = 0; o < N; o += 512) c.process (L.data() + o, R.data() + o, std::min (512, N - o), q);
+      double lo = 0, hi = -200; for (int w = 1; w < 30; ++w) { const double v = toneLevelDb (L.data() + w * 9600, 4800, f0, fs); lo = std::min (lo, v); hi = std::max (hi, v); }
+      std::printf ("  wind: level at the notch swings %.1f dB\n", hi - lo);
+      EXPECT (hi - lo > 6.0, "wind makes the ground effect drift"); }
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2427,6 +2459,7 @@ int main()
     testVoidCore();
     testOrbitCore();
     testMatrix();
+    testLandCore();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

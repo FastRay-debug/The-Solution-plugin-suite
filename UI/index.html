@@ -769,6 +769,15 @@
           <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
           <label style="display:flex;gap:2px;align-items:center;" data-tip="WIDE: let the lift's skirt also fill 15-30 Hz. Off = true infrasonics only (the original trick). Shift+I"><input type="checkbox" data-sync="infra_lift_wide" onchange="bind('infra_lift_wide', this.checked ? 1 : 0, '', 1)">WIDE</label>
         </div>
+        <div id="landCore" style="display:none;flex-direction:column;gap:3px;font-size:9px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
+            <label style="display:flex;gap:3px;align-items:center;"><input type="checkbox" data-sync="land_on" onchange="bind('land_on', this.checked ? 1 : 0, '', 1)">⛰ OUTDOORS</label>
+            <label style="display:flex;gap:2px;align-items:center;color:var(--mute)" data-tip="Air absorption: highs fade with distance"><input type="checkbox" data-sync="land_air" onchange="bind('land_air', this.checked ? 1 : 0, '', 1)">AIR</label></div>
+          <div style="display:flex;gap:3px;"><select data-sync="land_ground" onchange="bind('land_ground', +this.value, '', 1)" style="flex:1;font-size:9px;" data-tip="Ground surface"><option value="0">Grass</option><option value="1">Concrete</option><option value="2">Snow</option><option value="3">Water</option><option value="4">Sand</option><option value="5">Forest floor</option><option value="6">Gravel</option></select>
+            <select data-sync="land_terrain" onchange="bind('land_terrain', +this.value, '', 1)" style="flex:1;font-size:9px;" data-tip="Terrain around you"><option value="0">Open field</option><option value="1">Valley</option><option value="2">Canyon</option><option value="3">Urban street</option></select></div>
+          <canvas id="landView" width="190" height="56" style="width:100%;height:56px;border:1px solid var(--bezel);border-radius:3px;background:#05070a;"></canvas>
+          <div class="bk-grid2"><div class="bk-row" data-tip="Distance to the sound"><span>DIST</span><input type="range" data-sync="land_dist" min="1" max="200" step="0.1" value="10" oninput="bind('land_dist', +this.value, '', 1); bkShow('land_dist', +this.value)" ondblclick="this.value=10; bind('land_dist', 10, '', 1); bkShow('land_dist', 10)"><b id="v-land_dist">10 m</b></div><div class="bk-row" data-tip="Height of the sound above the ground"><span>SRC H</span><input type="range" data-sync="land_src_h" min="0" max="20" step="0.05" value="1.5" oninput="bind('land_src_h', +this.value, '', 1); bkShow('land_src_h', +this.value)" ondblclick="this.value=1.5; bind('land_src_h', 1.5, '', 1); bkShow('land_src_h', 1.5)"><b id="v-land_src_h">1.5 m</b></div><div class="bk-row" data-tip="Your ear height"><span>EARS</span><input type="range" data-sync="land_lis_h" min="0.2" max="10" step="0.05" value="1.7" oninput="bind('land_lis_h', +this.value, '', 1); bkShow('land_lis_h', +this.value)" ondblclick="this.value=1.7; bind('land_lis_h', 1.7, '', 1); bkShow('land_lis_h', 1.7)"><b id="v-land_lis_h">1.7 m</b></div><div class="bk-row" data-tip="Wind: the bounce drifts and flutters"><span>WIND</span><input type="range" data-sync="land_wind" min="0" max="100" step="1" value="0" oninput="bind('land_wind', +this.value, '', 1); bkShow('land_wind', +this.value)" ondblclick="this.value=0; bind('land_wind', 0, '', 1); bkShow('land_wind', 0)"><b id="v-land_wind">0%</b></div><div class="bk-row" data-tip="Outdoor mix"><span>MIX</span><input type="range" data-sync="land_mix" min="0" max="100" step="1" value="100" oninput="bind('land_mix', +this.value, '', 1); bkShow('land_mix', +this.value)" ondblclick="this.value=100; bind('land_mix', 100, '', 1); bkShow('land_mix', 100)"><b id="v-land_mix">100%</b></div></div>
+        </div>
         <div id="matrixCore" style="display:none;flex-direction:column;gap:2px;font-size:9px;">
           <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;"><span>⚡ MODULATION SOURCES</span>
             <button onclick="openModMatrix()" style="font-size:9px;padding:1px 6px;" data-tip="Route any source to any control on any track (Ctrl+Alt+X)">ROUTES…</button></div>
@@ -2515,7 +2524,7 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
-        if ((/^(bunker|anchor|aether|mosaic|void|orbit|mtx)_/.test(id) || id === 'regen_throttle') && typeof bkShow === 'function') bkShow(id, v);
+        if ((/^(bunker|anchor|aether|mosaic|void|orbit|mtx|land)_/.test(id) || id === 'regen_throttle') && typeof bkShow === 'function') bkShow(id, v);
         if (id === 'transient_attack' || id === 'transient_sustain') document.getElementById('v-' + id).textContent = (v > 0 ? '+' : '') + Math.round(v) + '%';
         if (id === 'dialogue_duck_db') document.getElementById('v-dialogue_duck_db').textContent = (+v).toFixed(1) + ' dB';
         if (id === 'infra_lift_db') document.getElementById('v-infra_lift_db').textContent = '+' + (+v).toFixed(1) + ' dB';
@@ -4493,6 +4502,24 @@
     // ---------- fullscreen panels ----------
     const IS_POPOUT = params.get('popout') === '1';
     if (/anchor/i.test(params.get('module') || '')) document.getElementById('anchorCore').style.display = 'flex';   // The Anchor only
+    if (/land/i.test(params.get('module') || '')) {      // The Land only: side view of the direct and ground-bounce paths
+      document.getElementById('landCore').style.display = 'flex';
+      (function landView() {
+        const cv = document.getElementById('landView'), c = cv.getContext('2d'), W = cv.width, H = cv.height;
+        const d = state.land_dist ?? 10, hs = state.land_src_h ?? 1.5, hl = state.land_lis_h ?? 1.7, gy = H - 10;
+        const sc = Math.min((W - 30) / d, (gy - 6) / Math.max(hs, hl, 1)), xs = 12, xl = 12 + d * sc;
+        const dr = Math.hypot(d, hs + hl) - Math.hypot(d, hs - hl), f0 = 343 / (2 * Math.max(1e-4, dr));
+        c.fillStyle = '#05070a'; c.fillRect(0, 0, W, H);
+        const ground = ['#4d7c0f', '#9ca3af', '#e5e7eb', '#0ea5e9', '#d6b370', '#3f6212', '#a8a29e'][Math.round(state.land_ground || 0)];
+        c.fillStyle = ground; c.globalAlpha = 0.35; c.fillRect(0, gy, W, H - gy); c.globalAlpha = 1;
+        const ys = gy - hs * sc, yl = gy - hl * sc, xb = xs + (xl - xs) * hs / (hs + hl || 1);
+        c.strokeStyle = '#d4af37'; c.beginPath(); c.moveTo(xs, ys); c.lineTo(xl, yl); c.stroke();
+        c.strokeStyle = '#38bdf8'; c.setLineDash([3, 2]); c.beginPath(); c.moveTo(xs, ys); c.lineTo(xb, gy); c.lineTo(xl, yl); c.stroke(); c.setLineDash([]);
+        c.fillStyle = '#d4af37'; c.beginPath(); c.arc(xs, ys, 3, 0, 7); c.fill(); c.fillStyle = '#22d3ee'; c.beginPath(); c.arc(xl, yl, 3, 0, 7); c.fill();
+        c.fillStyle = '#9ca3af'; c.font = '8px monospace'; c.fillText('bounce +' + (dr * 100).toFixed(0) + ' cm · notch ' + (f0 >= 1000 ? (f0 / 1000).toFixed(1) + ' kHz' : Math.round(f0) + ' Hz'), 4, 9);
+        requestAnimationFrame(landView);
+      })();
+    }
     if (/orbit/i.test(params.get('module') || '')) document.getElementById('orbitCore').style.display = 'flex';   // The Orbit only
     let voidData = null, voidPolyEdit = null;
     if (/void/i.test(params.get('module') || '')) { document.getElementById('voidCore').style.display = 'flex'; startVoidCanvas(); }   // The Void only
@@ -4606,6 +4633,7 @@
     if (/bunker/i.test(params.get('module') || '')) { document.getElementById('infraRow').style.display = 'flex'; document.getElementById('bunkerCore').style.display = 'flex'; }   // The Bunker only
     function bkShow(id, v) {
       const el = document.getElementById('v-' + id); if (!el) return;
+      if (id === 'land_dist' || id === 'land_src_h' || id === 'land_lis_h') { el.textContent = (+v).toFixed(v < 10 ? 1 : 0) + ' m'; return; }
       if (/^mtx_lfo\d_rate$/.test(id)) { el.textContent = (+v).toFixed(v < 1 ? 2 : 1); return; }
       if (/^mtx_macro/.test(id)) { el.textContent = (+v).toFixed(2); return; }
       if (id === 'mtx_env_atk' || id === 'mtx_env_rel') { el.textContent = Math.round(v) + ' ms'; return; }
