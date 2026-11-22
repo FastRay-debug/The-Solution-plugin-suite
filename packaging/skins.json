@@ -1,54 +1,218 @@
 {
  "lincoln69": {
-  "name": "Lincoln Continental '69",
+  "name": "'69 Lincoln Continental",
   "group": "Cars"
  },
  "camaro71": {
-  "name": "Camaro '71",
+  "name": "'71 Camaro (Orange)",
   "group": "Cars"
  },
  "mach1": {
-  "name": "Mustang Mach 1",
+  "name": "'70 Mustang Mach 1",
   "group": "Cars"
  },
  "eviltwin": {
-  "name": "Evil Twin",
+  "name": "'68 \"Evil Twin\"",
   "group": "Cars"
  },
  "eldorado59": {
-  "name": "Eldorado '59",
+  "name": "'59 Cadillac Eldorado",
   "group": "Cars"
  },
  "cuda70": {
-  "name": "'Cuda '70",
+  "name": "'70 HEMI 'Cuda",
   "group": "Cars"
  },
  "gto67": {
-  "name": "GTO '67",
+  "name": "'67 Pontiac GTO",
+  "group": "Cars"
+ },
+ "chevelle70": {
+  "name": "'70 Chevelle SS 454",
+  "group": "Cars"
+ },
+ "charger69": {
+  "name": "'69 Dodge Charger R/T",
+  "group": "Cars"
+ },
+ "corvette63": {
+  "name": "'63 Corvette Split-Window",
+  "group": "Cars"
+ },
+ "gt40": {
+  "name": "'66 Ford GT40 Gulf",
+  "group": "Cars"
+ },
+ "countach": {
+  "name": "'85 Lamborghini Countach",
+  "group": "Cars"
+ },
+ "gnx87": {
+  "name": "'87 Buick GNX",
+  "group": "Cars"
+ },
+ "viper96": {
+  "name": "'96 Dodge Viper GTS",
+  "group": "Cars"
+ },
+ "belair57": {
+  "name": "'57 Chevy Bel Air",
+  "group": "Cars"
+ },
+ "porsche911": {
+  "name": "'73 Porsche 911 RS",
+  "group": "Cars"
+ },
+ "delorean": {
+  "name": "'81 DeLorean DMC-12",
+  "group": "Cars"
+ },
+ "nsx91": {
+  "name": "'91 Acura NSX",
+  "group": "Cars"
+ },
+ "skyline99": {
+  "name": "'99 Skyline GT-R R34",
+  "group": "Cars"
+ },
+ "impala64": {
+  "name": "'64 Chevy Impala SS",
+  "group": "Cars"
+ },
+ "cobra65": {
+  "name": "'65 Shelby Cobra 427",
+  "group": "Cars"
+ },
+ "transam77": {
+  "name": "'77 Pontiac Trans Am",
+  "group": "Cars"
+ },
+ "f40": {
+  "name": "'89 Ferrari F40",
+  "group": "Cars"
+ },
+ "mclarenf1": {
+  "name": "'94 McLaren F1",
+  "group": "Cars"
+ },
+ "supra94": {
+  "name": "'94 Toyota Supra MK4",
+  "group": "Cars"
+ },
+ "cutlass70": {
+  "name": "'70 Oldsmobile Cutlass 442",
+  "group": "Cars"
+ },
+ "deville67": {
+  "name": "'67 Cadillac DeVille",
+  "group": "Cars"
+ },
+ "mustang65": {
+  "name": "'65 Mustang Fastback",
   "group": "Cars"
  },
  "rome": {
-  "name": "Rome",
+  "name": "Rome Pantheon",
   "group": "Places"
  },
  "giza": {
-  "name": "Giza",
+  "name": "Giza Pyramids",
   "group": "Places"
  },
  "aztec": {
-  "name": "Aztec",
+  "name": "Aztec Ruins",
   "group": "Places"
  },
  "serengeti": {
-  "name": "Serengeti",
+  "name": "Serengeti Falls",
   "group": "Places"
  },
  "museum": {
-  "name": "Museum",
+  "name": "Museum Gallery",
   "group": "Places"
  },
  "piano": {
-  "name": "Grand Piano",
+  "name": "Concert Piano",
   "group": "Places"
+ },
+ "abbey": {
+  "name": "Abbey Studio Room",
+  "group": "Places"
+ },
+ "tokyo": {
+  "name": "Tokyo Neon Alley",
+  "group": "Places"
+ },
+ "paris": {
+  "name": "Paris Opera House",
+  "group": "Places"
+ },
+ "iceland": {
+  "name": "Icelandic Basalt Cave",
+  "group": "Places"
+ },
+ "kyoto": {
+  "name": "Kyoto Bamboo Temple",
+  "group": "Places"
+ },
+ "petra": {
+  "name": "Petra Sandstone Canyon",
+  "group": "Places"
+ },
+ "redrocks": {
+  "name": "Red Rocks Amphitheater",
+  "group": "Places"
+ },
+ "taj": {
+  "name": "Taj Mahal Marble Dome",
+  "group": "Places"
+ },
+ "machu": {
+  "name": "Machu Picchu Cloud Ridge",
+  "group": "Places"
+ },
+ "norway": {
+  "name": "Nordic Fjord Cliff",
+  "group": "Places"
+ },
+ "venice": {
+  "name": "Venice Grand Canal",
+  "group": "Places"
+ },
+ "sedona": {
+  "name": "Sedona Vortex Mesa",
+  "group": "Places"
+ },
+ "antarctica": {
+  "name": "Antarctic Ice Cavern",
+  "group": "Places"
+ },
+ "sahara": {
+  "name": "Sahara Starry Dunes",
+  "group": "Places"
+ },
+ "apollo": {
+  "name": "Apollo Mission Control",
+  "group": "Places"
+ },
+ "cathedral": {
+  "name": "Gothic Cathedral Nave",
+  "group": "Places"
+ },
+ "subway": {
+  "name": "NYC Underground Tunnel",
+  "group": "Places"
+ },
+ "monaco": {
+  "name": "Monaco Harbor Yacht",
+  "group": "Places"
+ },
+ "banff": {
+  "name": "Banff Emerald Lake",
+  "group": "Places"
+ },
+ "vidalia": {
+  "name": "Vidalia, Georgia",
+  "group": "Hometown"
  }
 }

@@ -1030,7 +1030,7 @@
         <option value="billet">Knob: Billet Red</option>
       </select>
       <select id="skinSelect" onchange="applySkin(this.value)" title="Select from 50 /cars & /places skins">
-        <optgroup label="/cars (25 Classic & Muscle)">
+        <optgroup label="/cars (28 Classic & Muscle)">
           <option value="lincoln69" selected>'69 Lincoln Continental</option>
           <option value="camaro71">'71 Camaro (Orange)</option>
           <option value="mach1">'70 Mustang Mach 1</option>
@@ -1056,6 +1056,9 @@
           <option value="f40">'89 Ferrari F40</option>
           <option value="mclarenf1">'94 McLaren F1</option>
           <option value="supra94">'94 Toyota Supra MK4</option>
+          <option value="cutlass70">'70 Oldsmobile Cutlass 442</option>
+          <option value="deville67">'67 Cadillac DeVille</option>
+          <option value="mustang65">'65 Mustang Fastback</option>
         </optgroup>
         <optgroup label="/places (25 Iconic Spaces)">
           <option value="rome">Rome Pantheon</option>
@@ -1083,6 +1086,9 @@
           <option value="subway">NYC Underground Tunnel</option>
           <option value="monaco">Monaco Harbor Yacht</option>
           <option value="banff">Banff Emerald Lake</option>
+        </optgroup>
+        <optgroup label="/hometown">
+          <option value="vidalia">Vidalia, Georgia</option>
         </optgroup>
       </select>
       <span id="calBadge" style="display:none;color:#EF4444;font-family:monospace;">● CAL TONE -18 dBFS</span>
@@ -1830,7 +1836,11 @@
       cathedral:   { img:false, bg:'#0F0D15', accent:'#A78BFA', accent2:'#FDE047', bezel:'#4C1D95' },
       subway:      { img:false, bg:'#101214', accent:'#FACC15', accent2:'#9CA3AF', bezel:'#3F3F46' },
       monaco:      { img:false, bg:'#09121B', accent:'#38BDF8', accent2:'#D4AF37', bezel:'#1E3A8A' },
-      banff:       { img:false, bg:'#081412', accent:'#10B981', accent2:'#7DD3FC', bezel:'#065F46' }
+      banff:       { img:false, bg:'#081412', accent:'#10B981', accent2:'#7DD3FC', bezel:'#065F46' },
+      cutlass70:   { img:false, bg:'#120B08', accent:'#F59E0B', accent2:'#E5E7EB', bezel:'#78350F' },
+      deville67:   { img:false, bg:'#0C0A12', accent:'#C4B5FD', accent2:'#D4AF37', bezel:'#4C1D95' },
+      mustang65:   { img:false, bg:'#0A1018', accent:'#EF4444', accent2:'#F8FAFC', bezel:'#1E3A8A' },
+      vidalia:     { img:false, bg:'#0F1209', accent:'#FACC15', accent2:'#4ADE80', bezel:'#3F6212' }
     };
 
     const knobRegistry = {};
@@ -1917,6 +1927,9 @@
       r.setProperty('--bg', s.bg); r.setProperty('--accent', s.accent);
       r.setProperty('--accent2', s.accent2); r.setProperty('--bezel', s.bezel);
       r.setProperty('--skin-img', s.img ? "url('/skins/" + key + ".jpg')" : "radial-gradient(circle at 30% 20%, " + s.accent + "22, " + s.bg + " 75%)");
+      if (!s.img && !String(key).startsWith('custom_')) {          // photo installed later (Skins installer / dropped in the folder)? use it
+        const probe = new Image(); probe.onload = () => { s.img = true; r.setProperty('--skin-img', "url('/skins/" + key + ".jpg')"); }; probe.src = '/skins/' + key + '.jpg';
+      }
     }
 
     function toggleClassicOS() {
