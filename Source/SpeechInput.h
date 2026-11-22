@@ -19,6 +19,8 @@ namespace SolutionVoice
         bool start (const juce::StringArray& vocabulary, juce::String& whyNot);
         void stop();
         void setVocabulary (const juce::StringArray& vocabulary);    // rebuilds the grammar while running
+        static juce::StringArray listInputs();                       // microphones Windows speech can use
+        void setPreferredInput (const juce::String& name) { const juce::ScopedLock sl (lock); preferredInput = name; }
         bool isListening() const { return isThreadRunning(); }
         // Called on the message thread with what was heard and the engine's confidence (0..1).
         std::function<void (const juce::String& phrase, float confidence)> onPhrase;
@@ -27,6 +29,7 @@ namespace SolutionVoice
         void run() override;
         juce::CriticalSection lock;
         juce::StringArray words;
+        juce::String preferredInput;
         std::atomic<bool> vocabChanged { false };
         juce::String startError;
         juce::WaitableEvent started;

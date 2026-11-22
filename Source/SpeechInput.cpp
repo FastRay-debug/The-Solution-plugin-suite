@@ -59,6 +59,29 @@ namespace
         *out = tok; return true;
     }
 
+    // The microphone the user picked (matched by its Windows name), else the default one.
+    bool inputToken (const juce::String& wanted, ISpObjectToken** out)
+    {
+        if (wanted.isNotEmpty())
+        {
+            Com<ISpObjectTokenCategory> cat; Com<IEnumSpObjectTokens> e;
+            if (SUCCEEDED (CoCreateInstance (CLSID_SpObjectTokenCategory, nullptr, CLSCTX_ALL, IID_ISpObjectTokenCategory, (void**) &cat))
+                && SUCCEEDED (cat->SetId (SPCAT_AUDIOIN, FALSE)) && SUCCEEDED (cat->EnumTokens (nullptr, nullptr, &e)))
+            {
+                ISpObjectToken* tok = nullptr;
+                while (e->Next (1, &tok, nullptr) == S_OK)
+                {
+                    WCHAR* nm = nullptr;
+                    const bool match = SUCCEEDED (tok->GetStringValue (nullptr, &nm)) && nm != nullptr && juce::String (nm) == wanted;
+                    if (nm) CoTaskMemFree (nm);
+                    if (match) { *out = tok; return true; }
+                    tok->Release();
+                }
+            }
+        }
+        return defaultToken (SPCAT_AUDIOIN, out);
+    }
+
     // Grammar: up to 10 words, each any word of our vocabulary. Order is left to the parser.
     bool buildGrammar (ISpRecoGrammar* g, const juce::StringArray& vocab)
     {
@@ -92,7 +115,7 @@ void SpeechInput::run()
         auto fail = [&] (const char* why) { startError = why; started.signal(); };
         if (FAILED (CoCreateInstance (CLSID_SpInprocRecognizer, nullptr, CLSCTX_ALL, IID_ISpRecognizer, (void**) &rec))) { fail ("Windows speech recognition isn't installed."); }
         else if (! defaultToken (SPCAT_RECOGNIZERS, &engine) || FAILED (rec->SetRecognizer (engine))) { fail ("No Windows speech recognition language is installed (Settings > Time & language > Speech)."); }
-        else if (! defaultToken (SPCAT_AUDIOIN, &mic) || FAILED (rec->SetInput (mic, TRUE))) { fail ("No microphone found - check Windows sound settings and mic privacy permissions."); }
+        else if (! inputToken ([this] { const juce::ScopedLock sl (lock); return preferredInput; }(), &mic) || FAILED (rec->SetInput (mic, TRUE))) { fail ("No microphone found - check Windows sound settings and mic privacy permissions."); }
         else if (FAILED (rec->CreateRecoContext (&ctx)) || FAILED (ctx->SetNotifyWin32Event())
                  || FAILED (ctx->SetInterest (SPFEI (SPEI_RECOGNITION), SPFEI (SPEI_RECOGNITION)))
                  || FAILED (ctx->CreateGrammar (1, &grammar))) { fail ("Couldn't start the speech recogniser."); }
@@ -142,7 +165,29 @@ void SpeechInput::run()
     }
     CoUninitialize();
 }
+juce::StringArray SpeechInput::listInputs()
+{
+    juce::StringArray names;
+    const bool comOk = SUCCEEDED (CoInitializeEx (nullptr, COINIT_APARTMENTTHREADED));
+    {
+        Com<ISpObjectTokenCategory> cat; Com<IEnumSpObjectTokens> e;
+        if (SUCCEEDED (CoCreateInstance (CLSID_SpObjectTokenCategory, nullptr, CLSCTX_ALL, IID_ISpObjectTokenCategory, (void**) &cat))
+            && SUCCEEDED (cat->SetId (SPCAT_AUDIOIN, FALSE)) && SUCCEEDED (cat->EnumTokens (nullptr, nullptr, &e)))
+        {
+            ISpObjectToken* tok = nullptr;
+            while (e->Next (1, &tok, nullptr) == S_OK)
+            {
+                WCHAR* nm = nullptr;
+                if (SUCCEEDED (tok->GetStringValue (nullptr, &nm)) && nm != nullptr) { names.add (juce::String (nm)); CoTaskMemFree (nm); }
+                tok->Release();
+            }
+        }
+    }
+    if (comOk) CoUninitialize();
+    return names;
+}
 #else
 void SpeechInput::run() {}
+juce::StringArray SpeechInput::listInputs() { return {}; }
 #endif
 }

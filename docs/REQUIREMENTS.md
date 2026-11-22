@@ -42,8 +42,8 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ✅ Adaptive Learning (suggest only, local file): your usual values per module, "you usually adjust B after A", favourite controls → macro keys; Apply / Not now / Never; on/off, what it learned, forget everything
 - ☐ AI Analyze extensions
 - ✅ LAN / local DSP server (AudioGridder-style): Solution Utility runs a DSP Node (auto-discovered on the LAN / this PC); plugins offload with a chosen latency (reported to the DAW), state kept in sync, automatic fallback to local; output matches local processing exactly
-- ☐ Voice: choose the microphone source
-- ☐ MIDI controller presets for major manufacturers + auto-setup wizard; joystick mapping for any control
+- ✅ Voice: choose the microphone source (Voice settings → Microphone; saved, falls back to the Windows default)
+- ✅ MIDI Controllers panel (Ctrl+Alt+M): presets (Korg nanoKONTROL2, Akai MPK Mini, Novation Launch Control XL, Behringer X-Touch Mini, Arturia MiniLab 3 / KeyLab Essential, generic), auto-setup wizard, mapping list with delete, MIDI map saved with the session; joystick/gamepad axes → any control
 - ☐ Undo history per module + global, with selective undo (go back but keep chosen changes)
 - ☐ Test-tone analyser (PluginDoctor-style): tone before/after a plugin, before/after stacked; precision grid follows the calibration tone
 - ☐ Global search (presets/sounds)

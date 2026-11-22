@@ -221,6 +221,10 @@ public:
 
     void armMidiLearn (const juce::String& paramId);
     int getLastLearnedCc() const { return lastLearnedCc.load (std::memory_order_relaxed); }
+    // MIDI mappings (CC -> parameter), saved with the session. Message thread.
+    juce::String getCcMapString() const;
+    void setCcMapString (const juce::String& map);
+    bool setCcMapping (int cc, const juce::String& paramId);
 
     juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
@@ -248,6 +252,9 @@ public:
     std::atomic<float> glueGainReductionDb { 0.0f };
     std::atomic<float> duckGainReductionDb { 0.0f };
     std::atomic<int>   lastLearnedCc { -1 };
+public:
+    std::atomic<int>   learnSeq { 0 };          // counts completed MIDI learns (wizard progress)
+private:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();

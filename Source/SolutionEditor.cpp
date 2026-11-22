@@ -195,6 +195,13 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("midimap", [this] (const juce::var& d)
+           {
+               const auto cmd = d.getProperty ("cmd", {}).toString();
+               if (cmd == "set") audioProcessor.setCcMapping ((int) d.getProperty ("cc", -1), d.getProperty ("id", {}).toString());
+               else if (cmd == "replace") audioProcessor.setCcMapString (d.getProperty ("map", {}).toString());
+               emitToViews ("midimapState", juce::var (audioProcessor.getCcMapString()));
+           })
            .withEventListener ("offload", [this] (const juce::var& d)
            {
                const auto cmd = d.getProperty ("cmd", {}).toString();
@@ -844,6 +851,8 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("diagOverloads", (int) audioProcessor.diag.overloads.load());
     payload->setProperty ("diagDc",        (int) audioProcessor.diag.dcEvents.load());
     payload->setProperty ("vanilla",       audioProcessor.vanillaLoaded.load());
+    payload->setProperty ("learnedCc",     audioProcessor.getLastLearnedCc());
+    payload->setProperty ("learnSeq",      audioProcessor.learnSeq.load());
     if (auto* off = audioProcessor.getOffload(); off != nullptr && audioProcessor.isOffloaded())
     {
         payload->setProperty ("offload", true);
@@ -891,6 +900,7 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("cvLfo",         audioProcessor.getCvLfo());
     payload->setProperty ("envFollower",   audioProcessor.getEnvFollower());
     payload->setProperty ("learnedCc",     audioProcessor.getLastLearnedCc());
+    payload->setProperty ("learnSeq",      audioProcessor.learnSeq.load());
 
     emitToViews ("telemetry", juce::var (payload.get()));
 }
@@ -1003,6 +1013,7 @@ void SolutionAudioProcessorEditor::handleVoice (const juce::var& data)
         if (voice == nullptr) voice = std::make_unique<juce::SharedResourcePointer<SolutionVoice::VoiceHub>>();
         auto& hub = **voice;
         hub.setParams (voiceParamTable());
+        hub.setInput (audioProcessor.getUiProperty ("voiceMic"));
         hub.setWakeWordRequired (audioProcessor.getUiProperty ("voiceWake") != "0");
         SolutionVoice::VoiceHub::Client c;
         c.slot = audioProcessor.getRackSlot();
@@ -1038,6 +1049,19 @@ void SolutionAudioProcessorEditor::handleVoice (const juce::var& data)
         o->setProperty ("saved", juce::JSON::parse (audioProcessor.getUiProperty ("voiceKeys")));
         o->setProperty ("wake", audioProcessor.getUiProperty ("voiceWake") != "0");
         emitToViews ("voiceDefaults", juce::var (o.get()));
+    }
+    else if (cmd == "inputs")
+    {
+        juce::Array<juce::var> list; for (auto& n : SolutionVoice::SpeechInput::listInputs()) list.add (n);
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("list", list); o->setProperty ("current", audioProcessor.getUiProperty ("voiceMic"));
+        emitToViews ("voiceInputs", juce::var (o.get()));
+    }
+    else if (cmd == "input")
+    {
+        const auto name = data.getProperty ("name", {}).toString();
+        audioProcessor.setUiProperty ("voiceMic", name);
+        if (voice != nullptr) { const auto why = (*voice)->setInput (name); if (why.isNotEmpty()) emitToViews ("voiceState", juce::var (why)); }
     }
     else if (cmd == "try")       // typed test phrase from the Voice panel
     {

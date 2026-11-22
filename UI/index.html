@@ -1246,7 +1246,7 @@
         </select>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <button id="midiLearnBtn" onclick="flashHint('🎹 Right-click any knob, slider or switch (or hover it and press K), then move a control on your MIDI controller')">🎹 MIDI LEARN: right-click any control</button>
+        <button id="midiLearnBtn" onclick="openMidi()" data-tip="Controller presets, an auto-setup wizard, joystick mapping. Single controls: right-click (or hover + K)">🎹 MIDI CONTROLLERS…</button>
         <span id="midiStatus" style="font-family:monospace;font-size:11px;color:var(--mute);">CC: None</span>
       </div>
       <div style="font-family:monospace;font-size:11px;color:var(--accent2);" id="cvReadout">CV LFO: 0.00 · ENV: 0.00</div>
@@ -1339,6 +1339,7 @@
     <div class="modal-box" style="width:600px;max-height:620px;overflow-y:auto;">
       <strong style="color:var(--gold);letter-spacing:0.1em;">🎤 VOICE CONTROL</strong>
       <div class="dg-hint" style="font-size:11px;margin:6px 0 10px;">Offline Windows speech recognition - nothing leaves your computer, and it only listens while the 🎤 is red. Start every command with <b>"Solution"</b>.</div>
+      <div style="display:flex;gap:6px;align-items:center;font-size:12px;margin-bottom:8px;">Microphone <select id="voiceMic" style="flex:1;" onchange="emit('voice', { cmd: 'input', name: this.value })"><option value="">Windows default microphone</option></select></div>
       <label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-bottom:8px;"><input type="checkbox" id="voiceWake" checked onchange="emit('voice', { cmd: 'wake', value: this.checked })"> Require the wake word "Solution" (recommended - normal studio talk won't trigger anything)</label>
       <div style="font-size:12px;color:var(--gold);margin:8px 0 4px;">DAW TRANSPORT KEYS · <span id="voiceHost">your DAW</span></div>
       <div class="dg-hint" style="font-size:11px;margin-bottom:6px;">Plugins can't press play directly, so voice brings your DAW to the front and presses its own shortcut. Blank = the default shown. Examples: Space, Ctrl+R, F9, Home, NumpadMultiply.</div>
@@ -1409,6 +1410,21 @@
       <div id="lanNodes" style="margin-top:8px;"></div>
       <div class="dg-hint" style="font-size:11px;margin-top:8px;">Note: while offloaded, this plugin's Rack Link features (unmask, ducking, auto-align) don't reach the tracks still in your DAW. Bounces work normally.</div>
       <div style="display:flex;gap:6px;margin-top:10px;"><button onclick="emit('offload', { cmd: 'disconnect' }); setTimeout(openLan, 300)">PROCESS LOCALLY</button><button onclick="document.getElementById('lanModal').classList.remove('open')">CLOSE</button></div>
+    </div>
+  </div>
+
+  <div class="modal" id="midiModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:560px;max-height:620px;overflow-y:auto;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">🎹 MIDI CONTROLLERS &amp; JOYSTICKS</strong>
+      <div class="dg-hint" style="font-size:11px;margin:6px 0 10px;">Right-click any control (or hover + K) to learn one at a time. Mappings save with your session.</div>
+      <div style="display:flex;gap:6px;"><select id="midiPresetSel" style="flex:1;" onchange="applyMidiPreset(this.value)"></select><button onclick="startMidiWizard()">✨ AUTO-SETUP WIZARD</button></div>
+      <div id="midiWizard" style="margin:8px 0;font-size:12px;"></div>
+      <div style="font-size:12px;color:var(--gold);margin:10px 0 4px;">CURRENT MAPPINGS</div>
+      <div id="midiMapList"></div>
+      <button style="margin-top:6px;" onclick="emit('midimap',{cmd:'replace',map:''})">CLEAR ALL MIDI MAPPINGS</button>
+      <div style="font-size:12px;color:var(--gold);margin:12px 0 4px;">JOYSTICK / GAMEPAD</div>
+      <div id="padMapList"></div>
+      <button style="margin-top:10px;" onclick="document.getElementById('midiModal').classList.remove('open')">CLOSE</button>
     </div>
   </div>
 
@@ -1738,6 +1754,7 @@
       if (mod && k === '0') { e.preventDefault(); cam.yaw = 0; cam.pitch = 0.48; cam.zoom = 1; return; }
       if (mod && e.altKey && k === 'v') { e.preventDefault(); cycleDisplay(); return; }
       if (mod && e.altKey && k === 'h') { e.preventDefault(); recenterHead(); return; }
+      if (mod && e.altKey && k === 'm') { e.preventDefault(); openMidi(); return; }
       if (mod && e.altKey && k === 't') { e.preventDefault(); cycleTheme(e.shiftKey ? -1 : 1); return; }
       if (mod && e.altKey && k === 's') { e.preventDefault(); document.getElementById('secretModal').classList.add('open'); return; }
       if (mod && e.shiftKey && k === 'k') { e.preventDefault(); openShortcutManager(); return; }
@@ -2264,6 +2281,7 @@
           if (m.ui.beginner !== undefined) setBeginner(m.ui.beginner === '1', true);
           if (m.ui.keymap) { try { customKeys = JSON.parse(m.ui.keymap) || {}; } catch (e) {} }
           if (m.ui.looks) { try { looks = JSON.parse(m.ui.looks) || []; } catch (e) {} }
+          if (m.ui.padmap) { try { padMap = JSON.parse(m.ui.padmap) || {}; } catch (e) {} }
           if (m.ui.learnOn !== undefined) setLearning(m.ui.learnOn !== '0', true);
           if (m.ui.headOn !== undefined && (m.ui.headOn === '1') !== headOn) { setHeadOn(m.ui.headOn === '1', true); emit('head', { cmd: 'enable', on: headOn }); }
           if (m.ui.oscPort && +m.ui.oscPort > 0 && !window._oscRestored) { window._oscRestored = true; document.getElementById('oscPortIn').value = m.ui.oscPort; setOscPort(m.ui.oscPort); }
@@ -2364,6 +2382,7 @@
         else if (t.analysing) document.getElementById('captureStatus').textContent = 'Analysing measurement...';
         if (t.cvLfo !== undefined) document.getElementById('cvReadout').textContent = `CV LFO: ${t.cvLfo.toFixed(2)} · ENV: ${(t.envFollower || 0).toFixed(2)}`;
         if (t.learnedCc !== undefined && t.learnedCc >= 0) document.getElementById('midiStatus').textContent = 'CC: #' + t.learnedCc;
+        if (wizard && t.learnedCc !== undefined && t.learnedCc >= 0) { if (wizard._seen === undefined) wizard._seen = (wizard.lastCc ?? -1) + '|' + (t.learnSeq ?? 0); const sig = t.learnedCc + '|' + (t.learnSeq ?? 0); if (sig !== wizard._seen) { wizard._seen = sig; wizardSawCc(t.learnedCc, sig); } }
         if (t.peak > peakHoldDb) {
           peakHoldDb = t.peak;
           document.getElementById('meterHoldLabel').textContent = `HOLD: ${peakHoldDb.toFixed(1)} dB · DBL-CLICK TO EXPAND`;
@@ -3231,7 +3250,7 @@
         document.getElementById('voiceWake').checked = d.wake !== false;
       });
     }
-    function openVoiceSettings() { emit('voice', { cmd: 'defaults' }); document.getElementById('voiceModal').classList.add('open'); }
+    function openVoiceSettings() { emit('voice', { cmd: 'defaults' }); emit('voice', { cmd: 'inputs' }); document.getElementById('voiceModal').classList.add('open'); }
     function saveVoiceKeys() {
       const v = {}; ['play', 'stop', 'record', 'start', 'loop'].forEach(k => { const x = document.getElementById('vk-' + k).value.trim(); if (x) v[k] = x; });
       emit('voice', { cmd: 'keys', value: v }); flashHint('Voice transport keys saved');
@@ -3292,6 +3311,7 @@
       ['theme', 'Ctrl+Alt+T', 'Next 3D hardware theme (whole session)', () => cycleTheme(1)],
       ['headRecenter', 'Ctrl+Alt+H', 'Head tracking: recentre', () => recenterHead()],
       ['headPanel', '', 'Head tracking panel', () => openHeadTracking()],
+      ['midiPanel', 'Ctrl+Alt+M', 'MIDI controllers & joysticks', () => openMidi()],
       ...Array.from({ length: 20 }, (_, i) => ['macro' + (i + 1), '', 'Recall macro ' + (i + 1), () => macro(i + 1, false)]),
     ];
     let customKeys = {};                                   // action id -> combo (only the ones the user changed)
@@ -3500,6 +3520,69 @@
     if (window.__JUCE__ && window.__JUCE__.backend) {
       window.__JUCE__.backend.addEventListener('learnData', (d) => { try { const all = JSON.parse(d || '{}'); if (all.modules) LEARN.data = all; LEARN.never = all.never || {}; } catch (e) {} });
       setTimeout(() => emit('learn', { cmd: 'load' }), 500);
+    }
+
+    // ===================== MIDI CONTROLLERS: presets, auto-setup wizard, joystick mapping =====================
+    const MIDI_TARGETS = ['stage_azimuth', 'stage_elevation', 'stage_depth', 'stage_width', 'stage_distance', 'global_mix', 'glue_amount', 'trim_out_db'];
+    const FADER_TARGETS = ['trim_in_db', 'room_match_mix', 'smooth_amount', 'phone_bass', 'link_duck_depth', 'char_amount', 'infra_lift_db', 'dialogue_duck_db'];
+    // Factory-default CC numbers (starting points - controllers can be reprogrammed, so check with the wizard if one doesn't move).
+    const MIDI_PRESETS = {
+      'Korg nanoKONTROL2':             { knobs: [16, 17, 18, 19, 20, 21, 22, 23], faders: [0, 1, 2, 3, 4, 5, 6, 7] },
+      'Akai MPK Mini (mk3)':           { knobs: [70, 71, 72, 73, 74, 75, 76, 77] },
+      'Novation Launch Control XL':    { knobs: [13, 14, 15, 16, 17, 18, 19, 20], faders: [77, 78, 79, 80, 81, 82, 83, 84] },
+      'Behringer X-Touch Mini':        { knobs: [1, 2, 3, 4, 5, 6, 7, 8] },
+      'Arturia MiniLab 3':             { knobs: [74, 71, 76, 77, 93, 18, 19, 16] },
+      'Arturia KeyLab Essential':      { knobs: [74, 71, 76, 77, 93, 18, 19, 16], faders: [73, 75, 79, 72, 80, 81, 82, 83] },
+      'Generic 8 knobs (CC 21-28)':    { knobs: [21, 22, 23, 24, 25, 26, 27, 28] },
+    };
+    let midiMap = '', wizard = null;
+    function openMidi() { renderMidi(); document.getElementById('midiModal').classList.add('open'); }
+    function renderMidi() {
+      document.getElementById('midiPresetSel').innerHTML = '<option value="">Choose your controller…</option>' + Object.keys(MIDI_PRESETS).map(n => `<option>${n}</option>`).join('');
+      const rows = midiMap ? midiMap.split(';').map(p => { const [cc, id] = p.split('='); return `<div class="km-row"><span>${paramLabel(id)}</span><b style="font-family:monospace">CC ${cc}</b><button onclick="emit('midimap',{cmd:'set',cc:${+cc},id:''})">✕</button></div>`; }).join('') : '';
+      document.getElementById('midiMapList').innerHTML = rows || '<div class="dg-hint">No MIDI mappings yet.</div>';
+      renderPadMap();
+    }
+    function applyMidiPreset(name) {
+      const p = MIDI_PRESETS[name]; if (!p) return;
+      const parts = []; (p.knobs || []).forEach((cc, i) => MIDI_TARGETS[i] && parts.push(cc + '=' + MIDI_TARGETS[i])); (p.faders || []).forEach((cc, i) => FADER_TARGETS[i] && parts.push(cc + '=' + FADER_TARGETS[i]));
+      emit('midimap', { cmd: 'replace', map: parts.join(';') }); flashHint('🎹 ' + name + ' mapped - if a knob does nothing, run the wizard');
+    }
+    // Wizard: for each important control, "turn the knob you want for this".
+    function startMidiWizard() { wizard = { i: 0, lastCc: (window._tele || {}).learnedCc, lastSeen: null }; wizardStep(); }
+    function wizardStep() {
+      const el = document.getElementById('midiWizard');
+      if (!wizard || wizard.i >= MIDI_TARGETS.length) { el.innerHTML = wizard ? '<b style="color:#4ade80">✓ Done - your controller is set up.</b>' : ''; wizard = null; return; }
+      const id = MIDI_TARGETS[wizard.i]; emit('midiLearn', { id });
+      el.innerHTML = `<b>Step ${wizard.i + 1} of ${MIDI_TARGETS.length}:</b> move the knob or fader you want for <b style="color:var(--gold)">${paramLabel(id).toUpperCase()}</b> <button onclick="wizard.i++; wizardStep()">SKIP</button> <button onclick="wizard=null; wizardStep()">STOP</button>`;
+    }
+    function wizardSawCc(cc, seq) { if (!wizard || seq === wizard.lastSeen) return; wizard.lastSeen = seq; wizard.i++; setTimeout(wizardStep, 250); }
+    // Joystick / gamepad: any axis can drive any control.
+    let padMap = {};
+    function renderPadMap() {
+      const opts = '<option value="">—</option>' + Object.keys(knobRegistry).map(id => `<option value="${id}">${paramLabel(id)}</option>`).join('');
+      document.getElementById('padMapList').innerHTML = [0, 1, 2, 3].map(ax => `<div class="km-row"><span>${['Left stick ←→', 'Left stick ↑↓', 'Right stick ←→', 'Right stick ↑↓'][ax]}</span><select data-ax="${ax}">${opts}</select><span></span></div>`).join('');
+      document.querySelectorAll('#padMapList select').forEach(sel => { sel.value = padMap[sel.dataset.ax] || ''; sel.onchange = () => { padMap[sel.dataset.ax] = sel.value; emit('setUiProp', { key: 'padmap', value: JSON.stringify(padMap) }); }; });
+    }
+    const padLast = {};
+    setInterval(() => {
+      if (!Object.values(padMap).some(Boolean) || !navigator.getGamepads || (window.gl3d && window.gl3d.flying) || padHead) return;
+      const g = Array.from(navigator.getGamepads()).find(Boolean); if (!g) return;
+      Object.entries(padMap).forEach(([ax, id]) => {
+        if (!id || !knobRegistry[id]) return;
+        const v = g.axes[+ax] || 0; if (Math.abs(v) < 0.08 && !padLast[ax]) return;           // untouched sticks leave the control alone
+        const el = document.querySelector(`[data-param="${id}"]`), min = +el.dataset.min, max = +el.dataset.max;
+        const val = min + (max - min) * ((ax % 2 ? -v : v) + 1) / 2;
+        if (padLast[ax] === undefined || Math.abs(val - padLast[ax]) > (max - min) * 0.004) { padLast[ax] = val; knobRegistry[id].set(val); bind(id, val, knobRegistry[id].unit, knobRegistry[id].mult); }
+      });
+    }, 33);
+    if (window.__JUCE__ && window.__JUCE__.backend) {
+      window.__JUCE__.backend.addEventListener('midimapState', (m) => { midiMap = m || ''; if (document.getElementById('midiModal').classList.contains('open')) renderMidi(); });
+      window.__JUCE__.backend.addEventListener('voiceInputs', (d) => {
+        const sel = document.getElementById('voiceMic'); if (!sel) return;
+        sel.innerHTML = '<option value="">Windows default microphone</option>' + (d.list || []).map(n => `<option>${escapeHtml(n)}</option>`).join('');
+        sel.value = d.current || '';
+      });
     }
 
     // ===================== LAN / LOCAL DSP OFFLOAD =====================

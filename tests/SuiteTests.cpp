@@ -1493,6 +1493,21 @@ static void testLookaheadAndLearn()
     proc.processBlock (b, cc2);
     const float v = proc.apvts.getRawParameterValue ("infra_lift_db")->load();
     EXPECT (std::abs (v - 12.0f) < 0.05f, "CC 21 learned onto Infrasonic Lift dB (now %.2f)", v);
+    EXPECT (proc.learnSeq.load() >= 1, "learn counter advanced for the setup wizard");
+
+    // MIDI map: presets replace the map, and it survives a save/reload.
+    proc.setCcMapString ("16=stage_azimuth;17=global_mix");
+    EXPECT (proc.setCcMapping (18, "glue_amount"), "single CC mapping accepted");
+    EXPECT (! proc.setCcMapping (19, "no_such_param"), "unknown parameter rejected");
+    juce::MemoryBlock saved; proc.getStateInformation (saved);
+    SolutionAudioProcessor proc2; proc2.prepareToPlay (48000.0, 512);
+    proc2.setStateInformation (saved.getData(), (int) saved.getSize());
+    const auto m2 = proc2.getCcMapString();
+    EXPECT (m2.contains ("16=stage_azimuth") && m2.contains ("17=global_mix") && m2.contains ("18=glue_amount") && ! m2.contains ("21="),
+            "MIDI map restored with the session, preset replace dropped old CC 21 (%s)", m2.toRawUTF8());
+    juce::MidiBuffer cc3; cc3.addEvent (juce::MidiMessage::controllerEvent (1, 17, 0), 0);
+    proc2.processBlock (b, cc3);
+    EXPECT (proc2.apvts.getRawParameterValue ("global_mix")->load() < 0.01f, "restored mapping drives the control");
     std::printf ("  done\n");
 }
 

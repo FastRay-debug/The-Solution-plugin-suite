@@ -28,6 +28,14 @@ namespace SolutionVoice
         bool wakeWordRequired() const { return parser.requireWakeWord; }
         void noteActive (int slot) { activeSlot = slot; }
         bool isListening() const { return speech.isListening(); }
+        // Pick a microphone by name ("" = Windows default). Restarts listening if needed.
+        juce::String setInput (const juce::String& name)
+        {
+            speech.setPreferredInput (name);
+            if (! speech.isListening()) return {};
+            speech.stop(); juce::String why;
+            return speech.start (parser.vocabulary(), why) ? juce::String() : why;
+        }
 
         // Returns "" if listening, else the reason it can't.
         juce::String addClient (void* key, Client c)

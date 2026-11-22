@@ -177,6 +177,33 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     return { params.begin(), params.end() };
 }
 
+juce::String SolutionAudioProcessor::getCcMapString() const
+{
+    juce::StringArray parts;
+    for (int cc = 0; cc < 128; ++cc)
+    {
+        const int idx = ccToParamIndex[(size_t) cc].load (std::memory_order_relaxed);
+        if (idx >= 0 && idx < (int) learnableParamIds.size()) parts.add (juce::String (cc) + "=" + learnableParamIds[(size_t) idx]);
+    }
+    return parts.joinIntoString (";");
+}
+
+void SolutionAudioProcessor::setCcMapString (const juce::String& map)
+{
+    for (auto& slot : ccToParamIndex) slot.store (-1, std::memory_order_relaxed);
+    for (auto& part : juce::StringArray::fromTokens (map, ";", ""))
+        setCcMapping (part.upToFirstOccurrenceOf ("=", false, false).getIntValue(), part.fromFirstOccurrenceOf ("=", false, false));
+}
+
+bool SolutionAudioProcessor::setCcMapping (int cc, const juce::String& paramId)
+{
+    if (cc < 0 || cc > 127) return false;
+    if (paramId.isEmpty()) { ccToParamIndex[(size_t) cc].store (-1); return true; }
+    for (size_t i = 0; i < learnableParamIds.size(); ++i)
+        if (learnableParamIds[i] == paramId) { ccToParamIndex[(size_t) cc].store ((int) i); return true; }
+    return false;
+}
+
 void SolutionAudioProcessor::panicReset()
 {
     // suspendProcessing() waits for the audio thread to leave processBlock and makes the host output
@@ -313,6 +340,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             {
                 ccToParamIndex[static_cast<size_t> (cc)].store (armed, std::memory_order_relaxed);
                 lastLearnedCc.store (cc, std::memory_order_relaxed);
+                learnSeq.fetch_add (1, std::memory_order_relaxed);
             }
             const int mappedIdx = (cc >= 0 && cc < 128) ? ccToParamIndex[static_cast<size_t> (cc)].load (std::memory_order_relaxed) : -1;
             if (mappedIdx >= 0 && mappedIdx < static_cast<int> (learnableParamIds.size()))
@@ -1295,7 +1323,8 @@ void SolutionAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
    #ifdef JucePlugin_VersionString
     state.setProperty ("pluginVersion", JucePlugin_VersionString, nullptr);
    #endif
-    state.setProperty ("module", SOLUTION_MODULE_ID, nullptr);
+    state.setProperty ("module", moduleKey, nullptr);
+    state.setProperty ("midimap", getCcMapString(), nullptr);          // MIDI Learn survives reopening the session
     state.setProperty ("preset", presets.getCurrentPresetName(), nullptr);
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     copyXmlToBinary (*xml, destData);
@@ -1333,6 +1362,7 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
         DBG ("Session was saved by a newer version of The Solution - loading what we understand");
     migrateState (tree, savedVersion);
     apvts.replaceState (tree);
+    setCcMapString (apvts.state.getProperty ("midimap").toString());
 
     // Restore the measuring mic, then the saved room measurement (refitted for that mic).
     const auto micId = apvts.state.getProperty ("micProfile", "generic").toString();
