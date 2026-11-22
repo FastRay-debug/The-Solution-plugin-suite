@@ -409,6 +409,24 @@
     }
     .viewport:active { cursor: default; }
     /* ` maximises the panel under the mouse (like Premiere); Ctrl+` sends it fullscreen to another display */
+    .panel-tile { position: fixed !important; left: calc(6px + (100vw - 12px) * var(--tl) / 100%) !important; top: calc(6px + (100vh - 12px) * var(--tt) / 100%) !important;
+      width: calc((100vw - 12px) * var(--tw) / 100% - 6px) !important; height: calc((100vh - 12px) * var(--th) / 100% - 6px) !important;
+      z-index: 800 !important; max-width: none !important; max-height: none !important; margin: 0 !important; overflow: auto !important; }
+    .tile-pick { outline: 2px dashed var(--gold) !important; outline-offset: -2px; }
+    .vu-big { display: none; flex-direction: column; gap: 10px; padding: 16px; background: radial-gradient(ellipse at 50% 30%, #1a1f2b, #07090c); border: 1px solid var(--bezel); border-radius: 10px; }
+    .vu-big.panel-max, .vu-big.panel-tile { display: flex; }
+    .vu-big-row { flex: 1; display: flex; gap: 16px; min-height: 0; align-items: center; justify-content: center; }
+    .vu-big-row canvas { flex: 0 0 auto; border-radius: 8px; box-shadow: inset 0 0 0 2px rgba(160,170,190,0.25), 0 10px 30px rgba(0,0,0,0.7); }
+    #vuBigRead { font-family: monospace; font-size: 14px; color: #ffd29a; text-align: center; letter-spacing: 0.05em; }
+    .meter-pop.vertical .meter-pop-main { flex-direction: row; }
+    .meter-pop.vertical .pop-bars { flex-direction: row; height: 100%; flex: 0 0 auto; }
+    .meter-pop.vertical .pop-bars .bar-track { width: 26px; height: 100% !important; }
+    .meter-pop.vertical .pop-bars .bar-fill { position: absolute; bottom: 0; left: 0; width: 100% !important; height: var(--lvl, 0%);
+      background: repeating-linear-gradient(0deg, transparent 0px, transparent 6px, #07090D 6px, #07090D 8px), linear-gradient(0deg, #10B981 0%, #F59E0B 68%, #EF4444 92%); transition: height 40ms linear; }
+    .meter-pop.vertical .pop-bars .bar-ceil { left: 0 !important; right: 0; width: auto; top: auto; height: 2px; bottom: var(--ceil, 99%); }
+    .meter-pop.vertical .meter-pop-body > div:not(.meter-pop-main) { flex-wrap: wrap; gap: 2px 8px; }
+    .meter-pop-main { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+    .pop-bars { display: flex; flex-direction: column; gap: 8px; }
     .panel-max { position: fixed !important; inset: 6px !important; z-index: 800 !important; width: auto !important; height: auto !important; max-width: none !important; max-height: none !important; }
     body.has-max::after { content: ''; position: fixed; inset: 0; background: #05070a; z-index: 799; }
     #fsBadge { position: fixed; top: 10px; right: 12px; z-index: 900; display: none; font: bold 10px monospace; color: #38BDF8; background: rgba(5,7,10,0.8);
@@ -982,6 +1000,13 @@
     <button onclick="setMeterScale(60)">Full Meter (60 dB: -60 to 0)</button>
     <button onclick="resetPeakHold()">Reset Peak Hold</button>
     <button onclick="toggleMeterPop()">Expand / Pop-Out Meter</button>
+    <button onclick="toggleBigVu()">Analog VU Meters Full Screen (Ctrl+Alt+U)</button>
+    <button onclick="toggleMeterPop(); setMeterOrientation(true)">Pop-Out Meter: Vertical</button>
+  </div>
+
+  <div class="vu-big" id="vuBig" data-panel="vu">
+    <div class="vu-big-row"><canvas id="vuBigL"></canvas><canvas id="vuBigR"></canvas></div>
+    <div id="vuBigRead"></div>
   </div>
 
   <div class="meter-pop" id="meterPop">
@@ -992,6 +1017,7 @@
         <button onclick="setMeterScale(5)">5dB</button>
         <button onclick="setMeterScale(24)">Half</button>
         <button onclick="setMeterScale(60)">Full</button>
+        <button id="meterOrientBtn" onclick="setMeterOrientation(!document.getElementById('meterPop').classList.contains('vertical'))" data-tip="Vertical / horizontal meter (V while it's open)">⇅</button>
         <button onclick="toggleMeterPop()">✕</button>
       </div>
     </div>
@@ -1008,9 +1034,13 @@
         <span>CEILING GR: <b id="popGr" style="color:var(--gold)">0.0</b> dB</span>
         <button onclick="if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.emitEvent('resetLoudness', {})" data-tip="Restart integrated loudness and true-peak hold">RESET</button>
       </div>
-      <div class="bar-track" style="height:22px;"><div class="bar-fill" id="popBarL"></div><div class="bar-ceil" id="popCeilL"></div></div>
-      <div class="bar-track" style="height:22px;"><div class="bar-fill" id="popBarR"></div><div class="bar-ceil" id="popCeilR"></div></div>
-      <canvas id="popScopeCanvas" width="420" height="130" style="flex:1;background:#07090C;border:1px solid var(--bezel);"></canvas>
+      <div class="meter-pop-main">
+        <div class="pop-bars">
+          <div class="bar-track" style="height:22px;"><div class="bar-fill" id="popBarL"></div><div class="bar-ceil" id="popCeilL"></div></div>
+          <div class="bar-track" style="height:22px;"><div class="bar-fill" id="popBarR"></div><div class="bar-ceil" id="popCeilR"></div></div>
+        </div>
+        <canvas id="popScopeCanvas" width="420" height="130" style="flex:1;min-width:0;min-height:0;background:#07090C;border:1px solid var(--bezel);"></canvas>
+      </div>
       <div style="font-size:10px;color:var(--mute);display:flex;justify-content:space-between;">
         <span>Drag header to move · Drag bottom-right corner to resize</span>
         <span>Scroll wheel to zoom</span>
@@ -1469,6 +1499,8 @@
       <div class="kbd-grid">
         <div><h4>EVERYWHERE</h4>
           <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> Undo <i>(every app)</i></p>
+          <p><kbd>Ctrl</kbd>+click panels (or <kbd>Alt</kbd>+<kbd>`</kbd>), then <kbd>`</kbd> - tile them full screen; <kbd>Ctrl</kbd>+<kbd>`</kbd> tiles them on the other display <i>(every app)</i></p>
+          <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd> Analog VU meters full screen · <kbd>V</kbd> flips the pop-out meter vertical/horizontal <i>(every app)</i></p>
           <p><kbd>Ctrl</kbd>+<kbd>P</kbd> or <kbd>/</kbd> Search everything - type "width 120" to set a control <i>(every app)</i></p>
           <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd> History: undo any one change, go back &amp; keep <i>(every app)</i></p>
           <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd> MIDI controllers &amp; joysticks <i>(every app)</i></p>
@@ -1773,12 +1805,17 @@
         if (diagOpen && !IS_POPOUT && !IS_UTILITY) { closeDiagnostics(); return; }
         if (IS_POPOUT) { emit('fullscreen', { cmd: 'return' }); return; }
         if (document.querySelector('.panel-max')) { toggleMaxPanel(); return; }
+        if (tilesOn()) { setTiles(null); return; }
+        if (tilePick.size) { tilePick.clear(); document.querySelectorAll('.tile-pick').forEach(el => el.classList.remove('tile-pick')); showFsBadge(''); return; }
         if (pathDraw) { togglePathDraw(); return; }
         document.getElementById('meterMenu').classList.remove('open');
         document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
         return;
       }
+      if (e.code === 'Backquote' && !typing && e.altKey && !mod) { e.preventDefault(); toggleTilePick(hoverPanel); return; }
       if (e.code === 'Backquote' && !typing) { e.preventDefault(); if (mod) popOutPanel(); else toggleMaxPanel(); return; }
+      if (mod && e.altKey && e.key.toLowerCase() === 'u') { e.preventDefault(); toggleBigVu(); return; }
+      if (!mod && !e.altKey && e.key.toLowerCase() === 'v' && !typing && document.getElementById('meterPop').classList.contains('open')) { e.preventDefault(); setMeterOrientation(!document.getElementById('meterPop').classList.contains('vertical')); return; }
       if (typing) return;
       if (customShortcut(e)) return;
       const k = e.key.toLowerCase();
@@ -1990,7 +2027,7 @@
       const ceilPct = Math.max(0, Math.min(100, ((-0.5 + meterRangeDb) / meterRangeDb) * 100));
       ['ceilL', 'ceilR', 'popCeilL', 'popCeilR'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.style.left = ceilPct + '%';
+        if (el) { el.style.left = ceilPct + '%'; el.style.setProperty('--ceil', ceilPct + '%'); }
       });
     }
     updateCeilingMarkers();
@@ -2321,6 +2358,7 @@
           if (m.ui.beginner !== undefined) setBeginner(m.ui.beginner === '1', true);
           if (m.ui.keymap) { try { customKeys = JSON.parse(m.ui.keymap) || {}; } catch (e) {} }
           if (m.ui.looks) { try { looks = JSON.parse(m.ui.looks) || []; } catch (e) {} }
+          if (m.ui.meterVertical) setMeterOrientation(true, false);
           if (m.ui.padmap) { try { padMap = JSON.parse(m.ui.padmap) || {}; } catch (e) {} }
           if (m.ui.learnOn !== undefined) setLearning(m.ui.learnOn !== '0', true);
           if (m.ui.headOn !== undefined && (m.ui.headOn === '1') !== headOn) { setHeadOn(m.ui.headOn === '1', true); emit('head', { cmd: 'enable', on: headOn }); }
@@ -2431,8 +2469,8 @@
         const pL = dbToPct(rmsToDb(t.rmsL)), pR = dbToPct(rmsToDb(t.rmsR));
         document.getElementById('barL').style.width = pL + '%';
         document.getElementById('barR').style.width = pR + '%';
-        document.getElementById('popBarL').style.width = pL + '%';
-        document.getElementById('popBarR').style.width = pR + '%';
+        document.getElementById('popBarL').style.width = pL + '%'; document.getElementById('popBarL').style.setProperty('--lvl', pL + '%');
+        document.getElementById('popBarR').style.width = pR + '%'; document.getElementById('popBarR').style.setProperty('--lvl', pR + '%');
         updateTachNeedles(pL, pR);
         state.rms = Math.max(0.08, (t.rmsL + t.rmsR) * 0.5);
       });
@@ -2551,6 +2589,7 @@
         const pL = dbToPct(rmsToDb(rmsL)), pR = dbToPct(rmsToDb(rmsR));
         document.getElementById('barL').style.width = pL + '%'; document.getElementById('barR').style.width = pR + '%';
         document.getElementById('popBarL').style.width = pL + '%'; document.getElementById('popBarR').style.width = pR + '%';
+        document.getElementById('popBarL').style.setProperty('--lvl', pL + '%'); document.getElementById('popBarR').style.setProperty('--lvl', pR + '%');
         updateTachNeedles(pL, pR);
         state.rms = Math.max(0.08, (rmsL + rmsR) * 0.5);
       }
@@ -3130,8 +3169,8 @@
       const hub = c.createRadialGradient(x - 4, y - 4, 2, x, y, 14); hub.addColorStop(0, '#f1f5f9'); hub.addColorStop(1, '#3f4652'); c.fillStyle = hub; c.beginPath(); c.arc(x, y, 12, 0, Math.PI * 2); c.fill();
       c.fillStyle = '#ffd29a'; c.font = '600 24px Bahnschrift, sans-serif'; c.shadowColor = '#ff8a1c'; c.shadowBlur = 10; c.fillText(Math.round(v * 100) + '%', x, y + r * 0.62); c.shadowBlur = 0;
     }
-    function drawVu(cv, db) {
-      const c = cv.getContext('2d'), W = cv.width, H = cv.height; c.clearRect(0, 0, W, H);
+    function drawVu(cv, db, scale) {
+      const s = scale || 1, c = cv.getContext('2d'), W = cv.width / s, H = cv.height / s; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height); c.setTransform(s, 0, 0, s, 0, 0);
       const face = c.createLinearGradient(0, 0, W, 0); face.addColorStop(0, '#141a2a'); face.addColorStop(0.75, '#1c2236'); face.addColorStop(1, '#5a3112');
       c.fillStyle = face; c.fillRect(0, 0, W, H);
       const glow = c.createRadialGradient(W * 0.88, H * 0.6, 4, W * 0.88, H * 0.6, W * 0.35); glow.addColorStop(0, 'rgba(255,150,40,0.75)'); glow.addColorStop(1, 'rgba(255,150,40,0)'); c.fillStyle = glow; c.fillRect(0, 0, W, H);
@@ -3263,6 +3302,8 @@
       if (window.gl3d && window.gl3d.flying) return toggleFly();
       if (typeof diagOpen !== 'undefined' && diagOpen && !IS_UTILITY) return closeDiagnostics();
       if (document.querySelector('.panel-max')) return setMaxPanel(null);
+      if (tilesOn()) return setTiles(null);
+      if (tilePick.size) { tilePick.clear(); document.querySelectorAll('.tile-pick').forEach(el => el.classList.remove('tile-pick')); showFsBadge(''); return; }
       document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
     }
     if (window.__JUCE__ && window.__JUCE__.backend) {
@@ -3302,6 +3343,9 @@
     const ACTIONS = [
       ['fullscreen', '`', 'Maximise panel under the mouse', () => toggleMaxPanel()],
       ['popout', 'Ctrl+`', 'Panel fullscreen on other display', () => popOutPanel()],
+      ['tilePick', 'Alt+`', 'Pick panel for tiling (or Ctrl+click it)', () => toggleTilePick(hoverPanel)],
+      ['bigVu', 'Ctrl+Alt+U', 'Analog VU meters full screen', () => toggleBigVu()],
+      ['meterOrient', 'V', 'Pop-out meter: vertical / horizontal', () => setMeterOrientation(!document.getElementById('meterPop').classList.contains('vertical'))],
       ['precision', 'Shift+Space', 'Surgical Precision Mode (oscilloscope)', () => togglePrecision()],
       ['displayCycle', 'Ctrl+Alt+V', 'Display / VR cycle (3D, Top, Vector, Spectrum, Fly)', () => cycleDisplay()],
       ['secret', 'Ctrl+Alt+S', 'Secret menu', () => document.getElementById('secretModal').classList.add('open')],
@@ -3941,17 +3985,84 @@
       if (el) { el.classList.add('panel-max'); showFsBadge(IS_POPOUT ? 'FULLSCREEN · Esc or Ctrl+` to return' : 'MAXIMISED · ` to restore · Ctrl+` = other display', IS_POPOUT ? 4000 : 2500); }
       else showFsBadge('');
     }
-    function toggleMaxPanel() { if (IS_POPOUT) return; setMaxPanel(document.querySelector('.panel-max') ? null : hoverPanel); }
+    function toggleMaxPanel() {
+      if (IS_POPOUT) return;
+      if (tilesOn()) { setTiles(null); return; }
+      if (tilePick.size > 1) { const names = [...tilePick]; toggleTilePick(null); tilePick.clear(); document.querySelectorAll('.tile-pick').forEach(el => el.classList.remove('tile-pick')); setTiles(names); return; }
+      setMaxPanel(document.querySelector('.panel-max') ? null : hoverPanel);
+    }
     function popOutPanel() {
       if (IS_POPOUT) { emit('fullscreen', { cmd: 'return' }); return; }
-      const maxed = document.querySelector('.panel-max'), panel = maxed ? maxed.dataset.panel : hoverPanel;
-      if (maxed) setMaxPanel(null);
+      const tiled = [...document.querySelectorAll('.panel-tile')].map(el => el.dataset.panel), picked = tilePick.size > 1 ? [...tilePick] : null;
+      const maxed = document.querySelector('.panel-max'), panel = tiled.length ? tiled.join(',') : picked ? picked.join(',') : maxed ? maxed.dataset.panel : hoverPanel;
+      if (maxed) setMaxPanel(null); if (tiled.length) setTiles(null);
+      if (picked) { tilePick.clear(); document.querySelectorAll('.tile-pick').forEach(el => el.classList.remove('tile-pick')); }
       if (!window.__JUCE__) { flashHint('Ctrl+` sends a panel fullscreen to your other display (in the plugin)'); return; }
       emit('fullscreen', { cmd: 'popout', panel });
     }
     if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.addEventListener('fullscreenState', (on) => { if (!IS_POPOUT) showFsBadge(on ? '⧉ FULLSCREEN ON OTHER DISPLAY · Ctrl+` to bring back' : '', on ? 0 : 1); });
-    if (IS_POPOUT) setTimeout(() => { if (params.get('panel') === 'diag') openDiagnostics(); else setMaxPanel(params.get('panel') || 'stage'); }, 50);
+    if (IS_POPOUT) setTimeout(() => { const pn = params.get('panel') || 'stage'; if (pn === 'diag') openDiagnostics(); else if (pn.includes(',')) setTiles(pn.split(',')); else setMaxPanel(pn); }, 50);
     if (!IS_POPOUT && (IS_UTILITY || /scope/i.test(params.get('module') || ''))) setTimeout(openDiagnostics, IS_UTILITY ? 50 : 400);   // The Scope is the suite's diagnostic home
+
+    // ---------- tiling: Ctrl+click (or Alt+`) several panels, then ` shows them all full screen ----------
+    const tilePick = new Set();
+    function toggleTilePick(name) {
+      if (!name) return;
+      if (tilePick.has(name)) tilePick.delete(name); else tilePick.add(name);
+      document.querySelectorAll('[data-panel]').forEach(el => el.classList.toggle('tile-pick', tilePick.has(el.dataset.panel)));
+      showFsBadge(tilePick.size ? `▦ ${tilePick.size} panel${tilePick.size > 1 ? 's' : ''} picked · ${tilePick.size > 1 ? '` tiles them full screen · Ctrl+` on the other display · ' : ''}Esc clears` : '', tilePick.size ? 0 : 1);
+    }
+    function setTiles(names) {
+      setMaxPanel(null);
+      document.querySelectorAll('.panel-tile').forEach(el => { el.classList.remove('panel-tile'); el.style.removeProperty('--tl'); el.style.removeProperty('--tt'); el.style.removeProperty('--tw'); el.style.removeProperty('--th'); });
+      const els = (names || []).map(n => document.querySelector(`[data-panel="${n}"]`)).filter(Boolean);
+      document.body.classList.toggle('has-max', els.length > 0);
+      if (!els.length) { showFsBadge(''); return; }
+      const cols = Math.ceil(Math.sqrt(els.length)), rows = Math.ceil(els.length / cols);
+      els.forEach((el, i) => {
+        const c = i % cols, r = Math.floor(i / cols), inRow = r === rows - 1 ? els.length - r * cols : cols;   // last row stretches
+        const w = 100 / inRow, cc = r === rows - 1 ? i - r * cols : c;
+        el.classList.add('panel-tile'); el.style.setProperty('--tl', cc * w + '%'); el.style.setProperty('--tt', r * 100 / rows + '%'); el.style.setProperty('--tw', w + '%'); el.style.setProperty('--th', 100 / rows + '%');
+      });
+      showFsBadge('▦ TILED · ` or Esc to restore', 2500); window.dispatchEvent(new Event('resize'));
+    }
+    const tilesOn = () => !!document.querySelector('.panel-tile');
+    document.addEventListener('mousedown', (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.button !== 0 || IS_POPOUT) return;
+      if (e.target.closest('button,input,select,textarea,a,[data-param],canvas,.modal,.knob-cell')) return;   // Ctrl+click on controls keeps its own job
+      const p = e.target.closest('[data-panel]'); if (!p) return;
+      e.preventDefault(); e.stopPropagation(); toggleTilePick(p.dataset.panel);
+    }, true);
+    // ---------- full-screen analog VU meters ----------
+    let bigVuL = -60, bigVuR = -60, bigVuLast = performance.now(), bigPeakL = -60, bigPeakR = -60;
+    function toggleBigVu() { const on = document.querySelector('.panel-max') && document.querySelector('.panel-max').dataset.panel === 'vu'; setMaxPanel(on ? null : 'vu'); if (!on) requestAnimationFrame(bigVuFrame); }
+    function bigVuFrame(now) {
+      const el = document.getElementById('vuBig');
+      if (!el.classList.contains('panel-max') && !el.classList.contains('panel-tile')) return;
+      const dt = Math.min(0.1, (now - bigVuLast) / 1000); bigVuLast = now;
+      const t = window._tele || {}, toDb = (x) => x > 1e-5 ? 20 * Math.log10(x) : -60, k = 1 - Math.exp(-dt / 0.3);
+      bigVuL += (toDb(t.rmsL || 0) + 18 - bigVuL) * k; bigVuR += (toDb(t.rmsR || 0) + 18 - bigVuR) * k;
+      const pk = (t.peak ?? -60); bigPeakL = Math.max(pk, bigPeakL - dt * 11.8); bigPeakR = bigPeakL;      // PPM-style fall-back (IEC type II: 24 dB / 2.8 s)
+      ['vuBigL', 'vuBigR'].forEach((id, i) => {
+        // Keep the classic meter face proportions (200 x 110) and scale it up to fill the space.
+        const cv = document.getElementById(id), box = cv.parentElement.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+        const cssW = Math.max(100, Math.min((box.width - 16) / 2, box.height * 200 / 110)), cssH = cssW * 110 / 200;
+        if (cv.style.width !== cssW + 'px') { cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px'; }
+        const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
+        if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+        drawVu(cv, i ? bigVuR : bigVuL, W / 200);
+      });
+      document.getElementById('vuBigRead').textContent = `L ${bigVuL.toFixed(1)} VU   R ${bigVuR.toFixed(1)} VU   ·   PEAK ${bigPeakL.toFixed(1)} dBFS   ·   ${(t.lufs ?? -60).toFixed(1)} LUFS   ·   0 VU = -18 dBFS`;
+      requestAnimationFrame(bigVuFrame);
+    }
+    new MutationObserver(() => requestAnimationFrame(bigVuFrame)).observe(document.getElementById('vuBig'), { attributes: true, attributeFilter: ['class'] });
+    // ---------- pop-out meter: horizontal or vertical ----------
+    function setMeterOrientation(vertical, save) {
+      const pop = document.getElementById('meterPop'); pop.classList.toggle('vertical', vertical);
+      pop.style.width = vertical ? '300px' : ''; pop.style.height = vertical ? '520px' : '';
+      document.getElementById('meterOrientBtn').textContent = vertical ? '⇆' : '⇅';
+      if (save !== false) emit('setUiProp', { key: 'meterVertical', value: vertical ? '1' : '' });
+    }
 
     window.stageApi = {
       cam, distToR, rToDist, worldPos, mapRoomPoint, findClashes, flash: flashHint,

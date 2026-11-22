@@ -30,8 +30,8 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ✅ Faceplate depth: bevels, screws, LED rims, mouse-follow 3D tilt, hologram projector base (more 3D interactivity still welcome)
 - ✅ Colours: burnt/sunset orange, LED-glow blue, asymmetric blue pop (Fast Ray Sunset)
 - ☐ 50 skins incl. a Vidalia skin (Vidalia High School, Kroger, local landmarks); skins + Skin Editor in a separate installer with per-skin checkboxes
-- ☐ Analog meters full screen; Ctrl-click several panels and tile them full screen together
-- ☐ Pop-out meter vertical/horizontal option
+- ✅ Analog VU meters full screen (Ctrl+Alt+U, meter menu); Ctrl+click panels (or Alt+`) then ` tiles them full screen, Ctrl+` tiles them on the other display, Esc restores
+- ✅ Pop-out meter vertical/horizontal (⇅ button or V; remembered)
 
 ### Features
 - ✅ Mobile Skin Studio: phone camera/library → frame, brightness/contrast/warmth, auto LED colours → sent to the plugin (live), saved for every Solution plugin
