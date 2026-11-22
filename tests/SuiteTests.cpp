@@ -2153,6 +2153,47 @@ static void testMosaicCore()
       EXPECT (on - before == 4096 && proc.getLatencySamples() == before, "morph adds 4096 samples of latency only while on (%d -> %d -> %d)", before, on, proc.getLatencySamples()); }
 }
 
+
+static void testVoidCore()
+{
+    std::printf ("The Void: drawn room -> image-source reflections + Sabine tail, warp, phase scramble\n");
+    using namespace SolutionDSP;
+    VoidRoom room; room.src = { 2, 3 }; room.lis = { 6, 3 }; room.absorb = 0.3f;
+    auto taps = room.taps (64);
+    auto hasTap = [&] (float ms) { for (auto& t : taps) if (std::abs (t.delay - ms) < 0.05f) return true; return false; };
+    EXPECT (hasTap (4.05f / 343.0f * 1000.0f) && hasTap (8.0f / 343.0f * 1000.0f + 0.15f) | hasTap (8.05f / 343.0f * 1000.0f),
+            "direct sound (4 m) and the left-wall reflection (8 m) arrive on time");
+    const float expectRt = 0.161f * 144.0f / (180.0f * 0.3f);
+    EXPECT (std::abs (room.rt60() - expectRt) < 0.01f, "Sabine RT60 of an 8x6x3 m room at 30%% absorption: %.3f s (expect %.3f)", room.rt60(), expectRt);
+    // warp bends path lengths: d^(1+w)
+    { VoidRoom w = room; w.warp = 0.3f; auto t2 = w.taps (64); float direct = 1e9f; for (auto& t : t2) if (t.order == 0) direct = t.delay;
+      EXPECT (std::abs (direct - std::pow (4.05f, 1.3f) / 343.0f * 1000.0f) < 0.05f, "warp bends the direct path (%.2f ms)", direct); }
+    // the real thing: impulse -> direct at the right time, tail decays at about the Sabine rate
+    { const double fs = 48000.0; VoidCore c; c.prepare (fs, 512); c.setRoom (room);
+      const int N = (int) (fs * 1.5); std::vector<float> L (N, 0.0f), R (N, 0.0f); L[0] = R[0] = 1.0f;
+      for (int o = 0; o < N; o += 512) c.process (L.data() + o, R.data() + o, std::min (512, N - o), 1.0f, 0.0f);
+      int first = 1; while (first < N && std::abs (L[(size_t) first]) + std::abs (R[(size_t) first]) < 1e-4f) ++first;
+      EXPECT (std::abs (first / fs * 1000.0 - 4.05 / 343.0 * 1000.0) < 0.3, "first arrival at %.2f ms", first / fs * 1000.0);
+      auto win = [&] (double t0) { double e = 0; for (int i = (int) (t0 * fs); i < (int) ((t0 + 0.05) * fs); ++i) e += L[(size_t) i] * L[(size_t) i] + R[(size_t) i] * R[(size_t) i]; return 10 * std::log10 (e + 1e-30); };
+      const double slope = (win (0.1) - win (0.4)) / 0.3;               // dB per second
+      const double rt = 60.0 / slope;
+      std::printf ("  measured tail RT60 %.2f s (Sabine %.2f s)\n", rt, expectRt);
+      EXPECT (rt > expectRt * 0.6 && rt < expectRt * 1.6, "tail decays at about the room's RT60"); }
+    // position: source to the listener's left -> louder on the left
+    { VoidRoom p = room; p.src = { 1, 5.5f }; p.lis = { 4, 2 }; double l = 0, r = 0; for (auto& t : p.taps (64)) if (t.order == 0) { l = t.gl; r = t.gr; }
+      VoidRoom q = room; q.src = { 7, 5.5f }; q.lis = { 4, 2 }; double l2 = 0, r2 = 0; for (auto& t : q.taps (64)) if (t.order == 0) { l2 = t.gl; r2 = t.gr; }
+      EXPECT (l > r && r2 > l2, "a source on the left sounds on the left, on the right on the right"); }
+    // phase scramble: same energy, decorrelated sides
+    { const double fs = 48000.0; VoidCore c; c.prepare (fs, 512); c.setRoom (room); const int N = 48000;
+      juce::Random rng (3); std::vector<float> L (N), R (N); for (int i = 0; i < N; ++i) L[(size_t) i] = R[(size_t) i] = rng.nextFloat() - 0.5f;
+      double ein = 0; for (auto x : L) ein += x * x;
+      for (int o = 0; o < N; o += 512) c.process (L.data() + o, R.data() + o, std::min (512, N - o), 0.0f, 1.0f);
+      double eout = 0, lr = 0, ll = 0, rr = 0; for (int i = 4800; i < N; ++i) { eout += L[(size_t) i] * L[(size_t) i]; lr += L[(size_t) i] * R[(size_t) i]; ll += L[(size_t) i] * L[(size_t) i]; rr += R[(size_t) i] * R[(size_t) i]; }
+      const double corr = lr / std::sqrt (ll * rr), dB = 10 * std::log10 (eout / (ein * (N - 4800.0) / N));
+      std::printf ("  scramble: level %+.2f dB, L/R correlation %.2f (mono in)\n", dB, corr);
+      EXPECT (std::abs (dB) < 1.0 && corr < 0.5, "scramble keeps the level and decorrelates"); }
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2304,6 +2345,7 @@ int main()
     testAnchorCore();
     testAetherCore();
     testMosaicCore();
+    testVoidCore();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

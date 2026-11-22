@@ -248,6 +248,39 @@ void SolutionAudioProcessor::loadMosaicNodes()
     }
 }
 
+// ===================== The Void =====================
+SolutionDSP::VoidRoom SolutionAudioProcessor::currentVoidRoom() const
+{
+    SolutionDSP::VoidRoom room = voidRoomShape;
+    auto v = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
+    float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+    for (auto& p : room.poly) { x0 = std::min (x0, p.x); y0 = std::min (y0, p.y); x1 = std::max (x1, p.x); y1 = std::max (y1, p.y); }
+    room.lis = { x0 + (x1 - x0) * v ("void_lx"), y0 + (y1 - y0) * v ("void_ly") };
+    room.src = { x0 + (x1 - x0) * v ("void_sx"), y0 + (y1 - y0) * v ("void_sy") };
+    room.absorb = v ("void_absorb") / 100.0f; room.warp = v ("void_warp") / 100.0f; room.size = v ("void_size") / 100.0f; room.height = v ("void_height");
+    return room;
+}
+void SolutionAudioProcessor::updateVoidRoom()
+{
+    if (moduleId != SolutionDSP::ModuleId::Void) return;
+    double h = voidRoomShape.toString().hashCode64() * 1e-12; int k = 1;
+    for (auto* id : { "void_lx", "void_ly", "void_sx", "void_sy", "void_absorb", "void_warp", "void_size", "void_height" }) h += apvts.getRawParameterValue (id)->load() * (k++ * 7.31);
+    if (std::abs (h - voidHash) < 1e-9) return;
+    voidHash = h; voidCore.setRoom (currentVoidRoom()); voidGen++;
+}
+void SolutionAudioProcessor::setVoidShape (const juce::String& s) { voidRoomShape.fromString (s); apvts.state.setProperty ("voidRoom", voidRoomShape.toString(), nullptr); voidHash = -1; updateVoidRoom(); }
+juce::var SolutionAudioProcessor::voidJson() const
+{
+    const auto room = currentVoidRoom();
+    juce::DynamicObject::Ptr o = new juce::DynamicObject();
+    juce::Array<juce::var> poly; for (auto& p : voidRoomShape.poly) poly.add (juce::Array<juce::var> { p.x, p.y });
+    juce::Array<juce::var> taps; for (auto& t : room.taps (40)) taps.add (juce::Array<juce::var> { t.x / room.size, t.y / room.size, t.order, std::round (t.delay * 10.0f) / 10.0f });
+    o->setProperty ("poly", poly); o->setProperty ("height", voidRoomShape.height); o->setProperty ("taps", taps);
+    o->setProperty ("rt60", room.rt60()); o->setProperty ("volume", room.volume()); o->setProperty ("lis", juce::Array<juce::var> { room.lis.x / room.size, room.lis.y / room.size });
+    o->setProperty ("src", juce::Array<juce::var> { room.src.x / room.size, room.src.y / room.size });
+    return juce::var (o.get());
+}
+
 // ===================== Test-tone analyser =====================
 std::unique_ptr<SolutionAudioProcessor> SolutionAudioProcessor::makeMeasurementCopy()
 {
@@ -518,6 +551,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v25: The Void acoustic modeller (off by default)
+    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "void_on", 25 }, "Acoustic Modeller", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_mix", 25 }, "Room Mix (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 35.00f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_lx", 25 }, "Listener X", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.70f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_ly", 25 }, "Listener Y", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.50f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_sx", 25 }, "Source X", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.30f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_sy", 25 }, "Source Y", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.50f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_absorb", 25 }, "Wall Absorption (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.00f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_warp", 25 }, "Space Warp (%)", juce::NormalisableRange<float> (-50.0f, 50.0f, 0.1f), 0.00f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_scramble", 25 }, "Phase Scramble (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.00f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_size", 25 }, "Room Scale (%)", juce::NormalisableRange<float> (25.0f, 400.0f, 0.1f), 100.00f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_height", 25 }, "Ceiling (m)", juce::NormalisableRange<float> (1.5f, 30.0f, 0.01f), 3.00f));
     // --- v24: The Mosaic spectral morph (off by default; adds 4096 samples of latency only while on)
     params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "mosaic_on", 24 },       "Spectral Morph", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "mosaic_morph", 24 },    "Morph (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 60.0f));
@@ -714,6 +759,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     anchorCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Aether) aetherCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Mosaic) mosaicCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    if (moduleId == SolutionDSP::ModuleId::Void) { voidCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock)); voidHash = -1; updateVoidRoom(); }
     mosaicLatencyOn = mosaicActive();
     dcGuardIn.prepare (sampleRate);
     voiceDetector.prepare (sampleRate);
@@ -1155,6 +1201,9 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             anchorCrestLost.store (anchorCore.getCrestLostDb(), std::memory_order_relaxed);
             anchorVerdict.store (ap.on ? anchorCore.verdict() : -1, std::memory_order_relaxed);
         }
+        if (moduleId == SolutionDSP::ModuleId::Void && apvts.getRawParameterValue ("void_on")->load() > 0.5f)
+            voidCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples,
+                              apvts.getRawParameterValue ("void_mix")->load() / 100.0f, apvts.getRawParameterValue ("void_scramble")->load() / 100.0f);
         if (moduleId == SolutionDSP::ModuleId::Mosaic && mosaicLatencyOn)
         {
             SolutionDSP::MosaicCore::Params mp;
@@ -1962,6 +2011,7 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
     setCcMapString (apvts.state.getProperty ("midimap").toString());
     cueList.fromString (apvts.state.getProperty ("cues").toString());
     loadMosaicNodes(); mosaicChanged = true; triggerAsyncUpdate();
+    voidRoomShape = {}; voidRoomShape.fromString (apvts.state.getProperty ("voidRoom").toString()); voidHash = -1;
     trajectory.fromString (apvts.state.getProperty ("traj").toString()); trajectoryDirty = true;
     if (apvts.state.hasProperty ("history")) history.fromString (apvts.state.getProperty ("history").toString());
     else history.rebaseline();                                          // a loaded session is not an edit

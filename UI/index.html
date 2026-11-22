@@ -769,6 +769,14 @@
           <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
           <label style="display:flex;gap:2px;align-items:center;" data-tip="WIDE: let the lift's skirt also fill 15-30 Hz. Off = true infrasonics only (the original trick). Shift+I"><input type="checkbox" data-sync="infra_lift_wide" onchange="bind('infra_lift_wide', this.checked ? 1 : 0, '', 1)">WIDE</label>
         </div>
+        <div id="voidCore" style="display:none;flex-direction:column;gap:3px;font-size:9px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
+            <label style="display:flex;gap:3px;align-items:center;"><input type="checkbox" data-sync="void_on" onchange="bind('void_on', this.checked ? 1 : 0, '', 1)">⬡ ROOM MODELLER</label>
+            <select id="voidPreset" onchange="voidPreset(this.value); this.value=''" style="font-size:9px;"><option value="">Shape…</option><option>Studio</option><option>L-Room</option><option>Hexa Hall</option><option>Corridor</option><option>Cathedral</option></select></div>
+          <canvas id="voidCanvas" width="190" height="130" tabindex="0" style="width:100%;height:130px;border:1px solid var(--bezel);border-radius:4px;background:#020409;cursor:crosshair;" data-tip="Draw the room: drag corners, click a wall to add a corner, right-click a corner to remove it. Drag the gold dot (sound) and the cyan head (you). Arrow keys move you."></canvas>
+          <div id="voidInfo" style="color:var(--mute);font-family:monospace;"></div>
+          <div class="bk-grid2"><div class="bk-row" data-tip="How much room you hear"><span>MIX</span><input type="range" data-sync="void_mix" min="0" max="100" step="1" value="35" oninput="bind('void_mix', +this.value, '', 1); bkShow('void_mix', +this.value)" ondblclick="this.value=35; bind('void_mix', 35, '', 1); bkShow('void_mix', 35)"><b id="v-void_mix">35%</b></div><div class="bk-row" data-tip="Wall absorption: low = live and long, high = dead and short"><span>ABSORB</span><input type="range" data-sync="void_absorb" min="0" max="100" step="1" value="30" oninput="bind('void_absorb', +this.value, '', 1); bkShow('void_absorb', +this.value)" ondblclick="this.value=30; bind('void_absorb', 30, '', 1); bkShow('void_absorb', 30)"><b id="v-void_absorb">30%</b></div><div class="bk-row" data-tip="Non-Euclidean space: bends path lengths so reflections arrive in impossible orders"><span>WARP</span><input type="range" data-sync="void_warp" min="-50" max="50" step="1" value="0" oninput="bind('void_warp', +this.value, '', 1); bkShow('void_warp', +this.value)" ondblclick="this.value=0; bind('void_warp', 0, '', 1); bkShow('void_warp', 0)"><b id="v-void_warp">0%</b></div><div class="bk-row" data-tip="Phase scrambling: smears phase, decorrelates left/right, keeps the tone"><span>SCRAM</span><input type="range" data-sync="void_scramble" min="0" max="100" step="1" value="0" oninput="bind('void_scramble', +this.value, '', 1); bkShow('void_scramble', +this.value)" ondblclick="this.value=0; bind('void_scramble', 0, '', 1); bkShow('void_scramble', 0)"><b id="v-void_scramble">0%</b></div><div class="bk-row" data-tip="Scale the whole room"><span>SCALE</span><input type="range" data-sync="void_size" min="25" max="400" step="1" value="100" oninput="bind('void_size', +this.value, '', 1); bkShow('void_size', +this.value)" ondblclick="this.value=100; bind('void_size', 100, '', 1); bkShow('void_size', 100)"><b id="v-void_size">100%</b></div><div class="bk-row" data-tip="Ceiling height"><span>CEILING</span><input type="range" data-sync="void_height" min="1.5" max="30" step="0.1" value="3" oninput="bind('void_height', +this.value, '', 1); bkShow('void_height', +this.value)" ondblclick="this.value=3; bind('void_height', 3, '', 1); bkShow('void_height', 3)"><b id="v-void_height">3.0 m</b></div></div>
+        </div>
         <div id="mosaicCore" style="display:none;flex-direction:column;gap:3px;font-size:9px;">
           <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
             <label style="display:flex;gap:3px;align-items:center;" data-tip="Spectral morph (adds 85 ms of latency while on - your DAW compensates)"><input type="checkbox" data-sync="mosaic_on" onchange="bind('mosaic_on', this.checked ? 1 : 0, '', 1)">▦ SPECTRAL MORPH</label>
@@ -2457,7 +2465,7 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
-        if (/^(bunker|anchor|aether|mosaic)_/.test(id) && typeof bkShow === 'function') bkShow(id, v);
+        if (/^(bunker|anchor|aether|mosaic|void)_/.test(id) && typeof bkShow === 'function') bkShow(id, v);
         if (id === 'transient_attack' || id === 'transient_sustain') document.getElementById('v-' + id).textContent = (v > 0 ? '+' : '') + Math.round(v) + '%';
         if (id === 'dialogue_duck_db') document.getElementById('v-dialogue_duck_db').textContent = (+v).toFixed(1) + ' dB';
         if (id === 'infra_lift_db') document.getElementById('v-infra_lift_db').textContent = '+' + (+v).toFixed(1) + ' dB';
@@ -4362,6 +4370,63 @@
     // ---------- fullscreen panels ----------
     const IS_POPOUT = params.get('popout') === '1';
     if (/anchor/i.test(params.get('module') || '')) document.getElementById('anchorCore').style.display = 'flex';   // The Anchor only
+    let voidData = null, voidPolyEdit = null;
+    if (/void/i.test(params.get('module') || '')) { document.getElementById('voidCore').style.display = 'flex'; startVoidCanvas(); }   // The Void only
+    function voidPreset(name) {
+      const P = { 'Studio': [[0,0],[8,0],[8,6],[0,6]], 'L-Room': [[0,0],[10,0],[10,4],[4,4],[4,9],[0,9]], 'Hexa Hall': [[6,0],[12,3.5],[12,10.5],[6,14],[0,10.5],[0,3.5]],
+                  'Corridor': [[0,0],[24,0],[24,2.5],[0,2.5]], 'Cathedral': [[4,0],[16,0],[20,6],[20,40],[0,40],[0,6]] }[name];
+      if (!P) return; emit('voidRoom', { cmd: 'set', poly: P }); if (name === 'Cathedral') { bind('void_height', 24, '', 1); bkShow('void_height', 24); } flashHint('⬡ ' + name);
+    }
+    function startVoidCanvas() {
+      const cv = document.getElementById('voidCanvas'); let drag = null;
+      if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.addEventListener('voidState', (m) => { voidData = m; if (!drag) voidPolyEdit = m.poly.map(p => p.slice());
+        document.getElementById('voidInfo').textContent = `RT60 ${m.rt60.toFixed(2)} s · ${Math.round(m.volume)} m³ · ${m.taps.length} reflections`; });
+      emit('voidRoom', { cmd: 'get' });
+      const view = () => { const poly = voidPolyEdit || [[0,0],[8,0],[8,6],[0,6]], xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), W = cv.width, H = cv.height, s = Math.min((W - 16) / (x1 - x0 || 1), (H - 16) / (y1 - y0 || 1));
+        return { x0, y0, x1, y1, s, ox: (W - (x1 - x0) * s) / 2, oy: (H - (y1 - y0) * s) / 2 }; };
+      const toPx = (v, p) => [v.ox + (p[0] - v.x0) * v.s, v.oy + (p[1] - v.y0) * v.s];
+      const fromPx = (v, x, y) => [v.x0 + (x - v.ox) / v.s, v.y0 + (y - v.oy) / v.s];
+      const mpos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+      const norm = (v, p) => [Math.max(0, Math.min(1, (p[0] - v.x0) / ((v.x1 - v.x0) || 1))), Math.max(0, Math.min(1, (p[1] - v.y0) / ((v.y1 - v.y0) || 1)))];
+      const posOf = (v, nx, ny) => toPx(v, [v.x0 + (v.x1 - v.x0) * nx, v.y0 + (v.y1 - v.y0) * ny]);
+      cv.addEventListener('mousedown', (e) => {
+        const v = view(), [mx, my] = mpos(e), poly = voidPolyEdit; if (!poly) return;
+        const lis = posOf(v, state.void_lx ?? 0.7, state.void_ly ?? 0.5), src = posOf(v, state.void_sx ?? 0.3, state.void_sy ?? 0.5);
+        if (e.button === 2) { const i = poly.findIndex(p => Math.hypot(...toPx(v, p).map((c, k) => c - [mx, my][k])) < 7); if (i >= 0 && poly.length > 3) { poly.splice(i, 1); emit('voidRoom', { cmd: 'set', poly }); } return; }
+        if (Math.hypot(lis[0] - mx, lis[1] - my) < 8) { drag = { kind: 'lis', v }; return; }
+        if (Math.hypot(src[0] - mx, src[1] - my) < 8) { drag = { kind: 'src', v }; return; }
+        const vi = poly.findIndex(p => Math.hypot(...toPx(v, p).map((c, k) => c - [mx, my][k])) < 7); if (vi >= 0) { drag = { kind: 'vert', i: vi, v }; return; }
+        // click near a wall: add a corner there
+        for (let i = 0; i < poly.length; i++) { const a = toPx(v, poly[i]), b = toPx(v, poly[(i + 1) % poly.length]), L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+          const t = Math.max(0, Math.min(1, ((mx - a[0]) * (b[0] - a[0]) + (my - a[1]) * (b[1] - a[1])) / (L * L))), px = a[0] + t * (b[0] - a[0]), py = a[1] + t * (b[1] - a[1]);
+          if (Math.hypot(px - mx, py - my) < 6) { poly.splice(i + 1, 0, fromPx(v, mx, my)); drag = { kind: 'vert', i: i + 1, v }; return; } }
+      });
+      cv.addEventListener('contextmenu', (e) => e.preventDefault());
+      window.addEventListener('mousemove', (e) => { if (!drag) return; const [mx, my] = mpos(e);
+        if (drag.kind === 'vert') { voidPolyEdit[drag.i] = fromPx(drag.v, mx, my).map(c => Math.round(c * 10) / 10); }
+        else { const n = norm(drag.v, fromPx(drag.v, mx, my)), k = drag.kind === 'lis' ? ['void_lx', 'void_ly'] : ['void_sx', 'void_sy']; bind(k[0], n[0], '', 1); bind(k[1], n[1], '', 1); state[k[0]] = n[0]; state[k[1]] = n[1]; } });
+      window.addEventListener('mouseup', () => { if (drag && drag.kind === 'vert') emit('voidRoom', { cmd: 'set', poly: voidPolyEdit }); drag = null; });
+      cv.addEventListener('keydown', (e) => { const d = e.shiftKey ? 0.01 : 0.04, k = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[e.key]; if (!k) return; e.preventDefault();
+        const x = Math.max(0, Math.min(1, (state.void_lx ?? 0.7) + k[0])), y = Math.max(0, Math.min(1, (state.void_ly ?? 0.5) + k[1])); bind('void_lx', x, '', 1); bind('void_ly', y, '', 1); state.void_lx = x; state.void_ly = y; });
+      (function frame(t) {
+        const c = cv.getContext('2d'), W = cv.width, H = cv.height, v = view(), poly = voidPolyEdit;
+        c.fillStyle = '#020409'; c.fillRect(0, 0, W, H);
+        // bioluminescent grid
+        c.strokeStyle = 'rgba(45,212,191,0.07)'; c.lineWidth = 1; for (let gx = Math.floor(v.x0); gx <= v.x1; gx++) { const p = toPx(v, [gx, v.y0]); c.beginPath(); c.moveTo(p[0], 0); c.lineTo(p[0], H); c.stroke(); }
+        for (let gy = Math.floor(v.y0); gy <= v.y1; gy++) { const p = toPx(v, [v.x0, gy]); c.beginPath(); c.moveTo(0, p[1]); c.lineTo(W, p[1]); c.stroke(); }
+        if (poly) { c.shadowColor = '#2dd4bf'; c.shadowBlur = 8; c.strokeStyle = '#2dd4bf'; c.lineWidth = 1.5; c.beginPath(); poly.forEach((p, i) => { const q = toPx(v, p); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); c.closePath(); c.stroke(); c.shadowBlur = 0;
+          poly.forEach(p => { const q = toPx(v, p); c.fillStyle = '#5eead4'; c.fillRect(q[0] - 2, q[1] - 2, 4, 4); }); }
+        const lis = posOf(v, state.void_lx ?? 0.7, state.void_ly ?? 0.5), src = posOf(v, state.void_sx ?? 0.3, state.void_sy ?? 0.5);
+        // reflection paths: each image source shines toward you, pulsing with its arrival time
+        if (voidData && voidData.taps && (state.void_on || 0) > 0.5) voidData.taps.forEach(tp => { const q = toPx(v, [tp[0], tp[1]]), pulse = 0.5 + 0.5 * Math.sin((t || 0) / 300 - tp[3] / 8);
+          c.strokeStyle = tp[2] === 0 ? 'rgba(212,175,55,0.8)' : tp[2] === 1 ? `rgba(45,212,191,${0.25 + 0.35 * pulse})` : `rgba(129,140,248,${0.08 + 0.15 * pulse})`; c.lineWidth = tp[2] === 0 ? 1.5 : 1;
+          c.beginPath(); c.moveTo(Math.max(-W, Math.min(2 * W, q[0])), Math.max(-H, Math.min(2 * H, q[1]))); c.lineTo(lis[0], lis[1]); c.stroke(); });
+        c.fillStyle = '#d4af37'; c.beginPath(); c.arc(src[0], src[1], 4, 0, 7); c.fill();
+        c.strokeStyle = '#22d3ee'; c.lineWidth = 2; c.beginPath(); c.arc(lis[0], lis[1], 5, 0, 7); c.stroke(); c.beginPath(); c.moveTo(lis[0], lis[1] - 5); c.lineTo(lis[0], lis[1] - 9); c.stroke();
+        requestAnimationFrame(frame);
+      })();
+    }
     if (/mosaic/i.test(params.get('module') || '')) { document.getElementById('mosaicCore').style.display = 'flex'; startMosaicPad(); }   // The Mosaic only
     function startMosaicPad() {
       const cv = document.getElementById('moXY'); let drag = false, nodes = null, live = null;
@@ -4417,6 +4482,8 @@
     if (/bunker/i.test(params.get('module') || '')) { document.getElementById('infraRow').style.display = 'flex'; document.getElementById('bunkerCore').style.display = 'flex'; }   // The Bunker only
     function bkShow(id, v) {
       const el = document.getElementById('v-' + id); if (!el) return;
+      if (id === 'void_height') { el.textContent = v.toFixed(1) + ' m'; return; }
+      if (id === 'void_warp') { el.textContent = (v > 0 ? '+' : '') + Math.round(v) + '%'; return; }
       if (id === 'aether_dly_ms') { el.textContent = Math.round(v) + ' ms'; return; }
       if (id === 'anchor_drive') { el.textContent = Math.round(Math.pow(10, v / 20) * 100) + '%'; return; }
       if (id === 'anchor_ceiling' || id === 'anchor_out') { el.textContent = (v > 0 ? '+' : '') + v.toFixed(1) + ' dB'; return; }

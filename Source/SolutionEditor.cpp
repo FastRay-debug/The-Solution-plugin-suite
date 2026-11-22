@@ -198,6 +198,17 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
            .withEventListener ("curveWanted", [this] (const juce::var& d) { audioProcessor.curveWanted = (bool) d.getProperty ("on", false); lastCurveGen = -1; })
+           .withEventListener ("voidRoom", [this] (const juce::var& d)
+           {
+               if (d.getProperty ("cmd", {}).toString() == "set")
+               {
+                   juce::StringArray pts;
+                   if (auto* a = d.getProperty ("poly", {}).getArray()) for (auto& p : *a) pts.add (juce::String ((double) p[0], 2) + "," + juce::String ((double) p[1], 2));
+                   audioProcessor.setVoidShape (pts.joinIntoString (";") + "|" + juce::String (audioProcessor.voidRoomShape.height, 2));
+               }
+               lastVoidGen = -1;
+               emitToViews ("voidState", audioProcessor.voidJson());
+           })
            .withEventListener ("mosaic", [this] (const juce::var& d)
            {
                const auto cmd = d.getProperty ("cmd", {}).toString(); const int i = (int) d.getProperty ("node", -1);
@@ -961,6 +972,7 @@ void SolutionAudioProcessorEditor::rackRevert (int slot, int seq)
 void SolutionAudioProcessorEditor::timerCallback()
 {
     if (audioProcessor.getHistoryGen() != lastHistoryGen) sendHistory();
+    if (audioProcessor.getModuleId() == SolutionDSP::ModuleId::Void && audioProcessor.getVoidGen() != lastVoidGen) { lastVoidGen = audioProcessor.getVoidGen(); emitToViews ("voidState", audioProcessor.voidJson()); }
     if (audioProcessor.getCurveGen() != lastCurveGen && ! audioProcessor.getResponseCurve().isVoid()) { lastCurveGen = audioProcessor.getCurveGen(); emitToViews ("responseCurve", audioProcessor.getResponseCurve()); }
     if (aiPanelOpen && frameCounter % 12 == 0) sendAiState();
     if (audioProcessor.getModuleId() == SolutionDSP::ModuleId::Mosaic && frameCounter % 20 == 0) emitToViews ("mosaicNodes", audioProcessor.mosaicNodesJson());

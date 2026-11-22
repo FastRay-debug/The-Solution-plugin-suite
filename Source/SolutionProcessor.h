@@ -37,6 +37,7 @@
 #include "AnchorCore.h"
 #include "AetherCore.h"
 #include "MosaicCore.h"
+#include "VoidCore.h"
 #include <thread>
 #include <atomic>
 #include <array>
@@ -225,6 +226,12 @@ public:
     void captureMosaicNode (int i) { mosaicCore.setNode (i, mosaicCore.liveFingerprint()); saveMosaicNodes(); }
     void resetMosaicNode (int i) { mosaicCore.setNode (i, SolutionDSP::MosaicCore::preset (i)); saveMosaicNodes(); }
     juce::var mosaicNodesJson() const;
+    // The Void (message thread)
+    SolutionDSP::VoidRoom currentVoidRoom() const;
+    void updateVoidRoom();                                     // rebuild taps/tail when the room or a position changed
+    void setVoidShape (const juce::String& s);
+    juce::var voidJson() const;
+    int getVoidGen() const { return voidGen; }
     void saveMosaicNodes();
     void loadMosaicNodes();
 
@@ -268,6 +275,9 @@ public:
     SolutionDSP::AnchorCore anchorCore;
     SolutionDSP::AetherCore aetherCore;
     SolutionDSP::MosaicCore mosaicCore;
+    SolutionDSP::VoidCore voidCore;
+    SolutionDSP::VoidRoom voidRoomShape;                       // the drawn floor plan (message thread)
+    double voidHash = -1; int voidGen = 0;
     std::atomic<float> mosaicTransient { 0.0f };
     bool mosaicLatencyOn = false;                              // what the reported latency currently includes
     std::atomic<int> aetherGrains { 0 };
@@ -305,7 +315,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 24;  // v24: The Mosaic spectral morph  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 25;  // v25: The Void acoustic modeller  // v24: The Mosaic spectral morph  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -411,6 +421,7 @@ private:
         pollHistory();
         pollToneJob();
         pollCurve();
+        updateVoidRoom();
         pollMood();
         recordTrajectory();
         if (offloadActive.load() && offload != nullptr && offloadStateDirty.exchange (false))
