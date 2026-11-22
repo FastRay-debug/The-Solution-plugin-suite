@@ -30,6 +30,8 @@
 #include "MotionPath.h"
 #include "Dqs.h"
 #include "EditHistory.h"
+#include "ToneAnalyzer.h"
+#include <thread>
 #include <atomic>
 #include <array>
 
@@ -40,7 +42,8 @@ class SolutionAudioProcessor final : public juce::AudioProcessor,
 {
 public:
     // moduleOverride: run as a specific module (the DSP Node hosts every module in one app).
-    explicit SolutionAudioProcessor (const juce::String& moduleOverride = {});
+    explicit SolutionAudioProcessor (const juce::String& moduleOverride = {}, bool measurementCopy = false);
+    const bool isMeasurementCopy;                                // private copy for the test-tone analyser: no rack slot, no timers
     ~SolutionAudioProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -233,6 +236,12 @@ public:
     juce::String historyText() const { return history.toString (40); }
     void pollHistoryForTest() { pollHistory(); }
     void setHostPlayingForTest (bool on) { hostPlaying.store (on); }
+    // Test-tone analyser: measures a private copy of this module with the current settings (message thread).
+    bool startToneAnalysis (float toneHz, float levelDb);        // false if one is already running
+    float toneAnalysisProgress() const { return toneProgress.load(); }
+    bool toneAnalysisRunning() const { return toneJob != nullptr; }
+    juce::var takeToneAnalysisResult();                          // non-void once, when a run has finished
+    juce::var runToneAnalysisNow (float toneHz, float levelDb);  // blocking (tests, offline)
     juce::String getCcMapString() const;
     void setCcMapString (const juce::String& map);
     bool setCcMapping (int cc, const juce::String& paramId);
@@ -306,6 +315,13 @@ private:
     float ownLoadSmoothed = 0.0f;
     SolutionDSP::MotionPlayer motion;
     double motionFreeSeconds = 0.0;
+    struct ToneJob { std::unique_ptr<SolutionAudioProcessor> copy; std::thread worker; std::atomic<bool> done { false }; juce::var result; float hz = 1000, db = -18; };
+    std::unique_ptr<ToneJob> toneJob;
+    std::atomic<float> toneProgress { 0.0f };
+    juce::var toneResultReady;
+    std::unique_ptr<SolutionAudioProcessor> makeMeasurementCopy();
+    static juce::var measure (SolutionAudioProcessor& copy, float hz, float db, std::atomic<float>& progress);
+    void pollToneJob();
     SolutionHistory::EditHistory history;
     std::unique_ptr<std::atomic<bool>[]> touchFlags;               // indexed like learnableParamIds (MIDI touches on the audio thread)
     std::map<juce::String, int> learnIndex;
@@ -318,6 +334,7 @@ private:
     {
         pollSessionRequests();
         pollHistory();
+        pollToneJob();
         if (offloadActive.load() && offload != nullptr && offloadStateDirty.exchange (false))
         {
             juce::MemoryBlock st; getStateInformation (st); offload->sendState (st);       // the node sounds identical

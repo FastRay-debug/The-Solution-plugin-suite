@@ -1661,6 +1661,7 @@ static void testVoiceParser()
         { "solution full screen", Command::Ui, "fullscreen", 0, -1 },
         { "solution next preset", Command::Ui, "nextPreset", 0, -1 },
         { "solution undo", Command::Ui, "undo", 0, -1 },
+        { "solution analyzer", Command::Ui, "analyzer", 0, -1 },
         { "solution show history", Command::Ui, "history", 0, -1 },
         { "solution midi controllers", Command::Ui, "midi", 0, -1 },
         { "solution turn the monitors off", Command::Ui, "monitorsOff", 0, -1 },
@@ -1754,6 +1755,61 @@ static void testNetworkOffload()
     node.stop();
 }
 
+
+
+static void testToneAnalyzer()
+{
+    std::printf ("Test-tone analyser: known devices give known answers, and the module can be measured\n");
+    using namespace SolutionAnalyzer;
+    auto at = [] (const Curve& c, float hz, bool right = false) { size_t best = 0; for (size_t i = 0; i < c.hz.size(); ++i) if (std::abs (std::log (c.hz[i] / hz)) < std::abs (std::log (c.hz[best] / hz))) best = i; return (right ? c.r : c.l)[best]; };
+    // 1) -6 dB gain on L, +0 on R, with a 64-sample delay that the device reports as latency.
+    {
+        Device d; d.sampleRate = 48000.0; d.latency = 64;
+        std::vector<float> hl (64, 0.0f), hr (64, 0.0f); int pos = 0;
+        d.reset = [&] { std::fill (hl.begin(), hl.end(), 0.0f); std::fill (hr.begin(), hr.end(), 0.0f); pos = 0; };
+        d.process = [&] (juce::AudioBuffer<float>& b) { for (int i = 0; i < b.getNumSamples(); ++i) { const float l = b.getSample (0, i), r = b.getSample (1, i);
+            b.setSample (0, i, hl[(size_t) pos] * 0.5f); b.setSample (1, i, hr[(size_t) pos]); hl[(size_t) pos] = l; hr[(size_t) pos] = r; pos = (pos + 1) % 64; } };
+        Curve mag, ph; response (d, mag, ph);
+        EXPECT (std::abs (at (mag, 100) + 6.02f) < 0.2f && std::abs (at (mag, 1000) + 6.02f) < 0.2f && std::abs (at (mag, 10000) + 6.02f) < 0.2f,
+                "-6 dB gain reads -6 dB flat (%.2f / %.2f / %.2f)", at (mag, 100), at (mag, 1000), at (mag, 10000));
+        EXPECT (std::abs (at (mag, 1000, true)) < 0.2f, "unity right channel reads 0 dB (%.2f)", at (mag, 1000, true));
+        EXPECT (std::abs (at (ph, 1000)) < 3.0f && std::abs (at (ph, 8000)) < 3.0f, "reported latency removed from phase (%.1f / %.1f deg)", at (ph, 1000), at (ph, 8000));
+        const auto h = harmonics (d, 1000.0f, -18.0f);
+        EXPECT (h.thdPct < 0.01f, "linear device THD below 0.01%% (%.5f%%)", h.thdPct);
+        EXPECT (std::abs (h.fundamentalDb - (-18.0f)) < 0.3f, "fundamental level reads right: louder channel at -18 dBFS (%.2f)", h.fundamentalDb);
+    }
+    // 2) tanh saturation: odd harmonics, real THD; transfer curve flattens.
+    {
+        Device d; d.sampleRate = 48000.0; d.reset = [] {};
+        d.process = [] (juce::AudioBuffer<float>& b) { for (int c = 0; c < 2; ++c) for (int i = 0; i < b.getNumSamples(); ++i) b.setSample (c, i, std::tanh (4.0f * b.getSample (c, i)) / 4.0f); };
+        const auto h = harmonics (d, 1000.0f, -6.0f);
+        EXPECT (h.thdPct > 1.0f, "tanh drive shows real THD (%.2f%%)", h.thdPct);
+        EXPECT (h.levelsDb[1] > h.levelsDb[0] + 30.0f, "odd harmonic (3rd %.1f dBc) dominates even (2nd %.1f dBc)", h.levelsDb[1], h.levelsDb[0]);
+        const auto t = transfer (d);
+        EXPECT (std::abs (t.outDbL.front() - t.inDb.front()) < 0.5f, "transfer: quiet signal passes at unity (%.2f vs %.2f)", t.outDbL.front(), t.inDb.front());
+        EXPECT (t.outDbL.back() < t.inDb.back() - 6.0f, "transfer: hot signal is squashed (%.2f for %.2f in)", t.outDbL.back(), t.inDb.back());
+        EXPECT (h.outSpectrum.l.size() == h.outSpectrum.hz.size() && h.inSpectrum.l.size() == h.outSpectrum.l.size(), "before/after spectra line up");
+    }
+    // 3) The real module, measured on a private copy (no rack slot taken, live instance untouched).
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
+        const int active = proc.getRackBus().activeInstances.load();
+        setParam (proc, "global_mix", 0.0f);                     // fully dry: the module must measure as a straight wire
+        auto r = proc.runToneAnalysisNow (1000.0f, -18.0f);
+        EXPECT (proc.getRackBus().activeInstances.load() == active, "measurement copy is invisible to Rack Link");
+        const auto* m = r["magnitude"]["l"].getArray();
+        EXPECT (m != nullptr && m->size() > 100, "magnitude curve returned");
+        float worst = 0; if (m) for (int i = 20; i < m->size() - 20; ++i) worst = std::max (worst, std::abs ((float) (*m)[i]));
+        EXPECT (worst < 1.0f, "dry module measures flat within 1 dB (worst %.2f dB)", worst);
+        EXPECT ((float) r["harmonics"]["thd"] < 0.1f, "dry module THD tiny (%.4f%%)", (float) r["harmonics"]["thd"]);
+        setParam (proc, "global_mix", 1.0f);
+        EXPECT (proc.startToneAnalysis (1000.0f, -18.0f), "background analysis starts");
+        EXPECT (! proc.startToneAnalysis (1000.0f, -18.0f), "only one runs at a time");
+        juce::var res; for (int i = 0; i < 600 && res.isVoid(); ++i) { juce::Thread::sleep (20); res = proc.takeToneAnalysisResult(); }
+        EXPECT (! res.isVoid() && res["transfer"]["in"].size() == 23, "background analysis finished with a transfer curve");
+    }
+    std::printf ("  done\n");
+}
 
 static void testEditHistory()
 {
@@ -1880,6 +1936,7 @@ int main()
     testHeadTracking();
     testNetworkOffload();
     testEditHistory();
+    testToneAnalyzer();
     testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;

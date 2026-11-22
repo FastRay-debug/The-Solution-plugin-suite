@@ -196,6 +196,12 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("toneAnalyze", [this] (const juce::var& d)
+           {
+               const float hz = (float) (double) d.getProperty ("hz", 1000.0), db = (float) (double) d.getProperty ("db", -18.0);
+               const bool ok = audioProcessor.startToneAnalysis (juce::jlimit (20.0f, 20000.0f, hz), juce::jlimit (-60.0f, 6.0f, db));
+               emitToViews ("toneProgress", ok ? 0.02 : -1.0);
+           })
            .withEventListener ("history", [this] (const juce::var& d)
            {
                const auto cmd = d.getProperty ("cmd", {}).toString();
@@ -671,6 +677,8 @@ void SolutionAudioProcessorEditor::sendScope()
     }
     juce::DynamicObject::Ptr o = new juce::DynamicObject();
     o->setProperty ("lr", pts);
+    o->setProperty ("sr", audioProcessor.getSampleRate());       // the precision grid locks to the calibration tone
+    o->setProperty ("step", 2);
     o->setProperty ("spec", spec);
     o->setProperty ("corr", (sll + srr) > 1e-9 ? slr / (std::sqrt (sll * srr) + 1e-12) : 1.0);
     emitToViews ("scope", juce::var (o.get()));
@@ -853,6 +861,8 @@ void SolutionAudioProcessorEditor::rackRevert (int slot, int seq)
 void SolutionAudioProcessorEditor::timerCallback()
 {
     if (audioProcessor.getHistoryGen() != lastHistoryGen) sendHistory();
+    if (audioProcessor.toneAnalysisRunning() && frameCounter % 6 == 0) emitToViews ("toneProgress", (double) audioProcessor.toneAnalysisProgress());
+    if (auto res = audioProcessor.takeToneAnalysisResult(); ! res.isVoid()) emitToViews ("toneAnalysis", res);
     audioProcessor.pollAutoGainStage();          // sets the trims when the 3 s listen is done
     if (frameCounter % 120 == 60 && audioProcessor.getRemote() != nullptr && audioProcessor.getRemote()->isRunning())
         sendRemoteState();

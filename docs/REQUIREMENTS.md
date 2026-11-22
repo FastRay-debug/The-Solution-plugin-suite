@@ -45,7 +45,7 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ✅ Voice: choose the microphone source (Voice settings → Microphone; saved, falls back to the Windows default)
 - ✅ MIDI Controllers panel (Ctrl+Alt+M): presets (Korg nanoKONTROL2, Akai MPK Mini, Novation Launch Control XL, Behringer X-Touch Mini, Arturia MiniLab 3 / KeyLab Essential, generic), auto-setup wizard, mapping list with delete, MIDI map saved with the session; joystick/gamepad axes → any control
 - ✅ History panel (Ctrl+Alt+Z, 🕘, voice "history"): every edit logged once it settles (presets = one entry), Undo This (selective), Go Back Here… keeping ticked controls, Whole Rack tab undoes edits in other instances, automation playback ignored, saved with the session
-- ☐ Test-tone analyser (PluginDoctor-style): tone before/after a plugin, before/after stacked; precision grid follows the calibration tone
+- ✅ Test-tone analyser (Ctrl+Alt+A, 📈, voice "analyzer"): measures a private copy of the module - log-sweep magnitude/phase (latency removed), harmonics H2-H10 + THD/THD+N with before/after spectra stacked, level transfer curve; precision grid locks to the 1 kHz cal tone (1 div = 1 ms, rails at -18 dBFS). Measuring third-party plugins comes with The Bridge hosting
 - ✅ Global search / command palette (Ctrl+P or /, 🔍): actions, every control, presets, rooms, themes, skins; fuzzy; "width 120" sets a control; > actions, @ controls, # presets
 
 ### Module engines (real DSP per module)

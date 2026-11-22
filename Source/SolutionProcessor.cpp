@@ -7,15 +7,19 @@
 #include <cmath>
 #include <algorithm>
 
-SolutionAudioProcessor::SolutionAudioProcessor (const juce::String& moduleOverride)
+SolutionAudioProcessor::SolutionAudioProcessor (const juce::String& moduleOverride, bool measurementCopy)
     : AudioProcessor (BusesProperties()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, &undoManager, "SolutionState", createParameterLayout()),
+      isMeasurementCopy (measurementCopy),
       moduleKey (moduleOverride.isNotEmpty() ? moduleOverride : juce::String (SOLUTION_MODULE_ID))
 {
-    rackLinkBus->activeInstances.fetch_add (1, std::memory_order_relaxed);
-    rackSlot = rackLinkBus->claimSlot (static_cast<int> (moduleId));
+    if (! isMeasurementCopy)
+    {
+        rackLinkBus->activeInstances.fetch_add (1, std::memory_order_relaxed);
+        rackSlot = rackLinkBus->claimSlot (static_cast<int> (moduleId));
+    }
     for (auto& slot : ccToParamIndex)
         slot.store (-1, std::memory_order_relaxed);
 
@@ -23,7 +27,8 @@ SolutionAudioProcessor::SolutionAudioProcessor (const juce::String& moduleOverri
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             apvts.addParameterListener (ranged->getParameterID(), this);
 
-    startTimerHz (5);     // picks up alignment requests from other instances
+    if (! isMeasurementCopy)
+        startTimerHz (5);     // picks up alignment requests from other instances
 
     learnableParamIds = {
         "stage_azimuth", "stage_elevation", "stage_depth", "stage_haas_itd",
@@ -45,8 +50,108 @@ SolutionAudioProcessor::~SolutionAudioProcessor()
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             apvts.removeParameterListener (ranged->getParameterID(), this);
-    rackLinkBus->releaseSlot (rackSlot);
-    rackLinkBus->activeInstances.fetch_sub (1, std::memory_order_relaxed);
+    if (toneJob != nullptr && toneJob->worker.joinable()) toneJob->worker.join();
+    if (! isMeasurementCopy)
+    {
+        rackLinkBus->releaseSlot (rackSlot);
+        rackLinkBus->activeInstances.fetch_sub (1, std::memory_order_relaxed);
+    }
+}
+
+// ===================== Test-tone analyser =====================
+std::unique_ptr<SolutionAudioProcessor> SolutionAudioProcessor::makeMeasurementCopy()
+{
+    auto copy = std::make_unique<SolutionAudioProcessor> (moduleKey, true);
+    copy->apvts.replaceState (apvts.copyState());
+    copy->setCcMapString ({});
+    copy->turnOffMonitoring();                    // measure the module, not the listening tools (A/B, delta, rooms, cal tone...)
+    copy->setNonRealtime (true);
+    copy->prepareToPlay (preparedSampleRate > 0.0 ? preparedSampleRate : 48000.0, 512);
+    copy->applyPendingChanges();
+    return copy;
+}
+
+juce::var SolutionAudioProcessor::measure (SolutionAudioProcessor& copy, float hz, float db, std::atomic<float>& progress)
+{
+    SolutionAnalyzer::Device dev;
+    dev.sampleRate = copy.getSampleRate() > 0.0 ? copy.getSampleRate() : 48000.0;
+    dev.latency = copy.getLatencySamples();
+    dev.reset = [&copy, sr = dev.sampleRate] { copy.prepareToPlay (sr, 512); };
+    dev.process = [&copy] (juce::AudioBuffer<float>& b)
+    {
+        juce::MidiBuffer midi;
+        for (int pos = 0; pos < b.getNumSamples(); pos += 512)
+        {
+            const int n = std::min (512, b.getNumSamples() - pos);
+            juce::AudioBuffer<float> view (b.getArrayOfWritePointers(), 2, pos, n);
+            copy.processBlock (view, midi);
+        }
+    };
+    auto curveVar = [] (const SolutionAnalyzer::Curve& c)
+    {
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        juce::Array<juce::var> hz, l, r;
+        for (size_t i = 0; i < c.hz.size(); ++i) { hz.add (c.hz[i]); l.add (std::round (c.l[i] * 100.0f) / 100.0f); r.add (std::round (c.r[i] * 100.0f) / 100.0f); }
+        o->setProperty ("hz", hz); o->setProperty ("l", l); o->setProperty ("r", r);
+        return juce::var (o.get());
+    };
+    juce::DynamicObject::Ptr out = new juce::DynamicObject();
+    SolutionAnalyzer::Curve mag, ph;
+    SolutionAnalyzer::response (dev, mag, ph);
+    out->setProperty ("magnitude", curveVar (mag)); out->setProperty ("phase", curveVar (ph));
+    progress = 0.45f;
+    const auto h = SolutionAnalyzer::harmonics (dev, hz, db);
+    juce::DynamicObject::Ptr ho = new juce::DynamicObject();
+    juce::Array<juce::var> lv; for (auto v : h.levelsDb) lv.add (std::round (v * 10.0f) / 10.0f);
+    ho->setProperty ("hz", h.fundamentalHz); ho->setProperty ("fundDb", h.fundamentalDb); ho->setProperty ("levels", lv);
+    ho->setProperty ("thd", h.thdPct); ho->setProperty ("thdn", h.thdnPct);
+    ho->setProperty ("inSpec", curveVar (h.inSpectrum)); ho->setProperty ("outSpec", curveVar (h.outSpectrum));
+    out->setProperty ("harmonics", juce::var (ho.get()));
+    progress = 0.8f;
+    const auto t = SolutionAnalyzer::transfer (dev, hz);
+    juce::DynamicObject::Ptr to = new juce::DynamicObject();
+    juce::Array<juce::var> ti, tl, tr;
+    for (size_t i = 0; i < t.inDb.size(); ++i) { ti.add (t.inDb[i]); tl.add (std::round (t.outDbL[i] * 100.0f) / 100.0f); tr.add (std::round (t.outDbR[i] * 100.0f) / 100.0f); }
+    to->setProperty ("in", ti); to->setProperty ("l", tl); to->setProperty ("r", tr);
+    out->setProperty ("transfer", juce::var (to.get()));
+    out->setProperty ("latency", dev.latency); out->setProperty ("sampleRate", dev.sampleRate);
+    out->setProperty ("toneHz", hz); out->setProperty ("levelDb", db);
+    progress = 1.0f;
+    return juce::var (out.get());
+}
+
+bool SolutionAudioProcessor::startToneAnalysis (float toneHz, float levelDb)
+{
+    if (toneJob != nullptr || isMeasurementCopy) return false;
+    toneJob = std::make_unique<ToneJob>();
+    toneJob->copy = makeMeasurementCopy();
+    toneJob->hz = toneHz; toneJob->db = levelDb;
+    toneProgress = 0.02f;
+    auto* job = toneJob.get();
+    job->worker = std::thread ([job, this] { job->result = measure (*job->copy, job->hz, job->db, toneProgress); job->done = true; });
+    return true;
+}
+
+void SolutionAudioProcessor::pollToneJob()
+{
+    if (toneJob == nullptr || ! toneJob->done.load()) return;
+    toneJob->worker.join();
+    toneResultReady = toneJob->result;
+    toneJob.reset();                                     // the private copy is destroyed on the message thread
+}
+
+juce::var SolutionAudioProcessor::takeToneAnalysisResult()
+{
+    pollToneJob();
+    auto r = toneResultReady; toneResultReady = juce::var();
+    return r;
+}
+
+juce::var SolutionAudioProcessor::runToneAnalysisNow (float toneHz, float levelDb)
+{
+    auto copy = makeMeasurementCopy();
+    std::atomic<float> prog { 0.0f };
+    return measure (*copy, toneHz, levelDb, prog);
 }
 
 // ===================== Edit history (selective undo) =====================

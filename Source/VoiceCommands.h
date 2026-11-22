@@ -114,7 +114,7 @@ namespace SolutionVoice
                 "seventeen","eighteen","nineteen","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety",
                 "bypass","compare","original","delta","mono","check","fullscreen","full","screen","maximize","diagnostics","fly","exit","close","escape",
                 "presets","vault","next","previous","preset","room","rooms","snapshot","store","save","recall","macro","beginner","mode",
-                "pre","render","shortcuts","help","theme","monitoring","monitors","hub","the","a","b","utility","cancel","never","mind","undo","redo","history","midi","controllers","controller" };
+                "pre","render","shortcuts","help","theme","monitoring","monitors","hub","the","a","b","utility","cancel","never","mind","undo","redo","history","midi","controllers","controller","analyzer","analyser","analyze","measure","search" };
             for (auto* w : fixed) v.addIfNotAlreadyThere (w);
             for (auto& a : aliases()) for (auto& w : juce::StringArray::fromTokens (a.first, " ", "")) v.addIfNotAlreadyThere (w);
             for (auto& p : params) for (auto& w : juce::StringArray::fromTokens (normalise (p.name), " ", "")) if (w.containsOnly ("abcdefghijklmnopqrstuvwxyz")) v.addIfNotAlreadyThere (w);
@@ -180,6 +180,8 @@ namespace SolutionVoice
             if (text == "shortcuts" || text == "help")                         return ui (c, "help", "Shortcuts & voice commands");
             if (text == "hub")                                                 return ui (c, "hub", "Command hub");
             if (text == "undo")                                                return ui (c, "undo", "Undo");
+            if (has ("analyzer") || has ("analyser") || has ("analyze") || text == "measure") return ui (c, "analyzer", "Test-tone analyser");
+            if (text == "search")                                              return ui (c, "search", "Search everything");
             if (text == "redo")                                                return ui (c, "redo", "Redo");
             if (has ("history"))                                               return ui (c, "history", "History (selective undo)");
             if (has ("midi") || has ("controllers") || has ("controller"))     return ui (c, "midi", "MIDI controllers");
