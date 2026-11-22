@@ -323,7 +323,7 @@ function init() {
       camera.position.copy(fly.pos);
       camera.lookAt(fly.pos.clone().add(fwd));
     } else if (gl3d.globe) {
-      const cam = api.cam, pitch = 0.3, R = 2.85 / Math.max(0.6, Math.min(1.6, cam.zoom)), cp = Math.cos(pitch);
+      const cam = api.cam, pitch = 0.3, R = 2.4 / Math.max(0.6, Math.min(1.6, cam.zoom)), cp = Math.cos(pitch);
       camera.position.set(-R * Math.sin(cam.yaw) * cp, R * Math.sin(pitch), -R * Math.cos(cam.yaw) * cp); camera.lookAt(0, 0, 0);
     } else {
       const top = api.vizMode() === 1, cam = api.cam, pitch = top ? 1.48 : cam.pitch, yaw = top ? 0 : cam.yaw;
