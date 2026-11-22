@@ -125,6 +125,7 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
            // Page finished loading: send it the real parameter values + saved UI settings
            .withEventListener ("uiReady", [this] (const juce::var&)
            {
+               sendParamInfo();
                sendParamState();
                sendPresetList();
                sendRoomResult();
@@ -486,6 +487,25 @@ void SolutionAudioProcessorEditor::resized()
     webView.setBounds (getLocalBounds());
 }
 
+// Names, ranges and choices of every control (for the Vanilla list view). Sent once per page load.
+void SolutionAudioProcessorEditor::sendParamInfo()
+{
+    juce::Array<juce::var> list;
+    for (auto* p : audioProcessor.getParameters())
+        if (auto* q = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
+            juce::DynamicObject::Ptr o = new juce::DynamicObject();
+            const auto& r = q->getNormalisableRange();
+            o->setProperty ("id", q->getParameterID()); o->setProperty ("name", q->getName (60)); o->setProperty ("label", q->getLabel());
+            o->setProperty ("min", r.start); o->setProperty ("max", r.end); o->setProperty ("step", r.interval);
+            o->setProperty ("def", q->convertFrom0to1 (q->getDefaultValue()));
+            if (dynamic_cast<juce::AudioParameterBool*> (q) != nullptr) o->setProperty ("bool", true);
+            if (auto* c = dynamic_cast<juce::AudioParameterChoice*> (q)) { juce::Array<juce::var> ch; for (auto& s : c->choices) ch.add (s); o->setProperty ("choices", ch); }
+            list.add (juce::var (o.get()));
+        }
+    emitToViews ("paramInfo", list);
+}
+
 void SolutionAudioProcessorEditor::sendParamState()
 {
     juce::DynamicObject::Ptr values = new juce::DynamicObject();
@@ -495,6 +515,13 @@ void SolutionAudioProcessorEditor::sendParamState()
 
     juce::DynamicObject::Ptr ui = new juce::DynamicObject();
     ui->setProperty ("skin", audioProcessor.getUiProperty ("skin"));
+    // Every saved UI setting (beginner, key map, looks, look mode, MIDI/joystick maps, meter orientation, voice...)
+    const auto& st = audioProcessor.apvts.state;
+    for (int i = 0; i < st.getNumProperties(); ++i)
+    {
+        const auto name = st.getPropertyName (i).toString();
+        if (name.startsWith ("ui_")) ui->setProperty (name.substring (3), st.getProperty (name));
+    }
 
     juce::DynamicObject::Ptr payload = new juce::DynamicObject();
     payload->setProperty ("values", juce::var (values.get()));
