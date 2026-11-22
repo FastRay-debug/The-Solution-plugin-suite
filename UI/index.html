@@ -840,6 +840,12 @@
             <select data-sync="aether_dly_time" onchange="bind('aether_dly_time', +this.value, '', 1)" style="font-size:9px;"><option value="0">1/16</option><option value="1">1/8</option><option value="2">1/8 D</option><option value="3">1/4</option><option value="4">1/4 D</option><option value="5">1/2</option><option value="6">1 Bar</option><option value="7">Free</option></select></div>
           <div class="bk-grid2"><div class="bk-row" data-tip="Delay level"><span>DELAY</span><input type="range" data-sync="aether_dly_mix" min="0" max="100" step="0.5" value="0" oninput="bind('aether_dly_mix', +this.value, '', 1); bkShow('aether_dly_mix', +this.value)" ondblclick="this.value=0; bind('aether_dly_mix', 0, '', 1); bkShow('aether_dly_mix', 0)"><b id="v-aether_dly_mix">0%</b></div><div class="bk-row" data-tip="Delay time when set to Free"><span>FREE</span><input type="range" data-sync="aether_dly_ms" min="10" max="2000" step="1" value="375" oninput="bind('aether_dly_ms', +this.value, '', 1); bkShow('aether_dly_ms', +this.value)" ondblclick="this.value=375; bind('aether_dly_ms', 375, '', 1); bkShow('aether_dly_ms', 375)"><b id="v-aether_dly_ms">375 ms</b></div><div class="bk-row" data-tip="Feedback: how many repeats"><span>FDBK</span><input type="range" data-sync="aether_dly_fb" min="0" max="95" step="0.5" value="35" oninput="bind('aether_dly_fb', +this.value, '', 1); bkShow('aether_dly_fb', +this.value)" ondblclick="this.value=35; bind('aether_dly_fb', 35, '', 1); bkShow('aether_dly_fb', 35)"><b id="v-aether_dly_fb">35%</b></div><div class="bk-row" data-tip="Repeats narrow toward the mids, so they sit behind the dry sound"><span>FOCUS</span><input type="range" data-sync="aether_dly_focus" min="0" max="100" step="1" value="0" oninput="bind('aether_dly_focus', +this.value, '', 1); bkShow('aether_dly_focus', +this.value)" ondblclick="this.value=0; bind('aether_dly_focus', 0, '', 1); bkShow('aether_dly_focus', 0)"><b id="v-aether_dly_focus">0%</b></div><div class="bk-row" data-tip="Repeats get darker each time round"><span>SOFTEN</span><input type="range" data-sync="aether_dly_soften" min="0" max="100" step="1" value="0" oninput="bind('aether_dly_soften', +this.value, '', 1); bkShow('aether_dly_soften', +this.value)" ondblclick="this.value=0; bind('aether_dly_soften', 0, '', 1); bkShow('aether_dly_soften', 0)"><b id="v-aether_dly_soften">0%</b></div><div class="bk-row" data-tip="Repeats step aside while you play (and while the Rack Link sidechain plays), then bloom"><span>DUCK</span><input type="range" data-sync="aether_dly_duck" min="0" max="100" step="1" value="0" oninput="bind('aether_dly_duck', +this.value, '', 1); bkShow('aether_dly_duck', +this.value)" ondblclick="this.value=0; bind('aether_dly_duck', 0, '', 1); bkShow('aether_dly_duck', 0)"><b id="v-aether_dly_duck">0%</b></div><div class="bk-row" data-tip="Wow, flutter and saturation in the loop"><span>TAPE</span><input type="range" data-sync="aether_dly_tape" min="0" max="100" step="1" value="0" oninput="bind('aether_dly_tape', +this.value, '', 1); bkShow('aether_dly_tape', +this.value)" ondblclick="this.value=0; bind('aether_dly_tape', 0, '', 1); bkShow('aether_dly_tape', 0)"><b id="v-aether_dly_tape">0%</b></div></div>
           <div style="display:flex;gap:6px;"><label data-tip="Repeats bounce left-right" style="display:flex;gap:2px;align-items:center;"><input type="checkbox" data-sync="aether_pingpong" onchange="bind('aether_pingpong', this.checked ? 1 : 0, '', 1)">PING-PONG</label><span id="aeDuck" style="margin-left:auto;color:var(--mute)"></span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;margin-top:3px;"><span>🎬 PICTURE FOLEY</span>
+            <span style="display:flex;gap:2px;"><button onclick="document.getElementById('foleyFile').click()" style="font-size:8px;padding:0 4px;" data-tip="Load the video you're scoring - it follows your DAW's play position">VIDEO…</button><button onclick="foleyWebcam()" style="font-size:8px;padding:0 4px;" data-tip="Perform Foley live with your webcam">CAM</button></span></div>
+          <canvas id="foleyView" width="190" height="60" style="width:100%;height:60px;border:1px solid var(--bezel);border-radius:3px;background:#000;"></canvas>
+          <div class="bk-row" data-tip="How loud the Foley layer is"><span>FOLEY</span><input type="range" data-sync="aether_foley" min="0" max="100" step="1" value="0" oninput="bind('aether_foley', +this.value, '', 1); bkShow('aether_foley', +this.value)"><b id="v-aether_foley">0%</b></div>
+          <input type="file" id="foleyFile" accept="video/*" style="display:none" onchange="foleyLoad(this)">
+
         </div>
         <div id="anchorCore" style="display:none;flex-direction:column;gap:2px;font-size:9px;">
           <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
@@ -3989,6 +3995,53 @@
       window.__JUCE__.backend.addEventListener('metaState', (d) => { metaData = Object.assign({}, metaData, d); if (!d.message) delete metaData.message; else metaData.message = d.message; if (aiTab === 'meta') renderMeta(); });
     }
 
+    // ===================== FOLEY FROM PICTURE (The Aether) =====================
+    let foleyVid = null, foleyPrev = null, foleyAvg = 0.02, foleyCx = 0.5, foleyLast = 0, foleyStream = null;
+    function foleyLoad(inp) {
+      const f = inp.files[0]; if (!f) return; inp.value = '';
+      foleyStop(); foleyVid = document.createElement('video'); foleyVid.src = URL.createObjectURL(f); foleyVid.muted = true; foleyVid.playsInline = true;
+      foleyVid.onloadeddata = () => { flashHint('🎬 ' + f.name + ' - it plays with your DAW'); if ((state.aether_foley || 0) <= 0) { bind('aether_foley', 60, '', 1); bkShow('aether_foley', 60); } foleyLoop(); };
+    }
+    async function foleyWebcam() {
+      try { foleyStop(); foleyStream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 180 } });
+        foleyVid = document.createElement('video'); foleyVid.srcObject = foleyStream; foleyVid.muted = true; await foleyVid.play(); foleyVid.live = true;
+        if ((state.aether_foley || 0) <= 0) { bind('aether_foley', 60, '', 1); bkShow('aether_foley', 60); } flashHint('🎬 Webcam Foley: move and it makes sound'); foleyLoop();
+      } catch (e) { flashHint('🎬 No camera: ' + e.message); }
+    }
+    function foleyStop() { if (foleyStream) foleyStream.getTracks().forEach(t => t.stop()); foleyStream = null; if (foleyVid && !foleyVid.live) foleyVid.pause(); foleyVid = null; foleyPrev = null; emit('foley', { motion: 0, pan: 0, speed: 0, impact: 0, wet: 0 }); }
+    // Reads the picture: how much moves, where, how fast, sudden hits, and how wet / sparkly it looks.
+    function foleyAnalyse(src) {
+      const a = foleyAnalyse.cv || (foleyAnalyse.cv = Object.assign(document.createElement('canvas'), { width: 64, height: 36 })), c = a.getContext('2d', { willReadFrequently: true });
+      c.drawImage(src, 0, 0, 64, 36); const px = c.getImageData(0, 0, 64, 36).data, n = 64 * 36;
+      let diff = 0, wx = 0, blue = 0, spark = 0, lum = new Float32Array(n);
+      for (let i = 0; i < n; i++) { const r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2]; lum[i] = (r * 0.3 + g * 0.59 + b * 0.11) / 255; blue += b > r * 1.15 && b > g ? 1 : 0;
+        if (foleyPrev) { const d = Math.abs(lum[i] - foleyPrev[i]); diff += d; wx += d * (i % 64) / 63; } }
+      for (let y = 1; y < 35; y++) for (let x = 1; x < 63; x++) { const i = y * 64 + x, l = lum[i]; spark += Math.max(0, l - (lum[i - 1] + lum[i + 1] + lum[i - 64] + lum[i + 64]) / 4 - 0.15); }
+      const motion = foleyPrev ? Math.min(1, diff / n * 9) : 0, cx = diff > 1e-6 ? wx / diff : 0.5;
+      const speed = Math.min(1, Math.abs(cx - foleyCx) * 6 * Math.min(1, motion * 4)); foleyCx += (cx - foleyCx) * 0.5;
+      const impact = foleyPrev && motion > Math.max(0.12, foleyAvg * 3) ? Math.min(1, motion / Math.max(0.05, foleyAvg * 3)) : 0;
+      foleyAvg += (motion - foleyAvg) * 0.08; foleyPrev = lum;
+      const wet = Math.min(1, (blue / n) * 1.5 + spark / n * 6);
+      return { motion, pan: cx * 2 - 1, speed, impact, wet, lumMap: lum };
+    }
+    function foleyLoop() {
+      if (!foleyVid) return;
+      const t = window._tele || {};
+      if (!foleyVid.live) {                       // follow the DAW: play/pause and position from the host transport
+        if (t.hostPlaying) { if (foleyVid.paused) foleyVid.play().catch(() => {}); if (Math.abs(foleyVid.currentTime - (t.hostTime || 0)) > 0.15 && t.hostTime < foleyVid.duration) foleyVid.currentTime = t.hostTime || 0; }
+        else if (!foleyVid.paused) foleyVid.pause();
+      }
+      const now = performance.now();
+      if (foleyVid.readyState >= 2 && now - foleyLast > 33) {
+        foleyLast = now; const r = foleyAnalyse(foleyVid);
+        emit('foley', { motion: r.motion, pan: r.pan, speed: r.speed, impact: r.impact, wet: r.wet });
+        const cv = document.getElementById('foleyView'), c = cv.getContext('2d'); c.drawImage(foleyVid, 0, 0, cv.width, cv.height);
+        c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(0, 0, cv.width, cv.height);
+        c.fillStyle = r.impact ? '#f87171' : '#d4af37'; c.fillRect((r.pan + 1) / 2 * cv.width - 2, cv.height - 6 - r.motion * 40, 4, r.motion * 40 + 2);
+        c.fillStyle = '#9ca3af'; c.font = '8px monospace'; c.fillText(`move ${Math.round(r.motion * 100)} · swoosh ${Math.round(r.speed * 100)} · wet ${Math.round(r.wet * 100)}${r.impact ? ' · HIT' : ''}`, 3, 9);
+      }
+      requestAnimationFrame(foleyLoop);
+    }
     // ===================== VR HEADSET (WebXR / OpenXR) =====================
     setTimeout(async () => { if (window.gl3d && gl3d.xrSupported && await gl3d.xrSupported()) document.getElementById('vrBtn').style.display = ''; }, 1500);
     async function toggleVr() {

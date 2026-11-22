@@ -2387,6 +2387,34 @@ static void testSkinStore()
     dir.deleteRecursively(); pack.deleteFile();
 }
 
+
+static void testFoley()
+{
+    std::printf ("Foley from picture: motion -> wind, side -> pan, hit -> impact, wet -> rain\n");
+    using SolutionDSP::FoleySynth;
+    const double fs = 48000.0;
+    auto render = [&] (FoleySynth::Control c, double secs, double& l, double& r, std::vector<float>* keep = nullptr) {
+        FoleySynth f; f.prepare (fs); f.setControl (c); const int N = (int) (secs * fs); std::vector<float> L (N, 0.0f), R (N, 0.0f);
+        for (int o = 0; o < N; o += 512) f.process (L.data() + o, R.data() + o, std::min (512, N - o), 1.0f);
+        l = r = 0; for (int i = N / 2; i < N; ++i) { l += L[(size_t) i] * L[(size_t) i]; r += R[(size_t) i] * R[(size_t) i]; }
+        if (keep) *keep = L; };
+    double l0, r0, l1, r1;
+    render ({}, 1.0, l0, r0); render ({ 0.8f, 0.0f, 0, 0, 0 }, 1.0, l1, r1);
+    EXPECT (l0 < 1e-9 && l1 > 1e-3, "still picture is silent, motion brings wind (%.4f)", l1);
+    render ({ 0.8f, 1.0f, 0, 0, 0 }, 1.0, l1, r1);
+    EXPECT (r1 > l1 * 1.5, "motion on the right sounds on the right (R/L %.1f)", r1 / (l1 + 1e-12));
+    { FoleySynth f; f.prepare (fs); std::vector<float> L (24000, 0.0f), R (24000, 0.0f);
+      f.setControl ({ 0, 0, 0, 1.0f, 0 }); for (int o = 0; o < 24000; o += 512) f.process (L.data() + o, R.data() + o, std::min (512, 24000 - o), 1.0f);
+      const double thump = toneLevelDb (L.data(), 4800, 115, fs), later = toneLevelDb (L.data() + 19200, 4800, 115, fs);
+      EXPECT (thump > -30.0 && thump > later + 20.0, "a hit makes a low thump that dies away (%.1f -> %.1f dB)", thump, later); }
+    { FoleySynth f; f.prepare (fs); std::vector<float> L (48000, 0.0f), R (48000, 0.0f); f.setControl ({ 0, 0, 0.9f, 0, 0 });
+      for (int o = 0; o < 48000; o += 512) f.process (L.data() + o, R.data() + o, std::min (512, 48000 - o), 1.0f);
+      double e = 0; for (int i = 0; i < 24000; ++i) e += L[(size_t) i] * L[(size_t) i];
+      EXPECT (e > 1.0, "fast motion makes a whoosh (%.1f)", e); }
+    render ({ 0, 0, 0, 0, 1.0f }, 2.0, l1, r1);
+    EXPECT (l1 > 1e-2, "a wet picture rains (%.3f)", l1);
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2545,6 +2573,7 @@ int main()
     testBridgeHosting();
     testSidechainLink();
     testSkinStore();
+    testFoley();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

@@ -728,6 +728,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v31: The Aether - Foley from picture (off by default)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_foley", 31 }, "Foley From Picture (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
     // --- v30: sidechain over Rack Link (any track sends, The Bridge feeds hosted plugins' sidechain input)
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "sc_send", 30 }, "Sidechain Send", juce::StringArray { "Off", "A", "B", "C", "D" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "bridge_sc", 30 }, "Bridge Sidechain In", juce::StringArray { "Off", "A", "B", "C", "D" }, 0));
@@ -984,7 +986,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     infraLift.prepare (sampleRate);
     bunkerCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     anchorCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
-    if (moduleId == SolutionDSP::ModuleId::Aether) aetherCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    if (moduleId == SolutionDSP::ModuleId::Aether) { aetherCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock)); foley.prepare (sampleRate); }
     if (moduleId == SolutionDSP::ModuleId::Mosaic) mosaicCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Bridge) { bridge.prepare (sampleRate, juce::jmax (16, samplesPerBlock)); scBuf.setSize (2, juce::jmax (16, samplesPerBlock) * 2); }
     bridgeLatencyNow = bridgeLatency();
@@ -1498,6 +1500,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             ap.sidechain = grp > 0 ? rackLinkBus->groupKey (grp, rackSlot) : 0.0f;          // Rack Link sidechain
             aetherCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, ap);
             aetherGrains.store (aetherCore.activeGrains(), std::memory_order_relaxed);
+            if (const float fm = pv ("aether_foley") / 100.0f; fm > 0.0f) foley.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, fm);
             aetherDuck.store (aetherCore.duckGain(), std::memory_order_relaxed);
         }
         if (moduleId == SolutionDSP::ModuleId::Bunker)

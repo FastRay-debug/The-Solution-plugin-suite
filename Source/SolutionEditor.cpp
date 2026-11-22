@@ -227,6 +227,13 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                emitToViews ("voidState", audioProcessor.voidJson());
            })
            .withEventListener ("bridge", [this] (const juce::var& d) { handleBridge (d); })
+           .withEventListener ("foley", [this] (const juce::var& d)
+           {
+               SolutionDSP::FoleySynth::Control c;
+               c.motion = (float) (double) d.getProperty ("motion", 0.0); c.pan = (float) (double) d.getProperty ("pan", 0.0);
+               c.speed = (float) (double) d.getProperty ("speed", 0.0); c.impact = (float) (double) d.getProperty ("impact", 0.0); c.wet = (float) (double) d.getProperty ("wet", 0.0);
+               audioProcessor.foley.setControl (c);
+           })
            .withEventListener ("matrix", [this] (const juce::var& d)
            {
                if (d.getProperty ("cmd", {}).toString() == "set") audioProcessor.setMatrixRoutes (d.getProperty ("routes", {}));
@@ -1165,6 +1172,7 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("aetherGrains", audioProcessor.aetherGrains.load());
     payload->setProperty ("aetherDuck", std::round (audioProcessor.aetherDuck.load() * 100.0f) / 100.0f);
     payload->setProperty ("bpm", audioProcessor.hostBpm.load());
+    payload->setProperty ("hostTime", audioProcessor.hostTimeSec.load()); payload->setProperty ("hostPlaying", audioProcessor.hostPlaying.load());
     {   // The Matrix: live source values (for meters) and how much each of this track's controls is being moved
         juce::Array<juce::var> mv; auto& mb = audioProcessor.getRackBus().mod;
         for (int i = 0; i < SolutionDSP::Mod::NumSources; ++i) mv.add (std::round (mb.value[(size_t) i].load() * 100.0f) / 100.0f);
