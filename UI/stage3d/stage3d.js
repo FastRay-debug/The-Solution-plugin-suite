@@ -104,8 +104,8 @@ function init() {
   hand.position.set(0.2, -0.1, -0.5); hand.rotation.set(-0.35, 0.25, 0.1); hand.scale.setScalar(0.72);
 
   // ---------- creatures ----------
-  const CREATURES = ['auto', 'manta', 'phoenix', 'jellyfish', 'serpent', 'fireflies', 'orb'];
-  gl3d.creatureNames = { auto: 'Auto', manta: 'Manta ray', phoenix: 'Phoenix', jellyfish: 'Jellyfish', serpent: 'Serpent', fireflies: 'Firefly swarm', orb: 'Orb guardian' };
+  const CREATURES = ['auto', 'manta', 'phoenix', 'jellyfish', 'serpent', 'fireflies', 'orb', 'whale', 'dragon', 'owl', 'butterfly', 'octopus', 'koi', 'comet', 'crystal'];
+  gl3d.creatureNames = { auto: 'Auto', manta: 'Manta ray', phoenix: 'Phoenix', jellyfish: 'Jellyfish', serpent: 'Serpent', fireflies: 'Firefly swarm', orb: 'Orb guardian', whale: 'Whale', dragon: 'Dragon', owl: 'Owl', butterfly: 'Butterfly', octopus: 'Octopus', koi: 'Koi fish', comet: 'Comet', crystal: 'Crystal' };
   function autoKind(o) {
     if ((o.width || 1) > 1.55) return 'jellyfish';
     const t = o.tone || 1000;
@@ -161,6 +161,57 @@ function init() {
         new THREE.PointsMaterial({ color: colour, size: 0.07, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
       g.add(pts); parts.swarm = { pts, seeds };
       g.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), mat));
+    } else if (kind === 'whale') {
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.3, 24, 14), mat); body.scale.set(0.8, 0.65, 1.6); g.add(body);
+      const belly = new THREE.Mesh(new THREE.SphereGeometry(0.28, 20, 10), glow(0xe2e8f0, 0.5)); belly.scale.set(0.7, 0.4, 1.4); belly.position.y = -0.08; g.add(belly);
+      parts.wings = [-1, 1].map(side => { const f = new THREE.Mesh(wingShape(0.28, 0.16), dim); f.rotation.x = -Math.PI / 2; f.scale.x = side; const pv = new THREE.Group(); pv.add(f); pv.position.set(side * 0.2, -0.08, 0.12); g.add(pv); return pv; });
+      const fluke = new THREE.Group(); [-1, 1].forEach(side => { const f = new THREE.Mesh(wingShape(0.26, 0.16), dim); f.rotation.x = -Math.PI / 2; f.scale.x = side; fluke.add(f); }); fluke.position.z = -0.55; g.add(fluke); parts.fluke = fluke;
+      eyes(g, 0.2, 0.02, 0.32, 0.028);
+    } else if (kind === 'dragon') {
+      parts.segs = [];
+      for (let i = 0; i < 9; i++) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.12 * (1 - i * 0.08), 14, 10), i === 0 ? mat : dim); g.add(s); parts.segs.push(s); }
+      const head = parts.segs[0]; [-1, 1].forEach(side => { const h = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.12, 6), glow(0xffd27a, 1.8)); h.position.set(side * 0.05, 0.1, -0.02); h.rotation.x = -0.5; head.add(h); });
+      const e = new THREE.Group(); eyes(e, 0.05, 0.04, 0.08, 0.022); head.add(e);
+      parts.wings = [-1, 1].map(side => { const w = new THREE.Mesh(wingShape(0.6, 0.45), dim); w.rotation.x = -Math.PI / 2; w.scale.x = side; const pv = new THREE.Group(); pv.add(w); pv.position.set(side * 0.08, 0.05, -0.15); g.add(pv); return pv; });
+    } else if (kind === 'owl') {
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.2, 20, 14), mat); body.scale.set(1, 1.25, 0.9); g.add(body);
+      const face = new THREE.Mesh(new THREE.CircleGeometry(0.15, 24), glow(0xf1f5f9, 0.4)); face.position.set(0, 0.08, 0.17); g.add(face);
+      [-1, 1].forEach(side => { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 6), mat); ear.position.set(side * 0.11, 0.27, 0.02); g.add(ear); });
+      parts.wings = [-1, 1].map(side => { const w = new THREE.Mesh(wingShape(0.5, 0.3), dim); w.rotation.x = -Math.PI / 2; w.scale.x = side; const pv = new THREE.Group(); pv.add(w); pv.position.set(side * 0.15, 0.02, 0); g.add(pv); return pv; });
+      eyes(g, 0.06, 0.1, 0.18, 0.045);
+    } else if (kind === 'butterfly') {
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.3, 4, 10), mat); body.rotation.x = Math.PI / 2; g.add(body);
+      const wingMat = glow(colour, 1.0); wingMat.side = THREE.DoubleSide; wingMat.transparent = true; wingMat.opacity = 0.85;
+      parts.wings = [-1, 1].map(side => {
+        const pv = new THREE.Group();
+        const up = new THREE.Mesh(new THREE.CircleGeometry(0.28, 24), wingMat); up.scale.set(1, 0.75, 1); up.rotation.x = -Math.PI / 2; up.position.set(side * 0.26, 0, 0.08); pv.add(up);
+        const lo = new THREE.Mesh(new THREE.CircleGeometry(0.18, 20), wingMat); lo.rotation.x = -Math.PI / 2; lo.position.set(side * 0.18, 0, -0.14); pv.add(lo);
+        g.add(pv); return pv; });
+      [-1, 1].forEach(side => { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.18), mat); a.position.set(side * 0.04, 0.06, 0.24); a.rotation.set(0.9, 0, side * -0.3); g.add(a); });
+    } else if (kind === 'octopus') {
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 16), mat); head.scale.set(1, 1.2, 1); head.position.y = 0.12; g.add(head); parts.bell = head;
+      parts.tentacles = [];
+      for (let i = 0; i < 8; i++) {
+        const a = i / 8 * Math.PI * 2, n = 16, pos = new Float32Array(n * 3);
+        const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: colour })); line.userData = { a, n, curl: true }; g.add(line); parts.tentacles.push(line);
+      }
+      eyes(g, 0.09, 0.12, 0.2, 0.04);
+    } else if (kind === 'koi') {
+      parts.segs = [];
+      for (let i = 0; i < 7; i++) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.13 * (1 - i * 0.11), 16, 10), i % 2 ? glow(0xf8fafc, 0.6) : mat); s.scale.set(0.8, 0.7, 1.2); g.add(s); parts.segs.push(s); }
+      const tail = new THREE.Mesh(wingShape(0.18, 0.2), dim); tail.rotation.set(0, Math.PI / 2, 0); parts.segs[6].add(tail); parts.koiTail = tail;
+      const e = new THREE.Group(); eyes(e, 0.07, 0.03, 0.08, 0.02); parts.segs[0].add(e);
+    } else if (kind === 'comet') {
+      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 1), mat); g.add(core); parts.cage = core;
+      const n = 90, pos = new Float32Array(n * 3), seeds = [];
+      for (let i = 0; i < n; i++) seeds.push([Math.random(), (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 0.6 + Math.random()]);
+      const pts = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(pos, 3)),
+        new THREE.PointsMaterial({ color: colour, size: 0.06, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+      g.add(pts); parts.trail = { pts, seeds };
+    } else if (kind === 'crystal') {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.26, 0), mat); gem.scale.set(0.7, 1.3, 0.7); g.add(gem); parts.cage = gem;
+      parts.shards = [0, 1, 2, 3, 4].map(i => { const s = new THREE.Mesh(new THREE.OctahedronGeometry(0.06, 0), dim); s.userData.a = i / 5 * Math.PI * 2; g.add(s); return s; });
     } else {
       const core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 14), mat); g.add(core);
       const cage = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 1), new THREE.MeshBasicMaterial({ color: colour, wireframe: true, transparent: true, opacity: 0.5 })); g.add(cage); parts.cage = cage;
@@ -219,6 +270,7 @@ function init() {
     if (p.bell) { const s = 1 + 0.12 * Math.sin(t * (2 + 3 * loud)); p.bell.scale.set(s, 1 / s, s); }
     if (p.tentacles) p.tentacles.forEach(line => {
       const { a, n } = line.userData, arr = line.geometry.attributes.position.array;
+      if (line.userData.curl) { for (let k = 0; k < n; k++) { const d = k / (n - 1), r = 0.18 + d * 0.3, sw = Math.sin(t * 1.6 + a * 2 + d * 3) * 0.35 * d; arr[k * 3] = Math.cos(a + sw) * r; arr[k * 3 + 1] = -d * 0.55 + Math.sin(t * 2 + k * 0.6 + a) * 0.04 + d * d * 0.2; arr[k * 3 + 2] = Math.sin(a + sw) * r; } line.geometry.attributes.position.needsUpdate = true; return; }
       for (let k = 0; k < n; k++) { const d = k / (n - 1); arr[k * 3] = Math.cos(a) * 0.24 * (1 - d * 0.4) + Math.sin(t * 2 + k * 0.5 + a) * 0.05 * d; arr[k * 3 + 1] = -d * 0.85; arr[k * 3 + 2] = Math.sin(a) * 0.24 * (1 - d * 0.4) + Math.cos(t * 1.7 + k * 0.4) * 0.05 * d; }
       line.geometry.attributes.position.needsUpdate = true;
     });
@@ -228,6 +280,14 @@ function init() {
       p.swarm.seeds.forEach(([a, b, r, sp], i) => { const tt = t * sp * (1 + loud); arr[i * 3] = Math.cos(a + tt) * r * Math.cos(b + tt * 0.7); arr[i * 3 + 1] = Math.sin(b + tt * 0.9) * r * 0.7; arr[i * 3 + 2] = Math.sin(a + tt) * r * Math.cos(b + tt * 0.5); });
       p.swarm.pts.geometry.attributes.position.needsUpdate = true;
     }
+    if (p.fluke) p.fluke.rotation.x = Math.sin(t * speed * 0.5) * 0.35;
+    if (p.koiTail) p.koiTail.rotation.y = Math.PI / 2 + Math.sin(t * speed) * 0.5;
+    if (p.trail) {
+      const arr = p.trail.pts.geometry.attributes.position.array;
+      p.trail.seeds.forEach(([d0, x, y, sp], i) => { const d = (d0 + t * 0.35 * sp * (1 + loud)) % 1; arr[i * 3] = x * d * 0.12; arr[i * 3 + 1] = y * d * 0.12; arr[i * 3 + 2] = -d * (0.6 + 0.8 * loud); });
+      p.trail.pts.geometry.attributes.position.needsUpdate = true;
+    }
+    if (p.shards) p.shards.forEach(s => { const a = s.userData.a + t * (0.6 + loud); s.position.set(Math.cos(a) * 0.38, Math.sin(t * 1.5 + s.userData.a) * 0.12, Math.sin(a) * 0.38); s.rotation.y += dt * 2; });
     if (p.cage) { p.cage.rotation.y += dt * (0.5 + loud * 2); p.cage.rotation.x += dt * 0.3; }
     p.shadow.position.set(c.pos.x, 0.003, c.pos.z);
     p.shadow.scale.setScalar(0.6 + 0.5 * (o.width ?? 1));

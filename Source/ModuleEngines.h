@@ -85,7 +85,7 @@ namespace SolutionDSP
 
         // 3D stage: where this track sits and what it sounds like.
         std::atomic<float> posAz { 0.0f }, posEl { 0.0f }, posDist { 2.0f }, posWidth { 1.0f }, toneHz { 1000.0f };
-        std::atomic<int> creature { 0 };      // 0 = auto, 1..6 = the creature picked for this track
+        std::atomic<int> creature { 0 };      // 0 = auto, 1..14 = the creature picked for this track
         std::atomic<bool>  dialogueSource { false };   // this track is dialogue (its voice detector feeds the duckers)
         std::atomic<float> voice { 0.0f };             // its live voice-activity confidence 0..1
         // Parameter change requests from another instance's stage (index into getParameters(), real value).

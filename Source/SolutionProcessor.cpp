@@ -865,7 +865,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
                           juce::NormalisableRange<float> (0.0f, 12.0f, 0.01f), 6.0f));
     // --- v15: the creature that represents this track in the 3D world
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "stage_creature", 15 }, "Stage Creature",
-                          juce::StringArray { "Auto", "Manta ray", "Phoenix", "Jellyfish", "Serpent", "Firefly swarm", "Orb guardian" }, 0));
+                          juce::StringArray { "Auto", "Manta ray", "Phoenix", "Jellyfish", "Serpent", "Firefly swarm", "Orb guardian",
+                                              "Whale", "Dragon", "Owl", "Butterfly", "Octopus", "Koi fish", "Comet", "Crystal" }, 0));   // new ones appended: saved picks keep their creature
     // --- v13: 3D stage - distance and motion paths
     {
         juce::NormalisableRange<float> range (0.5f, 40.0f, 0.01f);
