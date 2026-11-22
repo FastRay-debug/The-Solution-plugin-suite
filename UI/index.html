@@ -634,6 +634,24 @@
     #plate .meter-strip-hdr, #plate .meter-strip-hdr span { font-family: var(--plate-font) !important; font-weight: 600; letter-spacing: 0.14em; color: #d9d2c2 !important; font-size: max(7px, calc(var(--s) * 12px)); text-shadow: 0 -1px 0 rgba(0,0,0,0.85); }
     #plate .ptog { position: absolute; transform: translate(-50%, -50%); cursor: pointer; border-radius: 6px; }
     #plate .plamp { border-radius: 50%; }
+    #plate [data-win].float #vp { background: transparent; box-shadow: none; }
+    #plate [data-win].float #vp::after { background: none; box-shadow: none; }
+    #plate [data-win].rect #vp { border-radius: 10px; }
+    #plate [data-win].rect #vp::after { border-radius: 10px; }
+    #plate .ptach .tach { display: flex !important; position: relative; inset: auto; top: 0; left: 0; right: auto; width: 100%; height: 100%; border: none; background: radial-gradient(circle at 50% 45%, rgba(26,20,14,0.6), rgba(5,4,3,0.85) 80%); box-shadow: inset 0 0 30px rgba(0,0,0,0.9); }
+    #plate .ptach .tach-needle { height: 42%; width: 3px; }
+    #plate .ptach .tach-lbl { font-family: var(--plate-font); font-size: max(8px, calc(var(--s) * 15px)); letter-spacing: 0.16em; bottom: 22%; }
+    #plate #meterStrip.thin .meter-strip-hdr { display: none; }
+    #plate #meterStrip #meterHoldLabel { display: none; }
+    #plate #meterStrip .meter-strip-hdr span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #plate #meterStrip.thin { padding: 2px 6px; justify-content: space-around; }
+    #plate .ptog.lamp i { inset: 18%; width: auto; height: auto; top: 18%; left: 18%; transform: none; }
+    #plate .ptog.bar i { inset: 0; width: auto; height: auto; top: 0; left: 0; transform: none; border-radius: 6px; background: transparent; box-shadow: none; }
+    #plate .ptog.bar.on i { background: rgba(255,210,120,0.35); box-shadow: 0 0 14px #ffb020, inset 0 0 6px #fff3c0; }
+    #plate .ptog.btn { background: linear-gradient(180deg, rgba(60,58,54,0.92), rgba(18,17,16,0.95)); border: 1px solid rgba(255,255,255,0.16); box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 2px 4px rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; }
+    #plate .ptog.btn b { position: static; transform: none; font-size: max(7px, calc(var(--s) * 11px)); }
+    #plate .ptog.btn i { top: 50%; left: calc(var(--s) * 8px); transform: translateY(-50%); width: calc(max(4px, var(--s) * 6px)); height: calc(max(4px, var(--s) * 6px)); }
+    #plate .ptog.btn.on { border-color: rgba(255,200,97,0.6); }
     #plate [data-win] { z-index: 2; }
     #plate [data-win].zoomed { z-index: 30; }
     #plate [data-win] #vp { transition: width 0.28s cubic-bezier(.2,.8,.2,1), height 0.28s cubic-bezier(.2,.8,.2,1); }
@@ -1866,12 +1884,12 @@
   <script>
     const SKINS = {
       lincoln69:   { img:true,  bg:'#07090C', accent:'#F59E0B', accent2:'#38BDF8', bezel:'#2E3542' , plate:'lincoln69' },
-      camaro71:    { img:true,  bg:'#120D0A', accent:'#FF5E1A', accent2:'#FBBF24', bezel:'#9CA3AF' },
-      mach1:       { img:true,  bg:'#0B1018', accent:'#38BDF8', accent2:'#F59E0B', bezel:'#64748B' },
-      eviltwin:    { img:true,  bg:'#08080A', accent:'#EF4444', accent2:'#F87171', bezel:'#7F1D1D' },
-      eldorado59:  { img:true,  bg:'#0A1416', accent:'#2DD4BF', accent2:'#FDE047', bezel:'#CBD5E1' },
-      cuda70:      { img:true,  bg:'#130B1A', accent:'#A855F7', accent2:'#38BDF8', bezel:'#475569' },
-      gto67:       { img:true,  bg:'#140B0D', accent:'#DC2626', accent2:'#D4AF37', bezel:'#9CA3AF' },
+      camaro71:    { img:true,  bg:'#120D0A', accent:'#FF5E1A', accent2:'#FBBF24', bezel:'#9CA3AF' , plate:'camaro71' },
+      mach1:       { img:true,  bg:'#0B1018', accent:'#38BDF8', accent2:'#F59E0B', bezel:'#64748B' , plate:'mach1' },
+      eviltwin:    { img:true,  bg:'#08080A', accent:'#EF4444', accent2:'#F87171', bezel:'#7F1D1D' , plate:'eviltwin' },
+      eldorado59:  { img:true,  bg:'#0A1416', accent:'#2DD4BF', accent2:'#FDE047', bezel:'#CBD5E1' , plate:'eldorado59' },
+      cuda70:      { img:true,  bg:'#130B1A', accent:'#A855F7', accent2:'#38BDF8', bezel:'#475569' , plate:'cuda70' },
+      gto67:       { img:true,  bg:'#140B0D', accent:'#DC2626', accent2:'#D4AF37', bezel:'#9CA3AF' , plate:'gto67' },
       chevelle70:  { img:false, bg:'#110D0A', accent:'#F97316', accent2:'#FDE047', bezel:'#52525B' },
       charger69:   { img:false, bg:'#0F0909', accent:'#EF4444', accent2:'#F59E0B', bezel:'#3F3F46' },
       corvette63:  { img:false, bg:'#091118', accent:'#60A5FA', accent2:'#E2E8F0', bezel:'#94A3B8' },
@@ -1890,16 +1908,16 @@
       f40:         { img:false, bg:'#180707', accent:'#EF4444', accent2:'#FACC15', bezel:'#450A0A' },
       mclarenf1:   { img:false, bg:'#170E07', accent:'#FB923C', accent2:'#E2E8F0', bezel:'#334155' },
       supra94:     { img:false, bg:'#160B07', accent:'#F97316', accent2:'#22D3EE', bezel:'#3F3F46' },
-      rome:        { img:true,  bg:'#14110D', accent:'#D4AF37', accent2:'#93C5FD', bezel:'#78716C' },
-      giza:        { img:true,  bg:'#17120A', accent:'#F59E0B', accent2:'#FDE68A', bezel:'#92400E' },
-      aztec:       { img:true,  bg:'#0A1410', accent:'#10B981', accent2:'#F59E0B', bezel:'#065F46' },
-      serengeti:   { img:true,  bg:'#150F09', accent:'#FB923C', accent2:'#38BDF8', bezel:'#7C2D12' },
+      rome:        { img:true,  bg:'#14110D', accent:'#D4AF37', accent2:'#93C5FD', bezel:'#78716C' , plate:'rome' },
+      giza:        { img:true,  bg:'#17120A', accent:'#F59E0B', accent2:'#FDE68A', bezel:'#92400E' , plate:'giza' },
+      aztec:       { img:true,  bg:'#0A1410', accent:'#10B981', accent2:'#F59E0B', bezel:'#065F46' , plate:'aztec' },
+      serengeti:   { img:true,  bg:'#150F09', accent:'#FB923C', accent2:'#38BDF8', bezel:'#7C2D12' , plate:'serengeti' },
       biolum:      { img:true,  bg:'#0A0F14', accent:'#2DD4BF', accent2:'#E879F9', bezel:'#1F2937' },
       abyssal:     { img:true,  bg:'#0B1622', accent:'#38BDF8', accent2:'#94A3B8', bezel:'#334155' },
       velocityod:  { img:true,  bg:'#17110A', accent:'#F59E0B', accent2:'#D6C7A1', bezel:'#3F3A2E' },
       hypercar:    { img:true,  bg:'#120D08', accent:'#FB923C', accent2:'#D4A657', bezel:'#27272A' },
-      museum:      { img:true,  bg:'#121215', accent:'#E5E7EB', accent2:'#D4AF37', bezel:'#52525B' },
-      piano:       { img:true,  bg:'#09090B', accent:'#F8FAFC', accent2:'#D4AF37', bezel:'#27272A' },
+      museum:      { img:true,  bg:'#121215', accent:'#E5E7EB', accent2:'#D4AF37', bezel:'#52525B' , plate:'museum' },
+      piano:       { img:true,  bg:'#09090B', accent:'#F8FAFC', accent2:'#D4AF37', bezel:'#27272A' , plate:'piano' },
       abbey:       { img:false, bg:'#130F0C', accent:'#D97706', accent2:'#93C5FD', bezel:'#78350F' },
       tokyo:       { img:false, bg:'#0A0716', accent:'#EC4899', accent2:'#22D3EE', bezel:'#4C1D95' },
       paris:       { img:false, bg:'#160A0D', accent:'#D4AF37', accent2:'#FDA4AF', bezel:'#881337' },
@@ -2077,6 +2095,47 @@
         window: [687, 378, 206], strip: [152, 56, 1236, 124], globe: 0xff9a2e, styleLamp: [478, 186],
         toggles: [[165, 225, 'A/B', '#abBtnTop'], [252, 225, 'Δ', '#deltaBtnTop'], [1125, 220, 'MOTION', '#motionBtn'], [1210, 225, 'FLY', '#flyBtn'],
                   [147, 598, 'BINAURAL', '#binauralBtn'], [232, 598, 'PANELS', 'panels']] } };
+    // The six switches, in order: A/B, Δ, MOTION, FLY, BINAURAL, PANELS. Each: x, y, style (lever | lamp | btn | bar), w, h (image px).
+    const PT = [['A/B', '#abBtnTop'], ['Δ', '#deltaBtnTop'], ['MOTION', '#motionBtn'], ['FLY', '#flyBtn'], ['BINAURAL', '#binauralBtn'], ['PANELS', 'panels']];
+    const tg = (list) => list.map(([x, y, st, w, h], i) => [x, y, PT[i][0], PT[i][1], st || 'lever', w, h]);
+    Object.assign(PLATES, {
+      aztec: { w: 1376, h: 768, globe: 0x34d399, window: [688, 395, 228], float: true, strip: [420, 60, 956, 92],
+        knobs: [[215, 385, 36], [160, 165, 38], [285, 165, 32], [160, 605, 38], [285, 605, 32], [1161, 385, 36], [1216, 165, 38], [1091, 165, 32], [1216, 605, 38]],
+        toggles: tg([[230, 675, 'btn', 84, 26], [330, 675, 'btn', 84, 26], [430, 675, 'btn', 84, 26], [946, 675, 'btn', 84, 26], [1046, 675, 'btn', 84, 26], [1146, 675, 'btn', 84, 26]]) },
+      camaro71: { w: 1376, h: 768, globe: 0xff8a2a, window: [465, 330, 150], strip: [548, 584, 832, 658], tach: [898, 330, 142],
+        knobs: [[248, 180, 30], [248, 330, 30], [248, 480, 30], [690, 175, 30], [690, 330, 30], [690, 485, 30], [1130, 180, 30], [1130, 330, 30], [1130, 480, 30]],
+        toggles: tg([[440, 620, 'lever', 36, 80], [494, 620, 'lever', 36, 80], [882, 620, 'lever', 36, 80], [935, 620, 'lever', 36, 80], [320, 620, 'btn', 120, 28], [1056, 620, 'btn', 120, 28]]) },
+      cuda70: { w: 1376, h: 768, globe: 0xa3e635, window: { rect: [464, 292, 912, 472] }, strip: [507, 187, 868, 235], styleLamp: [1110, 212],
+        knobs: [[265, 382, 46], [190, 212, 22], [340, 212, 22], [157, 608, 26], [322, 608, 32], [1110, 628, 26], [1001, 328, 22], [1218, 328, 22], [1001, 432, 18]],
+        toggles: tg([[525, 532, 'lamp', 34, 34], [687, 532, 'lamp', 34, 34], [850, 532, 'lamp', 34, 34], [1000, 532, 'lamp', 40, 40], [1110, 532, 'lamp', 40, 40], [1218, 532, 'lamp', 40, 40]]) },
+      eldorado59: { w: 1376, h: 768, globe: 0x2dd4bf, window: [688, 385, 150], float: true, strip: [560, 108, 816, 146],
+        knobs: [[458, 497, 38], [238, 270, 32], [348, 270, 32], [238, 497, 32], [345, 497, 34], [924, 497, 38], [914, 270, 36], [1031, 270, 32], [1140, 270, 32]],
+        toggles: tg([[461, 270, 'lamp', 72, 72], [1148, 497, 'lamp', 60, 60], [545, 645, 'btn', 84, 24], [640, 645, 'btn', 84, 24], [737, 645, 'btn', 84, 24], [832, 645, 'btn', 84, 24]]) },
+      eviltwin: { w: 1376, h: 768, globe: 0xff3344, window: [688, 300, 150], float: true, strip: [230, 142, 472, 214],
+        knobs: [[237, 405, 42], [343, 405, 40], [292, 548, 26], [190, 560, 28], [440, 560, 30], [1140, 405, 42], [1033, 405, 40], [920, 560, 28], [1082, 548, 26]],
+        toggles: tg([[1008, 180, 'btn', 38, 30], [1100, 180, 'btn', 96, 30], [1193, 180, 'btn', 40, 30], [181, 182, 'btn', 34, 62], [630, 563, 'btn', 96, 30], [735, 563, 'btn', 96, 30]]) },
+      giza: { w: 1376, h: 768, globe: 0xffb020, window: [688, 450, 160], float: true, strip: [922, 532, 1153, 583],
+        knobs: [[330, 555, 60], [340, 262, 56], [200, 470, 28], [460, 470, 28], [200, 625, 28], [1040, 262, 56], [960, 472, 24], [1110, 472, 24], [1040, 642, 26]],
+        toggles: tg([[230, 383, 'bar', 122, 16], [440, 383, 'bar', 122, 16], [935, 383, 'bar', 122, 16], [1147, 383, 'bar', 122, 16], [555, 262, 'bar', 30, 90], [815, 262, 'bar', 30, 90]]) },
+      gto67: { w: 1376, h: 768, globe: 0xffa64d, window: [692, 330, 165], float: true, strip: [947, 427, 1090, 503],
+        knobs: [[270, 308, 66], [437, 308, 66], [270, 463, 32], [404, 463, 26], [525, 490, 30], [955, 305, 30], [909, 463, 26], [1126, 463, 26], [1095, 305, 30]],
+        toggles: tg([[300, 610, 'btn', 96, 28], [420, 610, 'btn', 96, 28], [540, 610, 'btn', 96, 28], [840, 610, 'btn', 96, 28], [960, 610, 'btn', 96, 28], [1080, 610, 'btn', 96, 28]]) },
+      mach1: { w: 1376, h: 768, globe: 0x22d3ee, window: [705, 385, 170], float: true, strip: [224, 444, 544, 548],
+        knobs: [[362, 320, 48], [155, 323, 22], [470, 627, 22], [492, 323, 22], [250, 627, 22], [980, 628, 38], [1160, 628, 32], [958, 492, 26], [1145, 492, 26]],
+        toggles: tg([[560, 325, 'lever', 30, 56], [536, 630, 'lever', 30, 56], [655, 150, 'lamp', 72, 72], [752, 150, 'lamp', 72, 72], [165, 627, 'lamp', 48, 48], [232, 323, 'lamp', 48, 48]]) },
+      museum: { w: 1376, h: 768, globe: 0xffd27a, window: [688, 300, 170], float: true, strip: [282, 359, 543, 410],
+        knobs: [[198, 240, 46], [200, 540, 32], [290, 540, 32], [380, 540, 32], [470, 540, 32], [1163, 240, 46], [915, 540, 34], [1020, 540, 34], [1177, 540, 32]],
+        toggles: tg([[862, 385, 'btn', 62, 30], [930, 385, 'btn', 62, 30], [998, 385, 'btn', 62, 30], [1066, 385, 'btn', 62, 30], [198, 383, 'btn', 100, 40], [1177, 383, 'btn', 100, 40]]) },
+      piano: { w: 1376, h: 768, globe: 0xffe0a3, window: [303, 285, 185], float: true, strip: [870, 200, 1280, 256],
+        knobs: [[128, 590, 32], [216, 590, 32], [304, 590, 32], [392, 590, 32], [480, 590, 32], [920, 590, 36], [1030, 590, 36], [1140, 590, 36], [1240, 590, 34]],
+        toggles: tg([[628, 215, 'bar', 26, 230], [745, 215, 'bar', 26, 230], [640, 470, 'btn', 80, 30], [735, 470, 'btn', 80, 30], [640, 600, 'btn', 80, 30], [735, 600, 'btn', 80, 30]]) },
+      rome: { w: 1376, h: 768, globe: 0xffc070, window: [700, 395, 262], float: true, strip: [142, 58, 322, 90],
+        knobs: [[212, 155, 28], [205, 268, 28], [196, 390, 28], [212, 515, 28], [235, 622, 28], [1165, 155, 28], [1170, 268, 28], [1180, 385, 28], [1160, 515, 28]],
+        toggles: tg([[330, 732, 'btn', 100, 26], [450, 732, 'btn', 100, 26], [570, 732, 'btn', 100, 26], [830, 732, 'btn', 100, 26], [950, 732, 'btn', 100, 26], [1070, 732, 'btn', 100, 26]]) },
+      serengeti: { w: 1376, h: 768, globe: 0x3ee8f0, window: [460, 215, 155], float: true, strip: [168, 402, 667, 484],
+        knobs: [[140, 650, 34], [260, 650, 34], [380, 650, 34], [500, 650, 34], [620, 650, 34], [775, 460, 36], [1000, 440, 34], [800, 640, 34], [1020, 650, 34]],
+        toggles: tg([[960, 215, 'btn', 100, 34], [1080, 215, 'btn', 100, 34], [1200, 215, 'btn', 100, 34], [420, 540, 'btn', 84, 26], [520, 540, 'btn', 84, 26], [620, 540, 'btn', 84, 26]]) },
+    });
     let plateFit = true, plateHome = [], plateOn = false, globeStyle = 'glass', globeBig = false, globePinned = false, globeHoverT = 0;
     function setGlobeBig(on) { if (globeBig === on) return; globeBig = on; layoutPlate(); }
     function toggleGlobePin() { globePinned = !globePinned; setGlobeBig(globePinned); flashHint(globePinned ? 'Globe expanded (Ctrl+Alt+E to shrink)' : 'Globe back in its window'); }
@@ -2090,15 +2149,16 @@
       plateHome = [];
       const park = (el) => { plateHome.push([el, el.parentNode, el.nextSibling]); };
       plateMoves().slice(0, map.knobs.length).forEach((cell, i) => { const slot = document.createElement('div'); slot.className = 'pslot'; slot.dataset.k = i; pl.appendChild(slot); park(cell); slot.appendChild(cell); });
-      const win = document.createElement('div'); win.className = 'pslot'; win.dataset.win = 1; pl.appendChild(win);
+      const win = document.createElement('div'); win.className = 'pslot' + (map.float ? ' float' : ''); win.dataset.win = 1; pl.appendChild(win);
       win.addEventListener('mouseenter', () => { clearTimeout(globeHoverT); globeHoverT = setTimeout(() => setGlobeBig(true), 180); });
       win.addEventListener('mouseleave', () => { clearTimeout(globeHoverT); if (!globePinned && !(window.dragging)) globeHoverT = setTimeout(() => setGlobeBig(false), 350); }); const vp = document.getElementById('vp'); park(vp); win.appendChild(vp);
       const strip = document.createElement('div'); strip.className = 'pslot'; strip.dataset.strip = 1; pl.appendChild(strip); const ms = document.getElementById('meterStrip'); park(ms); strip.appendChild(ms);
       map.toggles.forEach(([x, y, label, target], i) => {
-        const t = document.createElement('div'); t.className = 'ptog'; t.dataset.t = i; t.innerHTML = '<i></i><b>' + label + '</b>';
+        const t = document.createElement('div'); t.className = 'ptog ' + (map.toggles[i][4] || 'lever'); t.dataset.t = i; t.innerHTML = '<i></i><b>' + label + '</b>';
         t.title = label === 'PANELS' ? 'Show every panel (Ctrl+Alt+B)' : label; t.onclick = () => { if (target === 'panels') togglePlateFit(); else { const b = document.querySelector(target); if (b) b.click(); } syncPlateToggles(); };
         pl.appendChild(t);
       });
+      if (map.tach) { const g = document.createElement('div'); g.className = 'pslot ptach'; g.dataset.tach = 1; pl.appendChild(g); const tr = document.querySelector('.tach.right'); if (tr) { park(tr); g.appendChild(tr); } }
       if (map.styleLamp) { const t = document.createElement('div'); t.className = 'ptog plamp'; t.dataset.lamp = 1; t.title = 'Globe style: glass sphere / holographic wireframe (Ctrl+Alt+Y)'; t.onclick = () => cycleGlobeStyle(); pl.appendChild(t); }
       document.documentElement.classList.add('plate-on'); plateOn = true; if (window.gl3d && window.gl3d.setGlobe) { window.gl3d.setGlobe(true); applyGlobeLook(); } layoutPlate(); syncPlateToggles();
     }
@@ -2119,15 +2179,18 @@
         slot.style.left = x * k + 'px'; slot.style.top = y * k + 'px'; slot.style.width = slot.style.height = 2 * r * k + 'px';
         slot.style.setProperty('--ks', (2 * r * k * 1.04 / (big ? 72 : 58)).toFixed(3)); slot.style.setProperty('--rpx', r * k + 'px');
       });
-      const [cx, cy, cr] = map.window, win = pl.querySelector('[data-win]');
+      const rw = map.window.rect, [cx, cy, cr] = rw ? [(rw[0] + rw[2]) / 2, (rw[1] + rw[3]) / 2, Math.min(rw[2] - rw[0], rw[3] - rw[1]) / 2] : map.window, win = pl.querySelector('[data-win]');
       win.style.left = cx * k + 'px'; win.style.top = cy * k + 'px'; const vp = document.getElementById('vp');
       const base = 2 * cr * k, big = Math.min(map.h * k * 0.98, (main.clientWidth - 16), base * 1.9);   // hover: the globe grows to fill the faceplate's height
-      vp.style.width = vp.style.height = (globeBig ? big : base) + 'px'; win.classList.toggle('zoomed', globeBig);
+      if (rw && !globeBig) { vp.style.width = (rw[2] - rw[0]) * k + 'px'; vp.style.height = (rw[3] - rw[1]) * k + 'px'; } else vp.style.width = vp.style.height = (globeBig ? big : base) + 'px';
+      win.classList.toggle('rect', !!rw && !globeBig); win.classList.toggle('zoomed', globeBig);
       if (globeBig) { win.style.top = Math.max(big / 2 + 2, Math.min(map.h * k - big / 2 - 2, cy * k)) + 'px'; }
       const [x0, y0, x1, y1] = map.strip, st = pl.querySelector('[data-strip]');
+      st.classList.toggle('thin', (y1 - y0) * k < 40);
+      const tg = pl.querySelector('[data-tach]'); if (tg && map.tach) { const [tx, ty, trr] = map.tach; tg.style.left = tx * k + 'px'; tg.style.top = ty * k + 'px'; tg.style.width = tg.style.height = 2 * trr * k + 'px'; }
       st.style.left = (x0 + x1) / 2 * k + 'px'; st.style.top = (y0 + y1) / 2 * k + 'px'; st.style.width = (x1 - x0) * k + 'px'; st.style.height = (y1 - y0) * k + 'px';
       const lamp = pl.querySelector('[data-lamp]'); if (lamp) { lamp.style.left = map.styleLamp[0] * k + 'px'; lamp.style.top = map.styleLamp[1] * k + 'px'; lamp.style.width = lamp.style.height = 40 * k + 'px'; }
-      pl.querySelectorAll('.ptog:not([data-lamp])').forEach(t => { const [x, y] = map.toggles[+t.dataset.t]; t.style.left = x * k + 'px'; t.style.top = y * k + 'px'; t.style.width = 46 * k + 'px'; t.style.height = 80 * k + 'px'; });
+      pl.querySelectorAll('.ptog:not([data-lamp])').forEach(t => { const [x, y, , , , w, h] = map.toggles[+t.dataset.t]; t.style.left = x * k + 'px'; t.style.top = y * k + 'px'; t.style.width = (w || 46) * k + 'px'; t.style.height = (h || 80) * k + 'px'; });
       window.dispatchEvent(new Event('resize'));
     }
     function syncPlateToggles() {
