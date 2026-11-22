@@ -534,6 +534,24 @@ function init() {
     updateHologram(t, dt);
     bloom.enabled = !gl3d.lowQuality;
     stars.rotation.y += dt * 0.004;
-    composer.render(dt);
+    if (renderer.xr.isPresenting) {
+      // In the headset: render straight (post-processing doesn't run per eye) and let your real head drive the binaural mix.
+      renderer.render(scene, camera);
+      const xrCam = renderer.xr.getCamera(), e = new THREE.Euler().setFromQuaternion(xrCam.quaternion, 'YXZ');
+      if (now - lastXrPose > 33) { lastXrPose = now; gl3d.onXrPose && gl3d.onXrPose(-e.y * 180 / Math.PI, e.x * 180 / Math.PI); }
+    } else composer.render(dt);
+  };
+  // ---------- VR headset (WebXR -> the system's OpenXR runtime) ----------
+  let lastXrPose = 0, xrSession = null;
+  gl3d.xrSupported = async () => { try { return !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-vr')); } catch (e) { return false; } };
+  gl3d.enterVr = async () => {
+    if (xrSession) { await xrSession.end(); return false; }
+    xrSession = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] });
+    renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');
+    await renderer.xr.setSession(xrSession);
+    camera.position.set(0, 1.6, 4.5);                                 // standing at the listening spot, looking at the stage
+    renderer.setAnimationLoop(() => gl3d.render());
+    xrSession.addEventListener('end', () => { xrSession = null; renderer.setAnimationLoop(null); renderer.xr.enabled = false; gl3d.onXrEnd && gl3d.onXrEnd(); });
+    return true;
   };
 }

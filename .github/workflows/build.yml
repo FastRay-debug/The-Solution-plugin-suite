@@ -111,6 +111,10 @@ jobs:
           Write-Host "Collected $n VST3 plugins"
           if ($n -ne 13) { throw "Expected 13 VST3 plugins, found $n" }
 
+      - name: Webcam head tracking files (offline face model)
+        shell: bash
+        run: packaging/fetch_facetracking.sh "The Solution/FaceTracking"
+
       - name: Build installer
         shell: pwsh
         run: |

@@ -28,6 +28,22 @@ namespace
         if (cleanUrl == "/stage3d.bundle.js")
             return makeResource (BinaryData::stage3d_bundle_js, (size_t) BinaryData::stage3d_bundle_jsSize, "text/javascript");
 
+        // Webcam head tracking (optional install): the face model and its runtime, served from the shared folder.
+        if (cleanUrl.startsWith ("/facetrack/"))
+        {
+            const auto name = cleanUrl.fromLastOccurrenceOf ("/", false, false);
+            if (name.isEmpty() || ! name.containsOnly ("abcdefghijklmnopqrstuvwxyz0123456789_-.") || name.contains ("..")) return std::nullopt;
+            for (auto vendor : { SolutionVendor::name, SolutionVendor::legacyName })
+                for (auto location : { juce::File::userApplicationDataDirectory, juce::File::commonApplicationDataDirectory })
+                {
+                    const auto f = juce::File::getSpecialLocation (location).getChildFile (SolutionVendor::prefix() + vendor + "/The Solution/FaceTracking").getChildFile (name);
+                    juce::MemoryBlock mb;
+                    if (f.existsAsFile() && f.loadFileAsData (mb))
+                        return makeResource (mb.getData(), mb.getSize(), name.endsWith (".wasm") ? "application/wasm" : (name.endsWith (".mjs") || name.endsWith (".js")) ? "text/javascript" : "application/octet-stream");
+                }
+            return std::nullopt;
+        }
+
         if (cleanUrl.startsWith ("/skins/") && cleanUrl.endsWith (".jpg"))
         {
             const auto baseName = cleanUrl.fromLastOccurrenceOf ("/", false, false).upToLastOccurrenceOf (".", false, false);

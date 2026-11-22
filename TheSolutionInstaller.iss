@@ -52,6 +52,7 @@ Name: "formats\aax";        Description: "AAX  (Pro Tools)";                    
 Name: "formats\standalone"; Description: "Standalone apps + Start Menu shortcuts"; Types: full
 Name: "utility";            Description: "Solution Utility (diagnostics: CPU cores, GPU, every Solution plugin)"; Types: full custom
 Name: "skins";              Description: "Default skin (more skins + the Skin Editor: separate Skins installer)"; Types: full custom
+Name: "facetrack";          Description: "Webcam head tracking (offline face model, about 23 MB)"; Types: full custom
 Name: "modules";            Description: "Modules";                             Types: full custom
 Name: "modules\bunker"; Description: "The Bunker"; Types: full custom
 Name: "modules\stage"; Description: "The Stage"; Types: full custom
@@ -162,6 +163,7 @@ Source: "{#Src}\AAX\The Scope.aaxplugin\*"; DestDir: "{commoncf64}\Avid\Audio\Pl
 Source: "{#Src}\Standalone\The Scope.exe"; DestDir: "{app}\Standalone"; Components: formats\standalone and modules\scope; Flags: ignoreversion skipifsourcedoesntexist
 ; Shared skins
 Source: "{#Src}\Skins\lincoln69.jpg"; DestDir: "{commonappdata}\Billet Audio\The Solution\Skins"; Components: skins; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Src}\FaceTracking\*"; DestDir: "{commonappdata}\Billet Audio\The Solution\FaceTracking"; Components: facetrack; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\Solution Utility"; Filename: "{app}\Utility\Solution Utility.exe"; Components: utility
