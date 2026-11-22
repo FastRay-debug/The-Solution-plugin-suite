@@ -30,12 +30,18 @@ copy_all "$SRC/VST3"       "*.vst3"      "$ROOT/Library/Audio/Plug-Ins/VST3/The 
 copy_all "$SRC/CLAP"       "*.clap"      "$ROOT/Library/Audio/Plug-Ins/CLAP/The Solution"
 copy_all "$SRC/Standalone" "*.app"       "$ROOT/Applications/The Solution"
 copy_all "$SRC/Skins"      "*.jpg"       "$ROOT/Library/Application Support/Billet Audio/The Solution/Skins"
+copy_all "$SRC/SkinEditor" "*.app"       "$ROOT/Applications/The Solution"
+if [ -d "$SRC/FaceTracking" ]; then
+  mkdir -p "$ROOT/Library/Application Support/Billet Audio/The Solution/FaceTracking"
+  cp -R "$SRC/FaceTracking/." "$ROOT/Library/Application Support/Billet Audio/The Solution/FaceTracking/"
+fi
 
 # Stop the installer from "relocating" bundles to some other copy it finds on disk.
 pkgbuild --analyze --root "$ROOT" "$WORK/components.plist"
 i=0
 while /usr/libexec/PlistBuddy -c "Print :$i:RootRelativeBundlePath" "$WORK/components.plist" >/dev/null 2>&1; do
-  /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$WORK/components.plist"
+  /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$WORK/components.plist" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Add :$i:BundleIsRelocatable bool false" "$WORK/components.plist"
   i=$((i + 1))
 done
 echo "Packaging $i bundles"
