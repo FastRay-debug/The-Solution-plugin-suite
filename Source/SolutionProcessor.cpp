@@ -300,6 +300,7 @@ void SolutionAudioProcessor::buildModIndex()
         mtxP.rate[(size_t) i] = apvts.getRawParameterValue (pre + "_rate"); mtxP.shape[(size_t) i] = apvts.getRawParameterValue (pre + "_shape");
         mtxP.sync[(size_t) i] = apvts.getRawParameterValue (pre + "_sync"); mtxP.macro[(size_t) i] = apvts.getRawParameterValue ("mtx_macro" + juce::String (i + 1));
     }
+    for (int k = 0; k < 8; ++k) bridgeKnob[(size_t) k] = apvts.getRawParameterValue ("bridge_k" + juce::String (k + 1));
     mtxP.atk = apvts.getRawParameterValue ("mtx_env_atk"); mtxP.rel = apvts.getRawParameterValue ("mtx_env_rel"); mtxP.group = apvts.getRawParameterValue ("link_group");
 }
 
@@ -412,6 +413,48 @@ void SolutionAudioProcessor::publishMatrixRoutes()
         }
     mb.owner = rackSlot;
     mb.routeCount.store (n, std::memory_order_release);
+}
+
+// ===================== The Bridge =====================
+bool SolutionAudioProcessor::bridgeLoad (int slot, const juce::String& file, juce::String& error)
+{
+    suspendProcessing (true);
+    const bool ok = bridge.load (slot, file, error);
+    suspendProcessing (false);
+    bridgeChainChanged();
+    return ok;
+}
+void SolutionAudioProcessor::bridgeUnload (int slot) { suspendProcessing (true); bridge.unload (slot); suspendProcessing (false); bridgeChainChanged(); }
+void SolutionAudioProcessor::bridgeMove (int from, int to) { suspendProcessing (true); bridge.move (from, to); suspendProcessing (false); bridgeChainChanged(); }
+void SolutionAudioProcessor::bridgeChainChanged()
+{
+    // the chain's latency may have changed: realign the dry path and tell the DAW
+    suspendProcessing (true);
+    bridgeLatencyNow = bridgeLatency();
+    dryDelay.prepare (2, moduleEngine.getLatencySamples() + anchorLatency() + mosaicLatency() + bridgeLatencyNow);
+    suspendProcessing (false);
+    updateLatencyNow(); bridgeGen++;
+}
+juce::var SolutionAudioProcessor::bridgeJson()
+{
+    juce::DynamicObject::Ptr o = new juce::DynamicObject();
+    juce::Array<juce::var> slots;
+    for (int i = 0; i < SolutionBridge::Host::maxSlots; ++i)
+    {
+        juce::DynamicObject::Ptr s = new juce::DynamicObject();
+        auto& sl = bridge.slot (i);
+        if (sl.inst != nullptr)
+        {
+            s->setProperty ("name", sl.desc.name); s->setProperty ("vendor", sl.desc.manufacturerName); s->setProperty ("format", sl.desc.pluginFormatName);
+            s->setProperty ("latency", sl.inst->getLatencySamples()); s->setProperty ("bypass", sl.bypass.load()); s->setProperty ("mix", sl.mix.load());
+            s->setProperty ("params", sl.inst->getParameters().size());
+        }
+        slots.add (juce::var (s.get()));
+    }
+    juce::Array<juce::var> knobs; for (int k = 0; k < SolutionBridge::Host::numKnobs; ++k) knobs.add (bridge.knobTarget (k));
+    o->setProperty ("slots", slots); o->setProperty ("knobs", knobs); o->setProperty ("learning", bridge.learning());
+    o->setProperty ("latency", bridgeLatencyNow); o->setProperty ("missing", bridgeMissing.joinIntoString (", "));
+    return juce::var (o.get());
 }
 
 // ===================== Test-tone analyser =====================
@@ -684,6 +727,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v30: sidechain over Rack Link (any track sends, The Bridge feeds hosted plugins' sidechain input)
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "sc_send", 30 }, "Sidechain Send", juce::StringArray { "Off", "A", "B", "C", "D" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "bridge_sc", 30 }, "Bridge Sidechain In", juce::StringArray { "Off", "A", "B", "C", "D" }, 0));
+    // --- v29: The Bridge CV knobs (each learnable onto a hosted plugin parameter)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bridge_k1", 29 }, "Bridge Knob 1", juce::NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bridge_k2", 29 }, "Bridge Knob 2", juce::NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bridge_k3", 29 }, "Bridge Knob 3", juce::NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bridge_k4", 29 }, "Bridge Knob 4", juce::NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bridge_k5", 29 }, "Bridge Knob 5", juce::NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bridge_k6", 29 }, "Bridge Knob 6", juce::NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bridge_k7", 29 }, "Bridge Knob 7", juce::NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bridge_k8", 29 }, "Bridge Knob 8", juce::NormalisableRange<float> (0.0f, 1.0f, 0.0001f), 0.5f));
     // --- v28: The Land outdoor acoustics (off by default)
     params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "land_on", 28 }, "Outdoor Acoustics", false));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "land_ground", 28 }, "Ground", juce::StringArray { "Grass", "Concrete", "Snow", "Water", "Sand", "Forest floor", "Gravel" }, 0));
@@ -930,6 +985,8 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     anchorCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Aether) aetherCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Mosaic) mosaicCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    if (moduleId == SolutionDSP::ModuleId::Bridge) { bridge.prepare (sampleRate, juce::jmax (16, samplesPerBlock)); scBuf.setSize (2, juce::jmax (16, samplesPerBlock) * 2); }
+    bridgeLatencyNow = bridgeLatency();
     if (moduleId == SolutionDSP::ModuleId::Land) landCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Orbit) orbitCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Void) { voidCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock)); voidHash = -1; updateVoidRoom(); }
@@ -945,7 +1002,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), 2 };
     moduleEngine.prepare (spec);
     dryCopy.setSize (2, samplesPerBlock, false, true, true);
-    dryDelay.prepare (2, moduleEngine.getLatencySamples() + anchorLatency() + mosaicLatency());
+    dryDelay.prepare (2, moduleEngine.getLatencySamples() + anchorLatency() + mosaicLatency() + bridgeLatencyNow);
     ceilingLimiter.prepare (sampleRate, limiterLookaheadMs());
     glue.prepare (sampleRate);
     roomCorrector.prepare (sampleRate);
@@ -1062,6 +1119,13 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (buffer.getNumChannels() < 2 || numSamples == 0)
         return;
     if (moduleId == SolutionDSP::ModuleId::Matrix) runMatrixSources (buffer, numSamples);
+    {   // timeline position for the Rack Link sidechain (host position while playing, own counter otherwise)
+        long long pos = -1;
+        if (auto* ph = getPlayHead()) if (auto p = ph->getPosition()) if (p->getIsPlaying()) if (auto t = p->getTimeInSamples()) pos = *t;
+        scPos = pos >= 0 ? pos : scFree; scFree += numSamples;
+        const int send = (int) pv ("sc_send");
+        if (send > 0) rackLinkBus->mod.sidechain[(size_t) (send - 1)].write (buffer.getReadPointer (0), buffer.getReadPointer (1), numSamples, scPos);
+    }
     applyModRoutes();
 
     if (dryCopy.getNumSamples() < numSamples)
@@ -1375,6 +1439,18 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             anchorDistPct.store (anchorCore.getDistortionPct(), std::memory_order_relaxed);
             anchorCrestLost.store (anchorCore.getCrestLostDb(), std::memory_order_relaxed);
             anchorVerdict.store (ap.on ? anchorCore.verdict() : -1, std::memory_order_relaxed);
+        }
+        if (moduleId == SolutionDSP::ModuleId::Bridge)
+        {
+            float knobs[SolutionBridge::Host::numKnobs];
+            for (int k = 0; k < SolutionBridge::Host::numKnobs; ++k) knobs[k] = bridgeKnob[(size_t) k] != nullptr ? bridgeKnobValue (k) : 0.5f;
+            const int scIn = (int) pv ("bridge_sc");
+            if (scIn > 0 && scBuf.getNumSamples() >= numSamples)
+            {
+                rackLinkBus->mod.sidechain[(size_t) (scIn - 1)].read (scBuf.getWritePointer (0), scBuf.getWritePointer (1), numSamples, scPos, numSamples);
+                bridge.process (buffer, midiMessages, getPlayHead(), knobs, scBuf.getReadPointer (0), scBuf.getReadPointer (1));
+            }
+            else bridge.process (buffer, midiMessages, getPlayHead(), knobs);
         }
         if (moduleId == SolutionDSP::ModuleId::Land && pv ("land_on") > 0.5f)
         {
@@ -2164,6 +2240,7 @@ void SolutionAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("history", history.toString(), nullptr);        // edit history survives reopening too
     state.setProperty ("cues", cueList.toString(), nullptr);
     state.setProperty ("traj", trajectory.toString(), nullptr);
+    if (moduleId == SolutionDSP::ModuleId::Bridge) { if (auto x = bridge.toXml()) state.setProperty ("bridge", x->toString (juce::XmlElement::TextFormat().singleLine()), nullptr); }
     state.setProperty ("preset", presets.getCurrentPresetName(), nullptr);
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     copyXmlToBinary (*xml, destData);
@@ -2205,6 +2282,19 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
     cueList.fromString (apvts.state.getProperty ("cues").toString());
     loadMosaicNodes(); mosaicChanged = true; triggerAsyncUpdate();
     publishMatrixRoutes();
+    if (moduleId == SolutionDSP::ModuleId::Bridge)
+    {
+        auto restore = [this, xml = apvts.state.getProperty ("bridge").toString()]
+        {
+            suspendProcessing (true);
+            auto x = juce::parseXML (xml);
+            bridgeMissing = bridge.fromXml (x.get());
+            suspendProcessing (false);
+            bridgeChainChanged();
+        };
+        if (juce::MessageManager::getInstanceWithoutCreating() != nullptr && juce::MessageManager::getInstance()->isThisTheMessageThread()) restore();
+        else juce::MessageManager::callAsync (restore);       // hosted plugins are created on the message thread
+    }
     voidRoomShape = {}; voidRoomShape.fromString (apvts.state.getProperty ("voidRoom").toString()); voidHash = -1;
     trajectory.fromString (apvts.state.getProperty ("traj").toString()); trajectoryDirty = true;
     if (apvts.state.hasProperty ("history")) history.fromString (apvts.state.getProperty ("history").toString());

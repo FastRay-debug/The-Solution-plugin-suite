@@ -2305,6 +2305,69 @@ static void testLandCore()
       EXPECT (hi - lo > 6.0, "wind makes the ground effect drift"); }
 }
 
+
+static void testBridgeHosting()
+{
+    std::printf ("The Bridge: hosting a real VST3 (The Stage), latency, dry alignment, CV knobs, session\n");
+    auto vst = juce::File::getCurrentWorkingDirectory().getChildFile ("TheStage_artefacts/Release/VST3/The Stage.vst3");
+    if (! vst.exists()) vst = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory().getParentDirectory().getParentDirectory().getChildFile ("TheStage_artefacts/Release/VST3/The Stage.vst3");
+    if (! vst.exists()) { std::printf ("  (The Stage VST3 not built - skipped)\n"); return; }
+    const double fs = 48000.0; const int bs = 512;
+    auto proc = std::make_unique<SolutionAudioProcessor> ("TheBridge"); proc->prepareToPlay (fs, bs);
+    const int base = proc->getLatencySamples();
+    juce::String err;
+    const bool ok = proc->bridgeLoad (0, vst.getFullPathName(), err);
+    EXPECT (ok, "loads a VST3 into slot 1 (%s)", err.toRawUTF8());
+    if (! ok) return;
+    auto* hosted = proc->bridge.instance (0);
+    const int hostedLat = hosted->getLatencySamples();
+    EXPECT (proc->getLatencySamples() == base + hostedLat && hostedLat > 0, "the hosted plugin's latency is reported (%d + %d)", base, hostedLat);
+    auto info = proc->bridgeJson();
+    EXPECT (info["slots"][0]["name"].toString() == "The Stage", "slot shows the plugin (%s)", info["slots"][0]["name"].toString().toRawUTF8());
+    // mix 0: the hosted plugin is fully dry, so output = the no-plugin output delayed by its latency
+    auto run = [&] (SolutionAudioProcessor& p, std::vector<float>& out) { juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, bs); out.clear();
+        for (int k = 0; k < 60; ++k) { for (int i = 0; i < bs; ++i) { const float v = (float) (0.3 * std::sin (2 * juce::MathConstants<double>::pi * 220 * (k * bs + i) / fs)); b.setSample (0, i, v); b.setSample (1, i, v); }
+            p.processBlock (b, midi); out.insert (out.end(), b.getReadPointer (0), b.getReadPointer (0) + bs); } };
+    std::vector<float> empty, dryMix, wetMix;
+    { auto plain = std::make_unique<SolutionAudioProcessor> ("TheBridge"); plain->prepareToPlay (fs, bs); run (*plain, empty); }
+    proc->bridge.slot (0).mix = 0.0f; run (*proc, dryMix);
+    double e = 0, sig = 0; for (size_t i = 8000; i + hostedLat < dryMix.size(); ++i) { const double d = dryMix[i + (size_t) hostedLat] - empty[i]; e += d * d; sig += empty[i] * empty[i]; }
+    EXPECT (10 * std::log10 (sig / (e + 1e-20)) > 60.0, "dry path is delayed to match the plugin exactly (%.0f dB)", 10 * std::log10 (sig / (e + 1e-20)));
+    // CV knob 1 learns a hosted parameter, then drives it
+    int idx = -1; auto& ps = hosted->getParameters();
+    for (int i = 0; i < ps.size(); ++i) if (ps[i]->getName (64).containsIgnoreCase ("Stage Width")) idx = i;
+    proc->bridge.armLearn (0);
+    if (idx >= 0) ps[idx]->setValueNotifyingHost (0.3f);
+    EXPECT (proc->bridge.knobMap (0).param == idx && idx >= 0, "knob 1 learned '%s'", proc->bridge.knobTarget (0).toRawUTF8());
+    setParam (*proc, "bridge_k1", 0.0f); { juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, bs); b.clear(); proc->processBlock (b, midi); }
+    proc->bridge.slot (0).mix = 1.0f;
+    EXPECT (idx >= 0 && ps[idx]->getValue() < 0.01f, "moving the Bridge knob moves the hosted control (%.3f)", idx >= 0 ? ps[idx]->getValue() : -1.0f);
+    run (*proc, wetMix);
+    double diff = 0; for (size_t i = 8000; i < wetMix.size() && i < dryMix.size(); ++i) diff += std::abs (wetMix[i] - dryMix[i]);
+    EXPECT (diff > 1.0, "with mix 100%% the hosted plugin is heard");
+    // session: the plugin, its state and the knob mapping come back
+    juce::MemoryBlock st; proc->getStateInformation (st);
+    auto again = std::make_unique<SolutionAudioProcessor> ("TheBridge"); again->prepareToPlay (fs, bs);
+    again->setStateInformation (st.getData(), (int) st.getSize());
+    EXPECT (again->bridge.instance (0) != nullptr && again->bridge.knobMap (0).param == idx, "session restores the hosted plugin and the knob mapping");
+    proc->bridgeUnload (0);
+    EXPECT (proc->getLatencySamples() == base, "unloading gives the latency back");
+}
+
+static void testSidechainLink()
+{
+    std::printf ("Sidechain over Rack Link: a track sends, another reads the same samples one block later\n");
+    auto sender = std::make_unique<SolutionAudioProcessor> ("TheStage"); sender->prepareToPlay (48000.0, 512);
+    setParam (*sender, "sc_send", 2.0f);                     // channel B
+    FakePlayHead ph; sender->setPlayHead (&ph);
+    juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512);
+    for (int k = 0; k < 4; ++k) { ph.t = k * 512 / 48000.0; for (int i = 0; i < 512; ++i) { b.setSample (0, i, (float) (k * 512 + i)); b.setSample (1, i, -(float) (k * 512 + i)); } sender->processBlock (b, midi); }
+    std::vector<float> L (512), R (512);
+    sender->getRackBus().mod.sidechain[1].read (L.data(), R.data(), 512, 3 * 512, 512);     // the receiver's block 3, one block behind
+    EXPECT (L[0] == 1024.0f && L[511] == 1535.0f && R[10] == -1034.0f, "receiver gets the sender's samples, timeline-aligned (%.0f .. %.0f)", L[0], L[511]);
+    sender->setPlayHead (nullptr);
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2460,6 +2523,8 @@ int main()
     testOrbitCore();
     testMatrix();
     testLandCore();
+    testBridgeHosting();
+    testSidechainLink();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

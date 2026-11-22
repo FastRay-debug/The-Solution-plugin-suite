@@ -39,8 +39,27 @@ namespace SolutionDSP
         inline double syncBeats (int s) { static const double b[] = { 0, 0.25, 0.5, 1, 2, 4, 8, 16 }; return b[juce::jlimit (0, 7, s)]; }
 
         struct Route { std::atomic<int> slot { -1 }, param { -1 }, src { 0 }; std::atomic<float> depth { 0 }, phase { 0 }; };
+        // Sidechain over Rack Link: 4 stereo channels, written and read at the host's timeline position
+        // (so track processing order doesn't matter); the reader stays one block behind the writer.
+        struct Sidechain
+        {
+            static constexpr int size = 1 << 15;
+            std::array<std::array<float, size>, 2> data {};
+            std::atomic<long long> lastWrite { -1 };
+            void write (const float* l, const float* r, int n, long long pos)
+            {
+                for (int i = 0; i < n; ++i) { const auto k = (size_t) ((pos + i) & (size - 1)); data[0][k] = l[i]; data[1][k] = r[i]; }
+                lastWrite.store (pos + n, std::memory_order_release);
+            }
+            void read (float* l, float* r, int n, long long pos, int lag) const
+            {
+                if (lastWrite.load (std::memory_order_acquire) < 0) { std::fill (l, l + n, 0.0f); std::fill (r, r + n, 0.0f); return; }
+                for (int i = 0; i < n; ++i) { const auto k = (size_t) ((pos + i - lag) & (size - 1)); l[i] = data[0][k]; r[i] = data[1][k]; }
+            }
+        };
         struct Bus
         {
+            std::array<Sidechain, 4> sidechain;
             std::array<std::atomic<double>, 4> lfoPhase {};      // cycles (unwrapped is fine)
             std::array<std::atomic<int>, 4> lfoShape {};
             std::array<std::atomic<float>, NumSources> value {}; // current value of every source (-1..1 for LFOs, 0..1 others)

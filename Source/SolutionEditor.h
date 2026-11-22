@@ -19,6 +19,11 @@ private:
     int lastCurveGen = -1;
     void sendParamInfo();
     int lastVoidGen = -1;
+    void handleBridge (const juce::var& d);
+    void loadBridge (int slot, const juce::String& path);
+    void sendBridgeState();
+    int lastBridgeGen = -1;
+    std::array<std::unique_ptr<juce::DocumentWindow>, 4> hostedWindows;
     void sendAiState();
     void emitMeta (const juce::String& message);
     bool aiPanelOpen = false;

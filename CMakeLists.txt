@@ -167,6 +167,8 @@ function(add_solution_module TARGET_NAME PLUGIN_CODE PRODUCT_NAME CLAP_ID)
             JUCE_USE_CURL=0
             JUCE_USE_MP3AUDIOFORMAT=1
             JUCE_VST3_CAN_REPLACE_VST2=0
+            JUCE_PLUGINHOST_VST3=1
+            JUCE_PLUGINHOST_AU=1
             SOLUTION_CEILING_DBFS=-0.5
             SOLUTION_TOOLTIP_DELAY_MS=600
             SOLUTION_BUNDLE_SKINS=${SOLUTION_BUNDLE_SKINS_VAL}
@@ -220,6 +222,7 @@ target_sources(SolutionUtility PRIVATE Source/UtilityApp.cpp Source/SystemMonito
     Source/SolutionProcessor.cpp Source/PresetManager.cpp Source/RoomCorrection.cpp Source/MixAssistant.cpp Source/RemoteControl.cpp)
 target_compile_definitions(SolutionUtility PRIVATE
     SOLUTION_HEADLESS=1
+    JUCE_PLUGINHOST_VST3=1
     JucePlugin_Name="Solution DSP Node"
     SOLUTION_MODULE_NAME="The Stage"
     SOLUTION_MODULE_ID="TheStage"
@@ -250,6 +253,7 @@ if(SOLUTION_BUILD_TESTS)
     target_sources(SuiteTests PRIVATE tests/SuiteTests.cpp Source/SolutionProcessor.cpp Source/PresetManager.cpp Source/RoomCorrection.cpp Source/MixAssistant.cpp Source/RemoteControl.cpp Source/SystemMonitor.cpp)
     target_compile_definitions(SuiteTests PRIVATE
         SOLUTION_HEADLESS=1
+        JUCE_PLUGINHOST_VST3=1
         JucePlugin_Name="SuiteTests"
         SOLUTION_MODULE_NAME="The Stage"
         SOLUTION_MODULE_ID="TheStage"

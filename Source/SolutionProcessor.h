@@ -40,6 +40,7 @@
 #include "VoidCore.h"
 #include "OrbitCore.h"
 #include "LandCore.h"
+#include "BridgeHost.h"
 #include <thread>
 #include <atomic>
 #include <array>
@@ -219,7 +220,16 @@ public:
 
     // Stem Focus adds latency only while it's on; the host is told on the message thread.
     void updateLatencyNow();
-    int getBaseLatency() const { return moduleEngine.getLatencySamples() + anchorLatency() + mosaicLatency() + ceilingLimiter.getLatency(); }
+    int getBaseLatency() const { return moduleEngine.getLatencySamples() + anchorLatency() + mosaicLatency() + bridgeLatencyNow + ceilingLimiter.getLatency(); }
+    int bridgeLatency() const { return moduleId == SolutionDSP::ModuleId::Bridge ? const_cast<SolutionBridge::Host&> (bridge).totalLatency() : 0; }
+    // The Bridge (message thread)
+    SolutionBridge::Host bridge;
+    bool bridgeLoad (int slot, const juce::String& file, juce::String& error);
+    void bridgeUnload (int slot);
+    void bridgeMove (int from, int to);
+    void bridgeChainChanged();
+    juce::var bridgeJson();
+    int getBridgeGen() const { return bridgeGen; }
     int anchorLatency() const { return moduleId == SolutionDSP::ModuleId::Anchor ? anchorCore.getLatency() : 0; }
     SolutionDSP::ModuleId getModuleId() const { return moduleId; }
     bool mosaicActive() const { return moduleId == SolutionDSP::ModuleId::Mosaic && apvts.getRawParameterValue ("mosaic_on")->load() > 0.5f; }
@@ -285,6 +295,13 @@ public:
     SolutionDSP::VoidCore voidCore;
     SolutionDSP::OrbitCore orbitCore;
     SolutionDSP::LandCore landCore;
+    int bridgeLatencyNow = 0, bridgeGen = 0;
+    long long scPos = 0, scFree = 0;                           // audio thread: sidechain timeline position
+    juce::AudioBuffer<float> scBuf;
+    juce::StringArray bridgeMissing;
+    std::array<std::atomic<float>*, 8> bridgeKnob {};
+    float bridgeKnobValue (int k) const { const auto i = modIndexOf.find (bridgeKnob[(size_t) k]); const float v = bridgeKnob[(size_t) k]->load();
+                                          return (modActive && i != modIndexOf.end()) ? juce::jlimit (0.0f, 1.0f, v + modOffset[(size_t) i->second]) : v; }
     // The Matrix: modulated parameter reads (audio thread)
     std::map<const std::atomic<float>*, int> modIndexOf;
     std::vector<float> modOffset, modLo, modHi;
@@ -333,7 +350,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 28;  // v28: The Land outdoor acoustics  // v27: The Matrix modulation  // v26: The Orbit tube + Regen Throttle loop  // v25: The Void acoustic modeller  // v24: The Mosaic spectral morph  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 30;  // v30: sidechain over Rack Link  // v29: The Bridge plugin hosting  // v28: The Land outdoor acoustics  // v27: The Matrix modulation  // v26: The Orbit tube + Regen Throttle loop  // v25: The Void acoustic modeller  // v24: The Mosaic spectral morph  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }

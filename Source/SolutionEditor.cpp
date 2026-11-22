@@ -209,6 +209,7 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                lastVoidGen = -1;
                emitToViews ("voidState", audioProcessor.voidJson());
            })
+           .withEventListener ("bridge", [this] (const juce::var& d) { handleBridge (d); })
            .withEventListener ("matrix", [this] (const juce::var& d)
            {
                if (d.getProperty ("cmd", {}).toString() == "set") audioProcessor.setMatrixRoutes (d.getProperty ("routes", {}));
@@ -669,6 +670,8 @@ void SolutionAudioProcessorEditor::sendRackState()
 SolutionAudioProcessorEditor::~SolutionAudioProcessorEditor()
 {
     if (voice != nullptr) (*voice)->removeClient (this);     // the hub must never call a closed window
+    audioProcessor.bridge.onLearned = nullptr;               // a learn can't call back into a closed window
+    for (auto& w : hostedWindows) w.reset();                 // hosted plugin windows close before their plugins can go
     audioProcessor.scopeTap.setEnabled (false);
     if (stageGestureOpen)
         for (const char* id : { "stage_azimuth", "stage_elevation", "stage_distance", "stage_width" })
@@ -918,6 +921,75 @@ void SolutionAudioProcessorEditor::sendRemoteState (const juce::String& error)
     emitToViews ("remoteState", juce::var (payload.get()));
 }
 
+// ===================== The Bridge: hosted plugins =====================
+namespace
+{
+    struct HostedWindow : juce::DocumentWindow
+    {
+        HostedWindow (juce::AudioProcessorEditor* ed, const juce::String& title, std::function<void()> onClose)
+            : juce::DocumentWindow (title, juce::Colour (0xff0d1015), juce::DocumentWindow::closeButton), closed (std::move (onClose))
+        {
+            setUsingNativeTitleBar (true); setContentOwned (ed, true); setResizable (ed->isResizable(), false);
+            centreWithSize (ed->getWidth(), ed->getHeight()); setVisible (true); setAlwaysOnTop (true);
+        }
+        void closeButtonPressed() override { if (closed) closed(); }
+        std::function<void()> closed;
+    };
+}
+
+void SolutionAudioProcessorEditor::handleBridge (const juce::var& d)
+{
+    const auto cmd = d.getProperty ("cmd", {}).toString();
+    const int slot = (int) d.getProperty ("slot", -1);
+    auto& br = audioProcessor.bridge;
+    if (cmd == "candidates")
+    {
+        juce::Array<juce::var> list; for (auto& f : br.candidateFiles()) list.add (f);
+        emitToViews ("bridgeCandidates", list); return;
+    }
+    if (cmd == "browse")
+    {
+        micFileChooser = std::make_unique<juce::FileChooser> ("Choose a plugin (VST3)", juce::File(), "*.vst3;*.component");
+        micFileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectDirectories,
+            [this, slot] (const juce::FileChooser& fc) { const auto f = fc.getResult(); if (f != juce::File()) loadBridge (slot, f.getFullPathName()); });
+        return;
+    }
+    if (cmd == "load") { loadBridge (slot, d.getProperty ("path", {}).toString()); return; }
+    if (cmd == "unload") { hostedWindows[(size_t) juce::jlimit (0, 3, slot)].reset(); audioProcessor.bridgeUnload (slot); }
+    else if (cmd == "move") { const int to = (int) d.getProperty ("to", -1); hostedWindows[(size_t) juce::jlimit (0, 3, slot)].reset(); hostedWindows[(size_t) juce::jlimit (0, 3, to)].reset(); audioProcessor.bridgeMove (slot, to); }
+    else if (cmd == "bypass" && juce::isPositiveAndBelow (slot, 4)) br.slot (slot).bypass = (bool) d.getProperty ("on", false);
+    else if (cmd == "mix" && juce::isPositiveAndBelow (slot, 4)) br.slot (slot).mix = (float) (double) d.getProperty ("value", 1.0);
+    else if (cmd == "learn") { br.onLearned = [this] (int) { sendBridgeState(); }; br.armLearn ((int) d.getProperty ("knob", -1)); }
+    else if (cmd == "clearKnob") br.clearKnob ((int) d.getProperty ("knob", -1));
+    else if (cmd == "edit" && juce::isPositiveAndBelow (slot, 4))
+    {
+        auto& w = hostedWindows[(size_t) slot];
+        if (w != nullptr) { w.reset(); }
+        else if (auto* inst = br.instance (slot))
+        {
+            if (auto* ed = inst->createEditorIfNeeded())
+                w = std::make_unique<HostedWindow> (ed, br.slot (slot).desc.name + " - The Bridge slot " + juce::String (slot + 1),
+                                                    [this, slot] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SolutionAudioProcessorEditor> (this), slot] { if (safe) safe->hostedWindows[(size_t) slot].reset(); }); });
+            else emitToViews ("bridgeNotice", juce::var ("That plugin has no window of its own - use the Bridge knobs to control it."));
+        }
+    }
+    sendBridgeState();
+}
+
+void SolutionAudioProcessorEditor::loadBridge (int slot, const juce::String& path)
+{
+    hostedWindows[(size_t) juce::jlimit (0, 3, slot)].reset();
+    juce::String err;
+    if (! audioProcessor.bridgeLoad (slot, path, err)) emitToViews ("bridgeNotice", juce::var (err));
+    sendBridgeState();
+}
+
+void SolutionAudioProcessorEditor::sendBridgeState()
+{
+    lastBridgeGen = audioProcessor.getBridgeGen();
+    emitToViews ("bridgeState", audioProcessor.bridgeJson());
+}
+
 void SolutionAudioProcessorEditor::sendAiState()
 {
     emitToViews ("cuesState", audioProcessor.cuesJson());
@@ -980,6 +1052,7 @@ void SolutionAudioProcessorEditor::rackRevert (int slot, int seq)
 void SolutionAudioProcessorEditor::timerCallback()
 {
     if (audioProcessor.getHistoryGen() != lastHistoryGen) sendHistory();
+    if (audioProcessor.getModuleId() == SolutionDSP::ModuleId::Bridge && audioProcessor.getBridgeGen() != lastBridgeGen) sendBridgeState();
     if (audioProcessor.getModuleId() == SolutionDSP::ModuleId::Void && audioProcessor.getVoidGen() != lastVoidGen) { lastVoidGen = audioProcessor.getVoidGen(); emitToViews ("voidState", audioProcessor.voidJson()); }
     if (audioProcessor.getCurveGen() != lastCurveGen && ! audioProcessor.getResponseCurve().isVoid()) { lastCurveGen = audioProcessor.getCurveGen(); emitToViews ("responseCurve", audioProcessor.getResponseCurve()); }
     if (aiPanelOpen && frameCounter % 12 == 0) sendAiState();

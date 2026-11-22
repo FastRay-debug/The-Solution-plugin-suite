@@ -121,6 +121,10 @@
     #vanList { overflow-y: auto; flex: 1; columns: 2 420px; column-gap: 24px; }
     .van-row { display: grid; grid-template-columns: minmax(120px, 1.2fr) 1.4fr 90px; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px solid #161b22; font: 12px system-ui, sans-serif; color: #d1d5db; break-inside: avoid; }
     .van-row input[type=range] { width: 100%; } .van-val { font-family: monospace; font-weight: normal; text-align: right; color: #9ca3af; }
+    .br-slot { border: 1px solid var(--bezel); border-radius: 4px; padding: 3px 4px; margin-bottom: 3px; display: flex; flex-direction: column; gap: 2px; }
+    .br-slot.empty { flex-direction: row; justify-content: space-between; align-items: center; opacity: .75; }
+    .br-slot button, #brKnobs button { font-size: 8px; padding: 0 4px; } .br-slot b { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .br-knob { display: grid; grid-template-columns: 18px 1fr 18px 70px; gap: 3px; align-items: center; } .br-knob input { min-width: 0; } .br-knob small { color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; }
     .bk-grid2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 6px; }
     .bk-grid2 .bk-row { grid-template-columns: 30px minmax(0, 1fr) 32px; gap: 2px; font-size: 8px; min-width: 0; } .bk-grid2 .bk-row b { font-size: 8px; white-space: nowrap; } .bk-grid2 .bk-row input { min-width: 0; }
     [data-panel="left"] { overflow-y: auto; scrollbar-width: thin; }
@@ -769,6 +773,13 @@
           <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
           <label style="display:flex;gap:2px;align-items:center;" data-tip="WIDE: let the lift's skirt also fill 15-30 Hz. Off = true infrasonics only (the original trick). Shift+I"><input type="checkbox" data-sync="infra_lift_wide" onchange="bind('infra_lift_wide', this.checked ? 1 : 0, '', 1)">WIDE</label>
         </div>
+        <div id="bridgeCore" style="display:none;flex-direction:column;gap:3px;font-size:9px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;"><span>⇄ PLUGIN CHAIN</span><span id="brLat" style="color:var(--mute)"></span></div>
+          <div style="display:flex;gap:4px;align-items:center;" data-tip="Sidechain input for the hosted plugins: pick the Rack Link channel another track sends to (Rack Link panel > Sidechain Send)">SIDECHAIN IN <select data-sync="bridge_sc" onchange="bind('bridge_sc', +this.value, '', 1)" style="font-size:9px;"><option value="0">Off</option><option value="1">A</option><option value="2">B</option><option value="3">C</option><option value="4">D</option></select></div>
+          <div id="brSlots"></div>
+          <div style="color:var(--gold);letter-spacing:.08em;margin-top:3px;">CV KNOBS <small style="color:var(--mute);letter-spacing:0">(Matrix / MIDI / automation → hosted controls)</small></div>
+          <div id="brKnobs"><div class="br-knob"><span>K1</span><input type="range" data-sync="bridge_k1" min="0" max="1" step="0.001" value="0.5" oninput="bind('bridge_k1', +this.value, '', 1)"><button onclick="emit('bridge',{cmd:'learn',knob:0})" data-tip="Learn: then move any control in a hosted plugin's window">L</button><small id="brK0" title=""></small></div><div class="br-knob"><span>K2</span><input type="range" data-sync="bridge_k2" min="0" max="1" step="0.001" value="0.5" oninput="bind('bridge_k2', +this.value, '', 1)"><button onclick="emit('bridge',{cmd:'learn',knob:1})" data-tip="Learn: then move any control in a hosted plugin's window">L</button><small id="brK1" title=""></small></div><div class="br-knob"><span>K3</span><input type="range" data-sync="bridge_k3" min="0" max="1" step="0.001" value="0.5" oninput="bind('bridge_k3', +this.value, '', 1)"><button onclick="emit('bridge',{cmd:'learn',knob:2})" data-tip="Learn: then move any control in a hosted plugin's window">L</button><small id="brK2" title=""></small></div><div class="br-knob"><span>K4</span><input type="range" data-sync="bridge_k4" min="0" max="1" step="0.001" value="0.5" oninput="bind('bridge_k4', +this.value, '', 1)"><button onclick="emit('bridge',{cmd:'learn',knob:3})" data-tip="Learn: then move any control in a hosted plugin's window">L</button><small id="brK3" title=""></small></div><div class="br-knob"><span>K5</span><input type="range" data-sync="bridge_k5" min="0" max="1" step="0.001" value="0.5" oninput="bind('bridge_k5', +this.value, '', 1)"><button onclick="emit('bridge',{cmd:'learn',knob:4})" data-tip="Learn: then move any control in a hosted plugin's window">L</button><small id="brK4" title=""></small></div><div class="br-knob"><span>K6</span><input type="range" data-sync="bridge_k6" min="0" max="1" step="0.001" value="0.5" oninput="bind('bridge_k6', +this.value, '', 1)"><button onclick="emit('bridge',{cmd:'learn',knob:5})" data-tip="Learn: then move any control in a hosted plugin's window">L</button><small id="brK5" title=""></small></div><div class="br-knob"><span>K7</span><input type="range" data-sync="bridge_k7" min="0" max="1" step="0.001" value="0.5" oninput="bind('bridge_k7', +this.value, '', 1)"><button onclick="emit('bridge',{cmd:'learn',knob:6})" data-tip="Learn: then move any control in a hosted plugin's window">L</button><small id="brK6" title=""></small></div><div class="br-knob"><span>K8</span><input type="range" data-sync="bridge_k8" min="0" max="1" step="0.001" value="0.5" oninput="bind('bridge_k8', +this.value, '', 1)"><button onclick="emit('bridge',{cmd:'learn',knob:7})" data-tip="Learn: then move any control in a hosted plugin's window">L</button><small id="brK7" title=""></small></div></div>
+        </div>
         <div id="landCore" style="display:none;flex-direction:column;gap:3px;font-size:9px;">
           <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
             <label style="display:flex;gap:3px;align-items:center;"><input type="checkbox" data-sync="land_on" onchange="bind('land_on', this.checked ? 1 : 0, '', 1)">⛰ OUTDOORS</label>
@@ -1367,6 +1378,8 @@
     <div class="modal-box" style="min-width:560px;">
       <strong style="color:var(--gold);letter-spacing:0.1em;">RACK LINK · SESSION</strong>
       <div style="font-size:11px;color:var(--mute);">Every Solution module in this session. Modules in the same group duck when a group member set to "Duck others" plays - no sidechain routing needed.</div>
+      <div style="display:flex;gap:6px;align-items:center;font-size:11px;margin:4px 0;" data-tip="Send this track's audio to a Rack Link sidechain channel. The Bridge can feed it into a hosted plugin's sidechain input (e.g. key a compressor from the kick).">
+        SIDECHAIN SEND <select data-sync="sc_send" onchange="bind('sc_send', +this.value, '', 1)"><option value="0">Off</option><option value="1">A</option><option value="2">B</option><option value="3">C</option><option value="4">D</option></select></div>
       <table style="width:100%;font-family:monospace;font-size:11px;border-collapse:collapse;">
         <thead><tr style="color:var(--accent2);text-align:left;"><th>TRACK</th><th>MODULE</th><th>GROUP</th><th>LUFS-S</th><th>dBTP</th><th>GR</th></tr></thead>
         <tbody id="rackRows"></tbody>
@@ -4502,6 +4515,31 @@
     // ---------- fullscreen panels ----------
     const IS_POPOUT = params.get('popout') === '1';
     if (/anchor/i.test(params.get('module') || '')) document.getElementById('anchorCore').style.display = 'flex';   // The Anchor only
+    if (/bridge/i.test(params.get('module') || '')) {     // The Bridge only: hosted plugin chain
+      document.getElementById('bridgeCore').style.display = 'flex';
+      let brCandidates = [];
+      window.renderBridge = (m) => {
+        document.getElementById('brLat').textContent = m.latency ? 'latency ' + m.latency + ' smp' : '';
+        document.getElementById('brSlots').innerHTML = (m.slots || []).map((s, i) => s.name ? `<div class="br-slot">
+            <div style="display:flex;justify-content:space-between;gap:4px;"><b title="${escapeHtml(s.vendor + ' · ' + s.format)}">${i + 1}. ${escapeHtml(s.name)}</b>
+              <span style="display:flex;gap:2px;"><button onclick="emit('bridge',{cmd:'edit',slot:${i}})" data-tip="Open the plugin's own window">EDIT</button>
+              <button onclick="emit('bridge',{cmd:'move',slot:${i},to:${Math.max(0, i - 1)}})" ${i ? '' : 'disabled'}>↑</button><button onclick="emit('bridge',{cmd:'move',slot:${i},to:${Math.min(3, i + 1)}})" ${i < 3 ? '' : 'disabled'}>↓</button>
+              <button onclick="emit('bridge',{cmd:'unload',slot:${i}})">✕</button></span></div>
+            <div style="display:flex;gap:4px;align-items:center;"><label><input type="checkbox" ${s.bypass ? 'checked' : ''} onchange="emit('bridge',{cmd:'bypass',slot:${i},on:this.checked})">BYPASS</label>
+              <span>MIX</span><input type="range" min="0" max="1" step="0.01" value="${s.mix}" style="flex:1;min-width:0" oninput="emit('bridge',{cmd:'mix',slot:${i},value:+this.value})"><small>${s.latency} smp</small></div></div>`
+          : `<div class="br-slot empty"><span>${i + 1}. empty</span><span style="display:flex;gap:2px;"><button onclick="emit('bridge',{cmd:'browse',slot:${i}})">LOAD…</button>
+              <select style="max-width:90px;font-size:8px;" onfocus="if(!this.options.length>1)emit('bridge',{cmd:'candidates'})" onchange="if(this.value){emit('bridge',{cmd:'load',slot:${i},path:this.value});this.value=''}"><option value="">Installed…</option>${brCandidates.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p.split(/[\\/]/).pop().replace(/\.vst3$/i, ''))}</option>`).join('')}</select></span></div>`).join('');
+        (m.knobs || []).forEach((t, k) => { const el = document.getElementById('brK' + k); if (el) { el.textContent = m.learning === k ? 'move a control…' : (t || '—'); el.title = t || ''; } });
+        if (m.missing) flashHint('⇄ Not found on this computer: ' + m.missing);
+      };
+      if (window.__JUCE__ && window.__JUCE__.backend) {
+        window.__JUCE__.backend.addEventListener('bridgeState', (m) => { window._bridge = m; renderBridge(m); });
+        window.__JUCE__.backend.addEventListener('bridgeCandidates', (l) => { brCandidates = l || []; if (window._bridge) renderBridge(window._bridge); });
+        window.__JUCE__.backend.addEventListener('bridgeNotice', (t) => flashHint('⇄ ' + t));
+      }
+      emit('bridge', { cmd: 'state' }); emit('bridge', { cmd: 'candidates' });
+      renderBridge({ slots: [{}, {}, {}, {}], knobs: [] });
+    }
     if (/land/i.test(params.get('module') || '')) {      // The Land only: side view of the direct and ground-bounce paths
       document.getElementById('landCore').style.display = 'flex';
       (function landView() {
