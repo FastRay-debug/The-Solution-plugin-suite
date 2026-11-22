@@ -15,6 +15,9 @@ public:
     void resized() override;
 
 private:
+    void sendAiState();
+    void emitMeta (const juce::String& message);
+    bool aiPanelOpen = false;
     void sendHistory();
     void sendRackHistory();
     void rackRevert (int slot, int seq);

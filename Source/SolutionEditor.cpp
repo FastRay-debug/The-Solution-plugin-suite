@@ -196,6 +196,48 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("aiPanel", [this] (const juce::var& d)
+           {
+               aiPanelOpen = (bool) d.getProperty ("open", false);
+               audioProcessor.moodWatch = aiPanelOpen;
+               if (aiPanelOpen) sendAiState();
+           })
+           .withEventListener ("aiCues", [this] (const juce::var& d)
+           {
+               const auto cmd = d.getProperty ("cmd", {}).toString();
+               const double t = d.getProperty ("t", -1.0);
+               if (cmd == "add") audioProcessor.addCue (d.getProperty ("name", {}).toString(), t, (double) d.getProperty ("fade", 1.0));
+               else if (cmd == "remove") audioProcessor.removeCue (t);
+               else if (cmd == "edit") audioProcessor.editCue (t, d.getProperty ("name", {}).toString(), (double) d.getProperty ("fade", -1.0), (double) d.getProperty ("newT", -1.0));
+               sendAiState();
+           })
+           .withEventListener ("aiMeta", [this] (const juce::var& d)
+           {
+               const auto cmd = d.getProperty ("cmd", {}).toString();
+               const bool rack = (bool) d.getProperty ("rack", false);
+               if (cmd == "clear") { audioProcessor.clearTrajectory(); emitMeta ("Recording cleared."); return; }
+               if (cmd == "embed")
+               {
+                   micFileChooser = std::make_unique<juce::FileChooser> ("Choose the bounced WAV to add spatial metadata to", juce::File(), "*.wav");
+                   micFileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this, rack] (const juce::FileChooser& fc)
+                   {
+                       const auto f = fc.getResult(); if (! f.existsAsFile()) return;
+                       juce::File out; const auto err = audioProcessor.embedMetadata (f, rack, out);
+                       emitMeta (err.isNotEmpty() ? err : "Saved " + out.getFileName() + " next to the original (ADM axml" + juce::String (rack ? "" : " + chna") + " + iXML).");
+                   });
+               }
+               else if (cmd == "sidecar")
+               {
+                   micFileChooser = std::make_unique<juce::FileChooser> ("Save the spatial metadata (JSON + ADM XML)", juce::File(), "*.json");
+                   micFileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles, [this, rack] (const juce::FileChooser& fc)
+                   {
+                       const auto f = fc.getResult(); if (f == juce::File()) return;
+                       const auto err = audioProcessor.exportMetadataSidecars (f.withFileExtension (""), rack);
+                       emitMeta (err.isNotEmpty() ? err : "Saved " + f.withFileExtension ("json").getFileName() + " and " + f.withFileExtension ("adm.xml").getFileName() + ".");
+                   });
+               }
+               else emitMeta ({});
+           })
            .withEventListener ("toneAnalyze", [this] (const juce::var& d)
            {
                const float hz = (float) (double) d.getProperty ("hz", 1000.0), db = (float) (double) d.getProperty ("db", -18.0);
@@ -528,6 +570,7 @@ void SolutionAudioProcessorEditor::sendRackState()
         for (auto& bnd : slot.bandDb) bands.add (std::round (bnd.load() * 10.0f) / 10.0f);
         item->setProperty ("bands",  bands);
         item->setProperty ("unmask", slot.unmaskRole.load());
+        item->setProperty ("dialogue", slot.dialogueSource.load());
         list.add (juce::var (item.get()));
     }
     juce::DynamicObject::Ptr payload = new juce::DynamicObject();
@@ -815,6 +858,22 @@ void SolutionAudioProcessorEditor::sendRemoteState (const juce::String& error)
     emitToViews ("remoteState", juce::var (payload.get()));
 }
 
+void SolutionAudioProcessorEditor::sendAiState()
+{
+    emitToViews ("cuesState", audioProcessor.cuesJson());
+    emitToViews ("moodState", audioProcessor.moodJson());
+    emitMeta ({});
+}
+
+void SolutionAudioProcessorEditor::emitMeta (const juce::String& message)
+{
+    juce::DynamicObject::Ptr o = new juce::DynamicObject();
+    o->setProperty ("points", audioProcessor.trajectoryPoints());
+    o->setProperty ("seconds", audioProcessor.trajectoryPoints() / SolutionCinema::Trajectory::rate);
+    if (message.isNotEmpty()) o->setProperty ("message", message);
+    emitToViews ("metaState", juce::var (o.get()));
+}
+
 void SolutionAudioProcessorEditor::sendHistory()
 {
     lastHistoryGen = audioProcessor.getHistoryGen();
@@ -861,6 +920,7 @@ void SolutionAudioProcessorEditor::rackRevert (int slot, int seq)
 void SolutionAudioProcessorEditor::timerCallback()
 {
     if (audioProcessor.getHistoryGen() != lastHistoryGen) sendHistory();
+    if (aiPanelOpen && frameCounter % 12 == 0) sendAiState();
     if (audioProcessor.toneAnalysisRunning() && frameCounter % 6 == 0) emitToViews ("toneProgress", (double) audioProcessor.toneAnalysisProgress());
     if (auto res = audioProcessor.takeToneAnalysisResult(); ! res.isVoid()) emitToViews ("toneAnalysis", res);
     audioProcessor.pollAutoGainStage();          // sets the trims when the 3 s listen is done
@@ -944,6 +1004,7 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("voice",         audioProcessor.voiceConfidence.load());
     payload->setProperty ("dialogueDuckDb", audioProcessor.dialogueDuckDb.load());
     payload->setProperty ("dialogueSources", audioProcessor.dialogueSources.load());
+    payload->setProperty ("dialogueCarveHz", std::round (audioProcessor.dialogueCarveHz.load()));
     payload->setProperty ("latency",       audioProcessor.getLatencySamples());
     payload->setProperty ("dqsLevel",      audioProcessor.dqsLevel.load());
     payload->setProperty ("dqsSuiteLoad",  audioProcessor.dqsSuiteLoad.load());

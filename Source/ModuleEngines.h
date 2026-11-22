@@ -106,6 +106,7 @@ namespace SolutionDSP
         }
         juce::String trackName;                       // message thread only
         juce::String historyText;                     // this instance's recent edits (EditHistory::toString), message thread only
+        juce::String trajectoryText;                  // recorded 3D path for metadata export (Trajectory::toString), message thread only
     };
 
     struct RackLinkBus

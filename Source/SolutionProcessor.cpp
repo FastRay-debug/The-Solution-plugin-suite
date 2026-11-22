@@ -28,7 +28,11 @@ SolutionAudioProcessor::SolutionAudioProcessor (const juce::String& moduleOverri
             apvts.addParameterListener (ranged->getParameterID(), this);
 
     if (! isMeasurementCopy)
+    {
         startTimerHz (5);     // picks up alignment requests from other instances
+        cueClock.tick = [this] { runCues(); };
+        cueClock.startTimerHz (30);
+    }
 
     learnableParamIds = {
         "stage_azimuth", "stage_elevation", "stage_depth", "stage_haas_itd",
@@ -50,12 +54,171 @@ SolutionAudioProcessor::~SolutionAudioProcessor()
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             apvts.removeParameterListener (ranged->getParameterID(), this);
+    cueClock.stopTimer();
     if (toneJob != nullptr && toneJob->worker.joinable()) toneJob->worker.join();
     if (! isMeasurementCopy)
     {
         rackLinkBus->releaseSlot (rackSlot);
         rackLinkBus->activeInstances.fetch_sub (1, std::memory_order_relaxed);
     }
+}
+
+// ===================== AI Analyze: cues, mood, metadata =====================
+static bool isListeningTool (const juce::String& id)
+{
+    for (auto* m : { "ab_bypass", "delta_listen", "stream_preview", "listen_room", "room_correct_on", "stem_listen", "tape_cal_tone",
+                     "cues_on", "mood_follow", "mood_amount", "dialogue_source", "align_role", "unmask_role", "safe_bounce" })
+        if (id == m) return true;
+    return false;
+}
+
+std::map<juce::String, float> SolutionAudioProcessor::cueableValues() const
+{
+    std::map<juce::String, float> v;
+    for (auto& id : learnableParamIds)
+        if (! isListeningTool (id)) if (auto* q = apvts.getParameter (id)) v[id] = q->getValue();
+    return v;
+}
+
+void SolutionAudioProcessor::addCue (const juce::String& name, double timeSec, double fadeSec)
+{
+    SolutionCinema::Cue c;
+    c.timeSec = timeSec < 0 ? hostTimeSec.load() : timeSec;
+    c.fadeSec = fadeSec; c.name = name.isNotEmpty() ? name : "Scene " + juce::String ((int) cueList.cues.size() + 1);
+    // Only store what differs from the previous scene, so later edits to other controls aren't frozen.
+    const auto now = cueableValues();
+    const int prev = cueList.activeIndex (c.timeSec - 1e-4);
+    for (auto& [id, v] : now)
+    {
+        const float before = prev >= 0 && cueList.cues[(size_t) prev].values.count (id) ? cueList.cues[(size_t) prev].values.at (id)
+                                                                                       : apvts.getParameter (id)->getDefaultValue();
+        if (std::abs (before - v) > 1e-4f || prev < 0) c.values[id] = v;
+    }
+    cueList.add (std::move (c));
+    cueList.resetPlayback(); cuesGen++;
+}
+void SolutionAudioProcessor::removeCue (double timeSec) { cueList.remove (timeSec); cueList.resetPlayback(); cuesGen++; }
+void SolutionAudioProcessor::editCue (double timeSec, const juce::String& name, double fadeSec, double newTime)
+{
+    for (auto& c : cueList.cues)
+        if (std::abs (c.timeSec - timeSec) < 0.0005) { if (name.isNotEmpty()) c.name = name; if (fadeSec >= 0) c.fadeSec = fadeSec; if (newTime >= 0) c.timeSec = newTime; }
+    cueList.sort(); cueList.resetPlayback(); cuesGen++;
+}
+
+void SolutionAudioProcessor::runCues()
+{
+    if (cueList.cues.empty() || apvts.getRawParameterValue ("cues_on")->load() < 0.5f || ! hostPlaying.load()) { if (! hostPlaying.load()) cueList.resetPlayback(); return; }
+    std::map<juce::String, float> out;
+    const int active = cueList.evaluate (hostTimeSec.load(), cueFrom, out, cueableValues());
+    activeCue = active;
+    for (auto& [id, v] : out)
+        if (auto* q = apvts.getParameter (id); q != nullptr && std::abs (q->getValue() - v) > 1e-4f) q->setValueNotifyingHost (v);
+}
+
+juce::var SolutionAudioProcessor::cuesJson() const
+{
+    juce::Array<juce::var> list;
+    const double fps = hostFps.load();
+    for (auto& c : cueList.cues)
+    {
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("t", c.timeSec); o->setProperty ("tc", SolutionCinema::smpte (c.timeSec, fps)); o->setProperty ("name", c.name);
+        o->setProperty ("fade", c.fadeSec); o->setProperty ("controls", (int) c.values.size());
+        list.add (juce::var (o.get()));
+    }
+    juce::DynamicObject::Ptr r = new juce::DynamicObject();
+    r->setProperty ("cues", list); r->setProperty ("active", activeCue); r->setProperty ("now", hostTimeSec.load());
+    r->setProperty ("nowTc", SolutionCinema::smpte (hostTimeSec.load(), fps)); r->setProperty ("fps", fps);
+    return juce::var (r.get());
+}
+
+void SolutionAudioProcessor::pollMood()
+{
+    const bool follow = apvts.getRawParameterValue ("mood_follow")->load() > 0.5f;
+    moodTap.setEnabled (follow || moodWatch);
+    if (! moodTap.isEnabled()) { moodDepthOff = 0; moodRoomOff = 0; moodWidthOff = 0; return; }
+    const double fs = getSampleRate() > 0 ? getSampleRate() : 48000.0;
+    moodTap.drain ([this, fs] (const float* l, const float* r, int n)
+    {
+        moodMono.resize ((size_t) n);
+        for (int i = 0; i < n; ++i) moodMono[(size_t) i] = 0.5f * (l[i] + r[i]);
+        mood.push (moodMono.data(), n, fs);
+    });
+    const float amt = follow ? apvts.getRawParameterValue ("mood_amount")->load() : 0.0f;
+    const double a = mood.arousal, v = mood.valence;
+    // energetic -> more drive; calm & sad -> more space; happy -> wider. Small, musical ranges.
+    moodDepthOff = (float) (amt * 0.25 * (a - 0.5) * 2.0);
+    moodRoomOff  = (float) (amt * 0.30 * juce::jlimit (0.0, 1.0, (0.6 - a) * (1.0 - 0.5 * (v + 1.0)) * 2.0));
+    moodWidthOff = (float) (amt * 0.30 * v);
+}
+
+juce::var SolutionAudioProcessor::moodJson() const
+{
+    juce::DynamicObject::Ptr o = new juce::DynamicObject();
+    o->setProperty ("valence", mood.valence); o->setProperty ("arousal", mood.arousal); o->setProperty ("label", mood.label());
+    o->setProperty ("loudDb", mood.loudDb); o->setProperty ("centroid", mood.centroid); o->setProperty ("onsets", mood.onsetRate); o->setProperty ("major", mood.majorness);
+    o->setProperty ("depthOff", moodDepthOff.load()); o->setProperty ("roomOff", moodRoomOff.load()); o->setProperty ("widthOff", moodWidthOff.load());
+    return juce::var (o.get());
+}
+
+void SolutionAudioProcessor::recordTrajectory()
+{
+    if (! hostPlaying.load()) return;
+    const bool moving = apvts.getRawParameterValue ("motion_on")->load() > 0.5f;
+    SolutionCinema::Pos p;
+    p.az = moving ? animAz.load() : apvts.getRawParameterValue ("stage_azimuth")->load();
+    p.el = moving ? animEl.load() : apvts.getRawParameterValue ("stage_elevation")->load();
+    p.dist = moving ? animDist.load() : apvts.getRawParameterValue ("stage_distance")->load();
+    p.width = apvts.getRawParameterValue ("stage_width")->load();
+    trajectory.record (hostTimeSec.load(), p);
+    trajectoryDirty = true;
+    if (rackSlot >= 0 && juce::Time::getMillisecondCounter() - lastTrajPublish > 3000)
+    {
+        rackLinkBus->slots[(size_t) rackSlot].trajectoryText = trajectory.toString();
+        lastTrajPublish = juce::Time::getMillisecondCounter();
+    }
+}
+
+std::vector<SolutionMeta::Track> SolutionAudioProcessor::metadataTracks (bool wholeRack)
+{
+    std::vector<SolutionMeta::Track> tracks;
+    auto nameOf = [] (const juce::String& track, int moduleIdx) { return track.isNotEmpty() ? track : juce::String (SolutionDSP::moduleDisplayName ((SolutionDSP::ModuleId) moduleIdx)); };
+    tracks.push_back ({ nameOf (rackSlot >= 0 ? rackLinkBus->slots[(size_t) rackSlot].trackName : juce::String(), (int) moduleId), trajectory.get() });
+    if (wholeRack)
+        for (int i = 0; i < SolutionDSP::RackLinkBus::maxSlots; ++i)
+        {
+            const auto& sl = rackLinkBus->slots[(size_t) i];
+            if (i == rackSlot || ! sl.active.load() || sl.trajectoryText.isEmpty()) continue;
+            SolutionCinema::Trajectory t; t.fromString (sl.trajectoryText);
+            tracks.push_back ({ nameOf (sl.trackName, sl.moduleId.load()), t.get() });
+        }
+    return tracks;
+}
+
+juce::String SolutionAudioProcessor::embedMetadata (const juce::File& wav, bool wholeRack, juce::File& written)
+{
+    if (trajectory.empty()) return "Nothing recorded yet - play the session (or bounce it) with this plugin running first.";
+    const auto tracks = metadataTracks (wholeRack);
+    double dur = 0; for (auto& t : tracks) if (! t.points.empty()) dur = std::max (dur, (double) t.points.rbegin()->first / SolutionCinema::Trajectory::rate + 0.2);
+    int channels = 2;
+    { juce::FileInputStream in (wav); if (in.openedOk()) { juce::WavAudioFormat f; if (std::unique_ptr<juce::AudioFormatReader> r (f.createReaderFor (new juce::FileInputStream (wav), true)); r != nullptr) { channels = (int) r->numChannels; dur = std::max (dur, r->lengthInSamples / r->sampleRate); } } }
+    const int perObject = wholeRack ? 0 : channels;              // a stem maps all its channels to this object
+    const auto adm = SolutionMeta::buildAdm (tracks, dur, std::max (1, perObject));
+    const auto chna = wholeRack ? juce::MemoryBlock() : SolutionMeta::buildChna (channels, channels);
+    written = wav.getSiblingFile (wav.getFileNameWithoutExtension() + " (with spatial metadata).wav");
+    juce::String err;
+    if (! SolutionMeta::embed (wav, written, adm, SolutionMeta::buildIxml (tracks, wav.getFileNameWithoutExtension()), chna, err)) return err;
+    return {};
+}
+
+juce::String SolutionAudioProcessor::exportMetadataSidecars (const juce::File& base, bool wholeRack)
+{
+    if (trajectory.empty()) return "Nothing recorded yet - play the session with this plugin running first.";
+    const auto tracks = metadataTracks (wholeRack);
+    double dur = 0; for (auto& t : tracks) if (! t.points.empty()) dur = std::max (dur, (double) t.points.rbegin()->first / SolutionCinema::Trajectory::rate + 0.2);
+    base.withFileExtension ("json").replaceWithText (SolutionMeta::toJson (tracks));
+    base.withFileExtension ("adm.xml").replaceWithText (SolutionMeta::buildAdm (tracks, dur, 1));
+    return {};
 }
 
 // ===================== Test-tone analyser =====================
@@ -283,6 +446,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v19: AI Analyze - cinematic cues (on), emotional resonance mapping (off)
+    params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "cues_on", 19 },     "Cinematic Cues", true));
+    params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "mood_follow", 19 }, "Emotional Resonance", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "mood_amount", 19 }, "Emotional Resonance Amount",
+                          juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "dialogue_duck_db", 18 }, "Dialogue Duck Depth (dB)",
                           juce::NormalisableRange<float> (-12.0f, 0.0f, 0.1f), -6.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "transient_attack", 18 }, "Transient Attack (%)",
@@ -749,7 +917,18 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // 3D stage: distance, and the motion path (locked to the host's bars when it's playing).
     if (auto* ph = getPlayHead())                    // the host's transport state (voice control won't press "play" twice)
-        if (auto pos = ph->getPosition()) { hostPlaying.store (pos->getIsPlaying(), std::memory_order_relaxed); hostRecording.store (pos->getIsRecording(), std::memory_order_relaxed); }
+        if (auto pos = ph->getPosition())
+        {
+            hostPlaying.store (pos->getIsPlaying(), std::memory_order_relaxed); hostRecording.store (pos->getIsRecording(), std::memory_order_relaxed);
+            if (auto ts = pos->getTimeInSeconds()) hostTimeSec.store (*ts, std::memory_order_relaxed);
+            if (auto fr = pos->getFrameRate()) hostFps.store (fr->getEffectiveRate(), std::memory_order_relaxed);
+        }
+    if (moodTap.isEnabled()) moodTap.push (dryCopy.getReadPointer (0), dryCopy.getReadPointer (1), numSamples);
+    {   // Emotional resonance mapping: gentle offsets on drive, space and width (set by the mood analyser)
+        p.depth   = juce::jlimit (0.0f, 1.0f, p.depth   + moodDepthOff.load (std::memory_order_relaxed));
+        p.roomMix = juce::jlimit (0.0f, 1.0f, p.roomMix + moodRoomOff.load (std::memory_order_relaxed));
+        p.width   = juce::jlimit (0.0f, 2.0f, p.width   + moodWidthOff.load (std::memory_order_relaxed));
+    }
 
     float stageDistance = apvts.getRawParameterValue ("stage_distance")->load();
     if (apvts.getRawParameterValue ("motion_on")->load() > 0.5f)
@@ -868,14 +1047,23 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         if (apvts.getRawParameterValue ("dialogue_duck")->load() > 0.5f)
         {
             float voice = 0.0f; int sources = 0;
+            double pres = 0.0, presW = 0.0;              // where the dialogue's intelligibility energy sits (1.1 - 5.4 kHz)
             for (size_t i = 0; i < rackLinkBus->slots.size(); ++i)
             {
                 const auto& sl = rackLinkBus->slots[i];
                 if ((int) i == rackSlot || ! sl.active.load (std::memory_order_relaxed) || ! sl.dialogueSource.load (std::memory_order_relaxed)) continue;
-                voice = std::max (voice, sl.voice.load (std::memory_order_relaxed)); ++sources;
+                const float v = sl.voice.load (std::memory_order_relaxed);
+                voice = std::max (voice, v); ++sources;
+                for (size_t b = 6; b <= 10; ++b)
+                {
+                    const double pw = std::pow (10.0, sl.bandDb[b].load (std::memory_order_relaxed) / 10.0) * (0.25 + v);
+                    pres += pw * std::log2 (SolutionDSP::Unmask::centres[b]); presW += pw;
+                }
             }
             dialogueSources.store (sources, std::memory_order_relaxed);
-            dialogueDucker.process (left, right, numSamples, voice, apvts.getRawParameterValue ("dialogue_duck_db")->load());
+            const float carveHz = presW > 1e-12 ? (float) std::pow (2.0, pres / presW) : 2200.0f;
+            dialogueDucker.process (left, right, numSamples, voice, apvts.getRawParameterValue ("dialogue_duck_db")->load(), carveHz);
+            dialogueCarveHz.store (dialogueDucker.getCarveHz(), std::memory_order_relaxed);
             dialogueDuckDb.store (dialogueDucker.getReductionDb(), std::memory_order_relaxed);
         }
         else { dialogueDucker.reset(); dialogueDuckDb.store (0.0f, std::memory_order_relaxed); }
@@ -1522,6 +1710,8 @@ void SolutionAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("module", moduleKey, nullptr);
     state.setProperty ("midimap", getCcMapString(), nullptr);          // MIDI Learn survives reopening the session
     state.setProperty ("history", history.toString(), nullptr);        // edit history survives reopening too
+    state.setProperty ("cues", cueList.toString(), nullptr);
+    state.setProperty ("traj", trajectory.toString(), nullptr);
     state.setProperty ("preset", presets.getCurrentPresetName(), nullptr);
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     copyXmlToBinary (*xml, destData);
@@ -1560,6 +1750,8 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
     migrateState (tree, savedVersion);
     apvts.replaceState (tree);
     setCcMapString (apvts.state.getProperty ("midimap").toString());
+    cueList.fromString (apvts.state.getProperty ("cues").toString());
+    trajectory.fromString (apvts.state.getProperty ("traj").toString()); trajectoryDirty = true;
     if (apvts.state.hasProperty ("history")) history.fromString (apvts.state.getProperty ("history").toString());
     else history.rebaseline();                                          // a loaded session is not an edit
     historyGen++; publishHistory();

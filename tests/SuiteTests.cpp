@@ -1599,6 +1599,19 @@ static void testDialogueAndTransients()
         std::printf ("  music at 2.2 kHz: %.1f dB before, %.1f dB while talking, %.1f dB after\n", quietDb, talkDb, afterDb);
         EXPECT (quietDb - talkDb > 4.5 && quietDb - talkDb < 9.5, "music ducks ~6-8 dB in the speech band while someone talks (%.1f dB)", quietDb - talkDb);
         EXPECT (std::abs (afterDb - quietDb) < 0.5, "music comes back when the talking stops (%.1f vs %.1f)", afterDb, quietDb);
+        // The notch follows where this voice carries its presence (not a fixed 2.2 kHz).
+        const float carve = b->dialogueCarveHz.load();
+        std::printf ("  dialogue notch follows the voice: %.0f Hz\n", carve);
+        EXPECT (carve > 900.0f && carve < 4500.0f, "notch inside the intelligibility range (%.0f Hz)", carve);
+        // A brighter voice (energy around 3.6 kHz) pulls the notch up.
+        for (int k = 0; k < (int) (2.0 * fs / 512); ++k)
+        {
+            for (int i = 0; i < 512; ++i) { const double t = (k * 512 + i) / fs; const float v = (float) ((0.15 * std::sin (2 * juce::MathConstants<double>::pi * 3600.0 * t)
+                                                 + 0.03 * std::sin (2 * juce::MathConstants<double>::pi * 1100.0 * t)) * speechLike (k * 512 + i, fs, true) * 6.0); ba.setSample (0, i, v); ba.setSample (1, i, v); }
+            fillSine (bb, fs, 2200.0, 0.2f, 0.0, k * 512);
+            a->processBlock (ba, midi); b->processBlock (bb, midi);
+        }
+        EXPECT (b->dialogueCarveHz.load() > carve + 300.0f, "brighter dialogue moves the notch up (%.0f -> %.0f Hz)", carve, b->dialogueCarveHz.load());
     }
 
     // Transient shaper: +attack makes hits stand out, -attack softens them, sustain lengthens tails.
@@ -1662,6 +1675,7 @@ static void testVoiceParser()
         { "solution next preset", Command::Ui, "nextPreset", 0, -1 },
         { "solution undo", Command::Ui, "undo", 0, -1 },
         { "solution analyzer", Command::Ui, "analyzer", 0, -1 },
+        { "solution add cue", Command::Ui, "addCue", 0, -1 },
         { "solution show history", Command::Ui, "history", 0, -1 },
         { "solution midi controllers", Command::Ui, "midi", 0, -1 },
         { "solution turn the monitors off", Command::Ui, "monitorsOff", 0, -1 },
@@ -1756,6 +1770,104 @@ static void testNetworkOffload()
 }
 
 
+
+
+struct FakePlayHead : juce::AudioPlayHead
+{
+    double t = 0; bool playing = true;
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo p; p.setIsPlaying (playing); p.setTimeInSeconds (t); p.setTimeInSamples ((juce::int64) (t * 48000));
+        p.setFrameRate (juce::AudioPlayHead::FrameRate().withBaseRate (25)); return p;
+    }
+};
+
+static void testAiAnalyzeCinema()
+{
+    std::printf ("AI Analyze: cinematic cues, timecode, emotional resonance, spatial metadata embedding\n");
+    // ---- cues ----
+    {
+        SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
+        FakePlayHead ph; proc.setPlayHead (&ph);
+        juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512); b.clear();
+        auto at = [&] (double t) { ph.t = t; proc.processBlock (b, midi); proc.runCues(); return proc.apvts.getRawParameterValue ("stage_width")->load(); };
+        setParam (proc, "stage_width", 1.0f); proc.addCue ("Opening", 0.0, 0.0);
+        setParam (proc, "stage_width", 0.4f); proc.addCue ("Chase", 10.0, 2.0);
+        setParam (proc, "stage_width", 1.7f);                       // the user moves it before playing
+        EXPECT (std::abs (at (5.0) - 1.0f) < 0.02f, "playing inside the first scene recalls it (width %.2f)", proc.apvts.getRawParameterValue ("stage_width")->load());
+        const float mid = at (11.0);
+        EXPECT (mid < 0.95f && mid > 0.45f, "half-way through the 2 s crossfade into the next scene (%.2f)", mid);
+        EXPECT (std::abs (at (12.5) - 0.4f) < 0.02f, "crossfade lands on the scene's value (%.2f)", proc.apvts.getRawParameterValue ("stage_width")->load());
+        EXPECT (std::abs (at (3.0) - 1.0f) < 0.02f, "jumping back recalls the earlier scene");
+        const auto js = proc.cuesJson();
+        EXPECT (js["cues"].size() == 2 && js["cues"][1]["tc"].toString() == "00:00:10:00", "cue list with timecode (%s)", js["cues"][1]["tc"].toString().toRawUTF8());
+        juce::MemoryBlock st; proc.getStateInformation (st);
+        SolutionAudioProcessor p2; p2.setStateInformation (st.getData(), (int) st.getSize());
+        EXPECT (p2.cuesJson()["cues"].size() == 2, "cues saved with the session");
+        proc.setPlayHead (nullptr);
+    }
+    EXPECT (SolutionCinema::smpte (3661.5, 25.0) == "01:01:01:12", "SMPTE 25 fps (%s)", SolutionCinema::smpte (3661.5, 25.0).toRawUTF8());
+    EXPECT (SolutionCinema::smpte (1800.0 / 29.97 + 1e-6, 29.97) == "00:01:00;02", "SMPTE 29.97 drop-frame skips frame labels 00-01 at the minute (%s)", SolutionCinema::smpte (1800.0 / 29.97 + 1e-6, 29.97).toRawUTF8());
+    EXPECT (SolutionCinema::smpte (17982.0 / 29.97 + 1e-6, 29.97) == "00:10:00;00", "...but not on every tenth minute (%s)", SolutionCinema::smpte (17982.0 / 29.97 + 1e-6, 29.97).toRawUTF8());
+    // ---- mood ----
+    {
+        auto run = [] (std::initializer_list<double> notes, float amp, double pulseHz) {
+            SolutionCinema::MoodAnalyzer m; const double fs = 48000; std::vector<float> x (4096);
+            for (int blk = 0; blk < 120; ++blk)
+            {
+                for (int i = 0; i < 4096; ++i)
+                {
+                    const double t = (blk * 4096 + i) / fs; double v = 0;
+                    for (double f : notes) v += std::sin (2 * juce::MathConstants<double>::pi * f * t) + 0.3 * std::sin (4 * juce::MathConstants<double>::pi * f * t);
+                    const double env = pulseHz > 0 ? std::exp (-std::fmod (t * pulseHz, 1.0) * 8.0) : 1.0;
+                    x[(size_t) i] = (float) (amp * env * v / notes.size());
+                }
+                m.push (x.data(), 4096, fs);
+            }
+            return std::make_pair (m.valence, m.arousal);
+        };
+        const auto maj = run ({ 261.63, 329.63, 392.0, 523.25 }, 0.5f, 4.0), mnr = run ({ 261.63, 311.13, 392.0, 523.25 }, 0.5f, 4.0);
+        const auto calm = run ({ 261.63, 329.63, 392.0 }, 0.03f, 0.0);
+        std::printf ("  major v=%.2f a=%.2f | minor v=%.2f a=%.2f | calm a=%.2f\n", maj.first, maj.second, mnr.first, mnr.second, calm.second);
+        EXPECT (maj.first > mnr.first + 0.2, "major chord reads happier than minor (%.2f vs %.2f)", maj.first, mnr.first);
+        EXPECT (maj.second > calm.second + 0.2, "loud pulsing reads more energetic than quiet sustained (%.2f vs %.2f)", maj.second, calm.second);
+    }
+    // ---- metadata embedding ----
+    {
+        auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("solution_meta_test");
+        dir.deleteRecursively(); dir.createDirectory();
+        auto wav = dir.getChildFile ("Stem.wav");
+        {
+            juce::WavAudioFormat f; auto os = wav.createOutputStream();
+            std::unique_ptr<juce::AudioFormatWriter> w (f.createWriterFor (os.release(), 48000.0, 2, 24, {}, 0));
+            juce::AudioBuffer<float> b (2, 48000); fillSine (b, 48000.0, 440.0, 0.25f, 0.0, 0); w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
+        }
+        SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
+        FakePlayHead ph; proc.setPlayHead (&ph);
+        juce::MidiBuffer midi; juce::AudioBuffer<float> b (2, 512); b.clear();
+        setParam (proc, "stage_azimuth", 30.0f);
+        for (int i = 0; i < 5; ++i) { ph.t = i * 0.2; proc.processBlock (b, midi); proc.recordTrajectoryForTest(); }
+        setParam (proc, "stage_azimuth", -45.0f);
+        for (int i = 5; i < 10; ++i) { ph.t = i * 0.2; proc.processBlock (b, midi); proc.recordTrajectoryForTest(); }
+        proc.setPlayHead (nullptr);
+        juce::File out;
+        const auto err = proc.embedMetadata (wav, false, out);
+        EXPECT (err.isEmpty() && out.existsAsFile(), "metadata embedded into a copy (%s)", err.toRawUTF8());
+        juce::MemoryBlock mb; out.loadFileAsData (mb);
+        const std::string bytes (static_cast<const char*> (mb.getData()), mb.getSize());
+        struct { const std::string& b; bool contains (const char* t) const { return b.find (t) != std::string::npos; } } raw { bytes };
+        EXPECT (raw.contains ("axml") && raw.contains ("chna") && raw.contains ("iXML"), "axml, chna and iXML chunks present");
+        EXPECT (raw.contains ("<position coordinate=\"azimuth\">-30.00</position>") && raw.contains ("<position coordinate=\"azimuth\">45.00</position>"),
+                "ADM blocks follow the move (ADM azimuth is + left)");
+        juce::WavAudioFormat f;
+        std::unique_ptr<juce::AudioFormatReader> r (f.createReaderFor (new juce::FileInputStream (out), true));
+        EXPECT (r != nullptr && r->lengthInSamples == 48000 && r->numChannels == 2, "the WAV still plays: same length and channels");
+        EXPECT (proc.exportMetadataSidecars (dir.getChildFile ("Session"), true).isEmpty() && dir.getChildFile ("Session.json").existsAsFile()
+                && dir.getChildFile ("Session.adm.xml").existsAsFile(), "JSON + ADM sidecars written");
+        dir.deleteRecursively();
+    }
+    std::printf ("  done\n");
+}
 
 static void testToneAnalyzer()
 {
@@ -1937,6 +2049,7 @@ int main()
     testNetworkOffload();
     testEditHistory();
     testToneAnalyzer();
+    testAiAnalyzeCinema();
     testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;

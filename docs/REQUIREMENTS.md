@@ -40,7 +40,8 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ✅ Drone telemetry: flight-log CSV (lat/lon/alt) becomes a sound's motion path
 - ☐ Webcam face tracking; native VR headset (OpenXR) output
 - ✅ Adaptive Learning (suggest only, local file): your usual values per module, "you usually adjust B after A", favourite controls → macro keys; Apply / Not now / Never; on/off, what it learned, forget everything
-- ☐ AI Analyze extensions
+- ✅ AI Analyze hub (A, then 1-6): Mix Match (reference/genre) · Spatial Optimization (spreads tracks sharing frequencies, centres bass & dialogue, narrows wide lows; applies across the rack, undoable) · Intelligent Dialogue Ducking (notch follows where the dialogue tracks carry their words, 0.9-4.5 kHz) · Cinematic Cue Tracking (snapshots at timeline positions with SMPTE incl. 29.97 drop-frame, smooth crossfades; Ctrl+Alt+K / voice "cue") · Emotional Resonance Mapping (key mode, brightness, loudness, hit rate -> valence/arousal; optional gentle drive/space/width follow) · Smart Metadata Embedding (records each track's 3D path; writes ADM axml + chna + iXML into a copy of a bounced WAV, or JSON + ADM XML sidecars)
+- ☐ Interactive Foley synthesizer from picture (Gemini idea - needs a video input; pairs with The Aether)
 - ✅ LAN / local DSP server (AudioGridder-style): Solution Utility runs a DSP Node (auto-discovered on the LAN / this PC); plugins offload with a chosen latency (reported to the DAW), state kept in sync, automatic fallback to local; output matches local processing exactly
 - ✅ Voice: choose the microphone source (Voice settings → Microphone; saved, falls back to the Windows default)
 - ✅ MIDI Controllers panel (Ctrl+Alt+M): presets (Korg nanoKONTROL2, Akai MPK Mini, Novation Launch Control XL, Behringer X-Touch Mini, Arturia MiniLab 3 / KeyLab Essential, generic), auto-setup wizard, mapping list with delete, MIDI map saved with the session; joystick/gamepad axes → any control

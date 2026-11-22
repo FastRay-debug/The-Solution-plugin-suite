@@ -89,15 +89,19 @@ namespace SolutionDSP
     public:
         void prepare (double fs) { sampleRate = fs; g = 0; lastBellDb = 1000; for (auto& b : bell) b.clear(); }
         void reset() { g = 0; lastBellDb = 1000; for (auto& b : bell) b.clear(); }
-        void process (float* l, float* r, int n, float voice, float depthDb)
+        // carveHz: where the dialogue actually carries its intelligibility (from the dialogue tracks' spectra);
+        // the notch glides there so it opens space exactly where the voice needs it.
+        void process (float* l, float* r, int n, float voice, float depthDb, float carveHz = 2200.0f)
         {
+            carve += (juce::jlimit (900.0, 4500.0, (double) carveHz) - carve) * std::min (1.0, n / (0.25 * sampleRate));
             const double down = std::exp (-1.0 / (0.040 * sampleRate)), up = std::exp (-1.0 / (0.450 * sampleRate));
             for (int start = 0; start < n; start += 32)
             {
                 const int len = std::min (32, n - start);
                 for (int i = 0; i < len; ++i) { const double c = voice > g ? down : up; g = voice + (g - voice) * c; }
                 const double bellDb = depthDb * g, broad = std::pow (10.0, depthDb * 0.3 * g / 20.0);
-                if (std::abs (bellDb - lastBellDb) > 0.01) { for (auto& b : bell) { const double z1 = b.z1, z2 = b.z2; b.set (2, sampleRate, 2200.0, 0.6, bellDb); b.z1 = z1; b.z2 = z2; } lastBellDb = bellDb; }
+                if (std::abs (bellDb - lastBellDb) > 0.01 || std::abs (carve - lastCarve) > carve * 0.01)
+                { for (auto& b : bell) { const double z1 = b.z1, z2 = b.z2; b.set (2, sampleRate, carve, 0.6, bellDb); b.z1 = z1; b.z2 = z2; } lastBellDb = bellDb; lastCarve = carve; }
                 for (int i = start; i < start + len; ++i)
                 {
                     l[i] = (float) (bell[0].run (l[i]) * broad);
@@ -107,8 +111,9 @@ namespace SolutionDSP
             reductionDb = (float) (depthDb * g);
         }
         float getReductionDb() const { return reductionDb; }
+        float getCarveHz() const { return (float) carve; }
     private:
-        double sampleRate = 48000.0, g = 0, lastBellDb = 1000;
+        double sampleRate = 48000.0, g = 0, lastBellDb = 1000, carve = 2200.0, lastCarve = 0.0;
         float reductionDb = 0.0f;
         DBiquad bell[2];
     };

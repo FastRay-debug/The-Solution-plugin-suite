@@ -71,7 +71,7 @@ namespace SolutionNet
             if (! writeFrame (*socket, Hello, js.toRawUTF8(), (juce::uint32) js.getNumBytesAsUTF8()) || ! readFrame (*socket, t, reply, 3000) || t != HelloAck)
             { error = "The DSP node didn't answer (is it a Solution Utility with DSP Node on?)"; socket.reset(); return false; }
             nodeInfo = juce::JSON::parse (reply.toString());
-            primed = false; failed = false; lateBlocks = 0; sentSamples = 0; returnedSamples = 0; running = true;
+            primed = false; failed = false; lateBlocks = 0; sentSamples = 0; returnedSamples = 0; outPos = 0; recvPos = 0; running = true;
             sender = std::thread ([this] { sendLoop(); });
             receiver = std::thread ([this] { recvLoop(); });
             return true;
@@ -100,19 +100,31 @@ namespace SolutionNet
         }
 
         // Audio thread: send this block, play what came back `latency` samples ago (silence until primed).
+        // Output sample j is always processed input sample j - latency (exactly what the DAW was told).
+        // Before the node's audio is due, the output is silent; if a block arrives late, the gap is silent and
+        // the late samples are dropped when they turn up, so the timing never drifts.
         void process (float* l, float* r, int n)
         {
             pushInput (l, r, n);
-            if (! primed.load() && recvFifo->getNumReady() >= latency) primed = true;
-            if (! primed.load()) { juce::FloatVectorOperations::clear (l, n); juce::FloatVectorOperations::clear (r, n); return; }
-            if (recvFifo->getNumReady() < n)
+            const long long want = outPos - latency;                    // input index that belongs at l[0]
+            if (want > recvPos)                                         // late audio from earlier blocks: drop it
             {
-                juce::FloatVectorOperations::clear (l, n); juce::FloatVectorOperations::clear (r, n);
-                if (++lateBlocks > 8) failed = true;                    // the node can't keep up: plugin goes local
-                return;
+                const int drop = (int) std::min<long long> (want - recvPos, recvFifo->getNumReady());
+                if (drop > 0) { recvFifo->read (drop); recvPos += drop; }
             }
-            const auto rd = recvFifo->read (n);
-            copyOut (rd.startIndex1, rd.blockSize1, l, r, 0); copyOut (rd.startIndex2, rd.blockSize2, l, r, rd.blockSize1);
+            const int lead = (int) juce::jlimit<long long> (0, n, recvPos - want);   // not due yet (start-up)
+            int take = 0;
+            if (recvPos >= want) take = std::min (n - lead, recvFifo->getNumReady());
+            juce::FloatVectorOperations::clear (l, n); juce::FloatVectorOperations::clear (r, n);
+            if (take > 0)
+            {
+                const auto rd = recvFifo->read (take);
+                copyOut (rd.startIndex1, rd.blockSize1, l, r, lead); copyOut (rd.startIndex2, rd.blockSize2, l, r, lead + rd.blockSize1);
+                recvPos += take;
+            }
+            if (want >= 0 && lead + take < n) { if (++lateBlocks > 8) failed = true; }   // the node can't keep up: plugin goes local
+            else if (want >= 0) lateBlocks = std::max (0, lateBlocks - 1);
+            outPos += n;
         }
 
     private:
@@ -178,6 +190,7 @@ namespace SolutionNet
         std::thread sender, receiver;
         std::atomic<bool> running { false }, failed { false }, primed { false };
         std::atomic<int> lateBlocks { 0 };
+        long long outPos = 0, recvPos = 0;            // audio thread: output index / input index of the next received sample
         std::atomic<juce::int64> sentSamples { 0 }, returnedSamples { 0 };
         juce::uint32 seqNo = 0;
         int latency = 2048;

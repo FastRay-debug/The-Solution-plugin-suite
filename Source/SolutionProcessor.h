@@ -31,6 +31,8 @@
 #include "Dqs.h"
 #include "EditHistory.h"
 #include "ToneAnalyzer.h"
+#include "CinemaTools.h"
+#include "MetadataExport.h"
 #include <thread>
 #include <atomic>
 #include <array>
@@ -235,6 +237,7 @@ public:
     void markTouched (const juce::String& id);                       // a person moved it (UI, voice, remote)
     juce::String historyText() const { return history.toString (40); }
     void pollHistoryForTest() { pollHistory(); }
+    void recordTrajectoryForTest() { recordTrajectory(); }
     void setHostPlayingForTest (bool on) { hostPlaying.store (on); }
     // Test-tone analyser: measures a private copy of this module with the current settings (message thread).
     bool startToneAnalysis (float toneHz, float levelDb);        // false if one is already running
@@ -242,6 +245,23 @@ public:
     bool toneAnalysisRunning() const { return toneJob != nullptr; }
     juce::var takeToneAnalysisResult();                          // non-void once, when a run has finished
     juce::var runToneAnalysisNow (float toneHz, float levelDb);  // blocking (tests, offline)
+    std::atomic<float> dialogueCarveHz { 2200.0f };            // where the dialogue notch sits right now
+    // AI Analyze (message thread unless noted)
+    std::atomic<double> hostTimeSec { 0.0 }, hostFps { 0.0 };   // audio thread writes
+    void addCue (const juce::String& name, double timeSec = -1.0, double fadeSec = 1.0);
+    void removeCue (double timeSec);
+    void editCue (double timeSec, const juce::String& name, double fadeSec, double newTime = -1.0);
+    juce::var cuesJson() const;
+    int getCuesGen() const { return cuesGen; }
+    void runCues();                                              // 30 Hz while playing
+    juce::var moodJson() const;
+    bool moodWatch = false;                                      // the UI is showing the mood meter
+    juce::String embedMetadata (const juce::File& wav, bool wholeRack, juce::File& written);   // "" = ok
+    juce::String exportMetadataSidecars (const juce::File& base, bool wholeRack);
+    void clearTrajectory() { trajectory.clear(); trajectoryDirty = true; if (rackSlot >= 0) rackLinkBus->slots[(size_t) rackSlot].trajectoryText = {}; }
+    int trajectoryPoints() const { return (int) trajectory.get().size(); }
+    std::atomic<float> moodDepthOff { 0 }, moodRoomOff { 0 }, moodWidthOff { 0 };
+    SolutionCinema::MoodAnalyzer mood;
     juce::String getCcMapString() const;
     void setCcMapString (const juce::String& map);
     bool setCcMapping (int cc, const juce::String& paramId);
@@ -252,7 +272,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 18;  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 19;  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
@@ -322,6 +342,19 @@ private:
     std::unique_ptr<SolutionAudioProcessor> makeMeasurementCopy();
     static juce::var measure (SolutionAudioProcessor& copy, float hz, float db, std::atomic<float>& progress);
     void pollToneJob();
+    SolutionCinema::CueList cueList;
+    std::map<juce::String, float> cueFrom;
+    int cuesGen = 0, activeCue = -1;
+    std::map<juce::String, float> cueableValues() const;
+    struct CueClock : juce::Timer { std::function<void()> tick; void timerCallback() override { tick(); } } cueClock;
+    SolutionDSP::AudioTap moodTap;
+    std::vector<float> moodMono;
+    void pollMood();
+    SolutionCinema::Trajectory trajectory;
+    bool trajectoryDirty = false;
+    juce::uint32 lastTrajPublish = 0;
+    void recordTrajectory();
+    std::vector<SolutionMeta::Track> metadataTracks (bool wholeRack);
     SolutionHistory::EditHistory history;
     std::unique_ptr<std::atomic<bool>[]> touchFlags;               // indexed like learnableParamIds (MIDI touches on the audio thread)
     std::map<juce::String, int> learnIndex;
@@ -335,6 +368,8 @@ private:
         pollSessionRequests();
         pollHistory();
         pollToneJob();
+        pollMood();
+        recordTrajectory();
         if (offloadActive.load() && offload != nullptr && offloadStateDirty.exchange (false))
         {
             juce::MemoryBlock st; getStateInformation (st); offload->sendState (st);       // the node sounds identical
