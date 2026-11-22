@@ -1694,6 +1694,48 @@ static void testHeadTracking()
     proc.headTracker->enabled = false;
 }
 
+static void testNetworkOffload()
+{
+    std::printf ("LAN / local DSP offload (node <-> plugin over TCP)\n");
+    const double fs = 48000.0;
+    SolutionNet::NodeServer node ([] (const juce::String& key) { return std::make_unique<SolutionAudioProcessor> (key); }, "Test Node");
+    if (! node.start (47950)) { std::printf ("  (couldn't open a port - skipped)\n"); return; }
+    const auto found = SolutionNet::discoverNodes (300);
+    std::printf ("  discovery found %d node(s)\n", found.size());
+
+    auto remoteProc = std::make_unique<SolutionAudioProcessor>(), localProc = std::make_unique<SolutionAudioProcessor>();
+    remoteProc->prepareToPlay (fs, 512); localProc->prepareToPlay (fs, 512);
+    for (auto* p : { remoteProc.get(), localProc.get() }) { setParam (*p, "stage_width", 1.6f); setParam (*p, "stage_azimuth", 30.0f); }
+    const int baseLatency = remoteProc->getLatencySamples();
+    juce::String err;
+    const bool ok = remoteProc->connectOffload ("127.0.0.1", 47950, 2048, err);
+    EXPECT (ok, "connect to node: %s", err.toRawUTF8());
+    if (! ok) return;
+    remoteProc->applyPendingChanges();
+    EXPECT (remoteProc->getLatencySamples() == baseLatency + 2048, "offload latency reported (%d)", remoteProc->getLatencySamples());
+    juce::Thread::sleep (200);                                   // node receives the settings
+    juce::MidiBuffer midi; juce::AudioBuffer<float> a (2, 512), b (2, 512);
+    std::vector<float> outRemote, outLocal;
+    for (int k = 0; k < 200; ++k)
+    {
+        fillSine (a, fs, 330.0, 0.25f, 0.0, k * 512); b.makeCopyOf (a);
+        remoteProc->processBlock (a, midi); localProc->processBlock (b, midi);
+        outRemote.insert (outRemote.end(), a.getReadPointer (0), a.getReadPointer (0) + 512);
+        outLocal.insert (outLocal.end(), b.getReadPointer (0), b.getReadPointer (0) + 512);
+        juce::Thread::sleep (3);                                 // roughly real time for the network threads
+    }
+    EXPECT (remoteProc->isOffloaded() && node.getActiveSessions() == 1, "still offloaded, 1 session on the node");
+    // Compare the node's output (2048 samples later) with local processing, after things settle.
+    double err2 = 0, sig2 = 0;
+    for (size_t i = 60000; i < outLocal.size() - 2048 && i + 2048 < outRemote.size(); ++i) { const double d = outRemote[i + 2048] - outLocal[i]; err2 += d * d; sig2 += outLocal[i] * outLocal[i]; }
+    const double snr = 10 * std::log10 (sig2 / (err2 + 1e-20));
+    std::printf ("  node output vs local processing: %.1f dB match\n", snr);
+    EXPECT (snr > 40.0, "the node must sound like local processing (%.1f dB)", snr);
+    remoteProc->disconnectOffload();
+    EXPECT (! remoteProc->isOffloaded() && remoteProc->getLatencySamples() == baseLatency, "back to local, latency restored");
+    node.stop();
+}
+
 static void testDiagnostics()
 {
     std::printf ("Diagnostics: real counters + real system readings\n");
@@ -1768,6 +1810,7 @@ int main()
     testDialogueAndTransients();
     testVoiceParser();
     testHeadTracking();
+    testNetworkOffload();
     testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;

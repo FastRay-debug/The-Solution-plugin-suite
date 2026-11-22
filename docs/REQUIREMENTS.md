@@ -41,7 +41,7 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ☐ Webcam face tracking; native VR headset (OpenXR) output
 - ✅ Adaptive Learning (suggest only, local file): your usual values per module, "you usually adjust B after A", favourite controls → macro keys; Apply / Not now / Never; on/off, what it learned, forget everything
 - ☐ AI Analyze extensions
-- ☐ LAN / local DSP server (AudioGridder-style)
+- ✅ LAN / local DSP server (AudioGridder-style): Solution Utility runs a DSP Node (auto-discovered on the LAN / this PC); plugins offload with a chosen latency (reported to the DAW), state kept in sync, automatic fallback to local; output matches local processing exactly
 - ☐ Voice: choose the microphone source
 - ☐ MIDI controller presets for major manufacturers + auto-setup wizard; joystick mapping for any control
 - ☐ Undo history per module + global, with selective undo (go back but keep chosen changes)

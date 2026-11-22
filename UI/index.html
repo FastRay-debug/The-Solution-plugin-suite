@@ -634,7 +634,7 @@
         <div id="dgLog" class="dg-loglist"></div>
       </div>
     </div>
-    <div class="dg-foot"><span>STATUS: <b style="color:#4ade80">DIAGNOSTIC UTILITY ACTIVE</b></span><span id="dgChip">CPU: --</span><span id="dgHost"></span><span id="dgUptime">UPTIME: --</span></div>
+    <div class="dg-foot"><span>STATUS: <b style="color:#4ade80">DIAGNOSTIC UTILITY ACTIVE</b></span><span id="dgChip">CPU: --</span><span id="dgHost"></span><span id="dgUptime">UPTIME: --</span><span id="dgNode"></span></div>
     <canvas id="roboHandCanvas"></canvas>
   </div>
 
@@ -1299,7 +1299,7 @@
           </div>
           <button data-ptoggle="limiter_lookahead" data-label="Lookahead Limiter (5 ms)" data-def="0" data-tip="Gives the -0.5 dB ceiling limiter 5 ms to see peaks coming instead of 1.5 ms: smoother, more transparent on fast transients. Adds 3.5 ms latency (reported to your DAW). Ctrl+Alt+L">Lookahead Limiter (5 ms): OFF</button>
           <button data-ptoggle="dc_guard" data-label="DC Guard" data-def="1" data-tip="Removes DC offset on the way in and any DC the processing creates on the way out (1 Hz blocker - even 7 Hz infrasonics pass). Leave it on. Ctrl+Alt+D">DC Guard: ON</button>
-          <button disabled style="opacity:0.45;cursor:default;" data-tip="Run the heavy processing on a Solution Node server on this PC or another computer on your network - being built">LAN / Local DSP Server: coming</button>
+          <button id="lanBtn" onclick="document.getElementById('secretModal').classList.remove('open'); openLan();" data-tip="Run this plugin's processing on a Solution DSP Node (the Solution Utility) on this PC or another computer on your network">🖧 LAN / Local DSP Server…</button>
           <div class="ctrl" data-tip="Suite CPU load that makes Auto step quality down"><label>DQS CPU THRESHOLD <span id="v-dqs_threshold">80%</span></label><input type="range" data-sync="dqs_threshold" min="50" max="95" step="1" value="80" oninput="bind('dqs_threshold', this.value, '%', 1)"></div>
 
           <span style="font-size:9.5px;color:var(--accent2);font-family:monospace;margin-top:4px;">WORKFLOW &amp; MASTERING</span>
@@ -1395,6 +1395,20 @@
       <div class="dg-hint" style="font-size:11px;margin:6px 0 10px;">It watches which values you settle on and which controls you use together, then suggests - it never changes anything by itself. Everything stays on this computer.</div>
       <div id="learnList"></div>
       <div style="display:flex;gap:6px;margin-top:10px;"><button onclick="forgetLearning()">FORGET EVERYTHING</button><button onclick="document.getElementById('learnModal').classList.remove('open')">CLOSE</button></div>
+    </div>
+  </div>
+
+  <div class="modal" id="lanModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:560px;max-height:620px;overflow-y:auto;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">🖧 LAN / LOCAL DSP SERVER</strong>
+      <div class="dg-hint" style="font-size:11px;margin:6px 0 10px;">Run this plugin's processing on a <b>Solution DSP Node</b> - the Solution Utility app, on this PC or another computer on your network (AudioGridder-style). Your DAW gets the extra latency so everything stays in time. If the node falls behind, the plugin goes back to processing locally by itself.</div>
+      <div id="lanStatus" style="font-size:12px;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:6px;align-items:center;font-size:12px;">Latency
+        <select id="lanLatency"><option value="1024">1024 samples (~21 ms) - same PC</option><option value="2048" selected>2048 (~43 ms) - wired network</option><option value="4096">4096 (~85 ms) - Wi-Fi</option><option value="8192">8192 (~170 ms) - safest</option></select>
+        <button onclick="discoverLan()">🔍 FIND NODES</button></div>
+      <div id="lanNodes" style="margin-top:8px;"></div>
+      <div class="dg-hint" style="font-size:11px;margin-top:8px;">Note: while offloaded, this plugin's Rack Link features (unmask, ducking, auto-align) don't reach the tracks still in your DAW. Bounces work normally.</div>
+      <div style="display:flex;gap:6px;margin-top:10px;"><button onclick="emit('offload', { cmd: 'disconnect' }); setTimeout(openLan, 300)">PROCESS LOCALLY</button><button onclick="document.getElementById('lanModal').classList.remove('open')">CLOSE</button></div>
     </div>
   </div>
 
@@ -2307,6 +2321,7 @@
       window.__JUCE__.backend.addEventListener('telemetry', (t) => {
         window._tele = t;
         if (t.headOn !== undefined) updateHeadReadout(t);
+        if (t.offload !== undefined && document.getElementById('lanModal').classList.contains('open')) renderLanStatus(t);
         if (t.vanilla !== undefined) document.getElementById('vanillaBanner').style.display = t.vanilla ? 'block' : 'none';
         if (t.voice !== undefined) {
           const led = document.getElementById('voiceLed');
@@ -2987,6 +3002,8 @@
       document.getElementById('dgChip').textContent = 'CPU: ' + (d.cpuModel || '--');
       document.getElementById('dgHost').textContent = (d.host ? 'HOST: ' + d.host + ' · ' : '') + (d.sampleRate ? (d.sampleRate / 1000).toFixed(1) + ' kHz / ' + d.blockSize + ' samples' : '');
       document.getElementById('dgUptime').textContent = 'SYSTEM UPTIME: ' + hms(d.uptime);
+      if (d.node) document.getElementById('dgNode').innerHTML = d.node.on ? `🖧 DSP NODE <b style="color:#4ade80">ON</b> · port ${d.node.port} · ${d.node.sessions} plugin(s)${d.node.modules && d.node.modules.length ? ': ' + escapeHtml(d.node.modules.join(', ')) : ''} <a href="#" style="color:#93a4c3" onclick="emit('diag',{cmd:'node',on:false});return false;">turn off</a>`
+                                                    : `🖧 DSP NODE <b style="color:#94a3b8">OFF</b> <a href="#" style="color:#93a4c3" onclick="emit('diag',{cmd:'node',on:true});return false;">turn on</a>`;
       drawHistory(d);
     }
     function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -3484,6 +3501,23 @@
       window.__JUCE__.backend.addEventListener('learnData', (d) => { try { const all = JSON.parse(d || '{}'); if (all.modules) LEARN.data = all; LEARN.never = all.never || {}; } catch (e) {} });
       setTimeout(() => emit('learn', { cmd: 'load' }), 500);
     }
+
+    // ===================== LAN / LOCAL DSP OFFLOAD =====================
+    function openLan() { document.getElementById('lanModal').classList.add('open'); renderLanStatus(window._tele || {}); discoverLan(); }
+    function discoverLan() { document.getElementById('lanNodes').innerHTML = '<div class="dg-hint">Looking for Solution DSP Nodes…</div>'; emit('offload', { cmd: 'discover' });
+      if (!window.__JUCE__) document.getElementById('lanNodes').innerHTML = '<div class="dg-hint">Works inside the plugin.</div>'; }
+    function renderLanStatus(t) {
+      const el = document.getElementById('lanStatus'); if (!el) return;
+      el.innerHTML = t.offload ? `<b style="color:#4ade80">● Processing on ${escapeHtml(t.offloadNode)}</b> · +${(+t.offloadLatencyMs).toFixed(0)} ms latency · late blocks ${t.offloadLate}` : '<span style="color:var(--mute)">○ Processing locally</span>';
+      const b = document.getElementById('lanBtn'); if (b) b.classList.toggle('active', !!t.offload);
+    }
+    if (window.__JUCE__ && window.__JUCE__.backend) window.__JUCE__.backend.addEventListener('offloadNodes', (nodes) => {
+      const host = document.getElementById('lanNodes');
+      host.innerHTML = (nodes || []).map((n, i) => `<div class="pr-row info"><span>🖧</span><div><b>${escapeHtml(n.name)}</b><small>${escapeHtml(n.host)} · ${n.cores} threads · ${escapeHtml(n.cpu || '')} · ${n.sessions} plugin(s) running</small></div><button data-i="${i}">USE</button></div>`).join('')
+        || '<div class="dg-hint">No nodes found. Start the <b>Solution Utility</b> on this PC or another computer on your network (its DSP Node is on by default), then FIND NODES again.</div>';
+      host.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { const n = nodes[+b.dataset.i];
+        emit('offload', { cmd: 'connect', address: n.address, port: n.port, name: n.name, latency: +document.getElementById('lanLatency').value }); setTimeout(() => renderLanStatus(window._tele || {}), 600); });
+    });
 
     // ===================== LOOKS: the OS button cycles your favourite looks =====================
     // Click = next favourite look. Click and hold = look slots (empty ones show + to save the current look).

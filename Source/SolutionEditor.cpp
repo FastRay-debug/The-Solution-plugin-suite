@@ -195,6 +195,27 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("offload", [this] (const juce::var& d)
+           {
+               const auto cmd = d.getProperty ("cmd", {}).toString();
+               if (cmd == "discover")
+               {
+                   juce::Component::SafePointer<SolutionAudioProcessorEditor> safe (this);
+                   std::thread ([safe] {
+                       auto nodes = SolutionNet::discoverNodes (600);
+                       juce::MessageManager::callAsync ([safe, nodes] { if (safe != nullptr) safe->emitToViews ("offloadNodes", juce::var (nodes)); });
+                   }).detach();
+               }
+               else if (cmd == "connect")
+               {
+                   juce::String err;
+                   const auto host = d.getProperty ("address", "127.0.0.1").toString();
+                   if (! audioProcessor.connectOffload (host, (int) d.getProperty ("port", SolutionNet::nodePort), (int) d.getProperty ("latency", 2048), err))
+                       emitToViews ("roomNotice", juce::var (err));
+                   else emitToViews ("roomNotice", juce::var ("Processing on " + d.getProperty ("name", host).toString() + " - extra latency reported to your DAW"));
+               }
+               else if (cmd == "disconnect") audioProcessor.disconnectOffload();
+           })
            .withEventListener ("learn", [this] (const juce::var& d)
            {
                // Adaptive Learning profile: one file per user, shared by every module (never leaves this computer).
@@ -823,6 +844,15 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("diagOverloads", (int) audioProcessor.diag.overloads.load());
     payload->setProperty ("diagDc",        (int) audioProcessor.diag.dcEvents.load());
     payload->setProperty ("vanilla",       audioProcessor.vanillaLoaded.load());
+    if (auto* off = audioProcessor.getOffload(); off != nullptr && audioProcessor.isOffloaded())
+    {
+        payload->setProperty ("offload", true);
+        payload->setProperty ("offloadNode", off->getNodeInfo().getProperty ("name", "node"));
+        payload->setProperty ("offloadLatencyMs", off->getLatency() * 1000.0 / std::max (1.0, audioProcessor.getSampleRate()));
+        payload->setProperty ("offloadLate", off->getLateBlocks());
+    }
+    else payload->setProperty ("offload", false);
+    if (audioProcessor.offloadNotice.isNotEmpty()) { emitToViews ("roomNotice", juce::var (audioProcessor.offloadNotice)); audioProcessor.offloadNotice.clear(); }
     {
         auto& ht = *audioProcessor.headTracker;
         payload->setProperty ("headOn", ht.enabled.load());

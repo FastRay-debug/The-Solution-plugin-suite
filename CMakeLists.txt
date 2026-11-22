@@ -215,8 +215,16 @@ juce_add_gui_app(SolutionUtility
     NEEDS_WEB_BROWSER TRUE
     ICON_BIG          "${CMAKE_CURRENT_SOURCE_DIR}/UI/icon.png"
     ICON_SMALL        "${CMAKE_CURRENT_SOURCE_DIR}/UI/icon.png")
-target_sources(SolutionUtility PRIVATE Source/UtilityApp.cpp Source/SystemMonitor.cpp Source/SystemMonitor.h)
+target_sources(SolutionUtility PRIVATE Source/UtilityApp.cpp Source/SystemMonitor.cpp Source/SystemMonitor.h
+    # the DSP Node runs the full engine of every module, headless
+    Source/SolutionProcessor.cpp Source/PresetManager.cpp Source/RoomCorrection.cpp Source/MixAssistant.cpp Source/RemoteControl.cpp)
 target_compile_definitions(SolutionUtility PRIVATE
+    SOLUTION_HEADLESS=1
+    JucePlugin_Name="Solution DSP Node"
+    SOLUTION_MODULE_NAME="The Stage"
+    SOLUTION_MODULE_ID="TheStage"
+    SOLUTION_CEILING_DBFS=-0.5
+    JUCE_USE_MP3AUDIOFORMAT=1
     JUCE_WEB_BROWSER=1
     JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
     JUCE_USE_CURL=0
@@ -227,6 +235,11 @@ if(WIN32)
 endif()
 target_link_libraries(SolutionUtility PRIVATE
     SolutionSuiteUI
+    RTNeural
+    juce::juce_audio_processors
+    juce::juce_audio_formats
+    juce::juce_dsp
+    juce::juce_osc
     juce::juce_gui_extra
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)

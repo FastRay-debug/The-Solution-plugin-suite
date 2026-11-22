@@ -3,6 +3,8 @@
 // over 127.0.0.1 - see DiagBridge.h). Uses the same page as the plugins, in utility mode.
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "SystemMonitor.h"
+#include "SolutionProcessor.h"
+#include "NetOffload.h"
 #include "BinaryData.h"
 #include <map>
 
@@ -42,6 +44,10 @@ public:
     {
         addAndMakeVisible (webView);
         listening = socket.bindToPort (utilityPort, "127.0.0.1");
+        // DSP Node: Solution plugins on this PC or the network can run their processing here.
+        node = std::make_unique<SolutionNet::NodeServer> ([] (const juce::String& key) { return std::make_unique<SolutionAudioProcessor> (key); },
+                                                          juce::SystemStats::getComputerName());
+        nodeOn = node->start();
         webView.goToURL (juce::WebBrowserComponent::getResourceProviderRoot() + "?module=Solution%20Utility&utility=1&skins=0");
         startTimer (250);
     }
@@ -108,6 +114,12 @@ private:
         juce::StringArray hosts; for (auto& [pid, d] : daws) hosts.addIfNotAlreadyThere (d.host);
         o->setProperty ("host", hosts.isEmpty() ? juce::String ("no DAW reporting yet") : hosts.joinIntoString (", "));
         o->setProperty ("utility", true);
+        juce::DynamicObject::Ptr n = new juce::DynamicObject();
+        n->setProperty ("on", nodeOn); n->setProperty ("port", node != nullptr ? node->getPort() : 0);
+        n->setProperty ("sessions", node != nullptr ? node->getActiveSessions() : 0);
+        juce::Array<juce::var> mods; if (node != nullptr) for (auto& m : node->describeSessions()) mods.add (m);
+        n->setProperty ("modules", mods);
+        o->setProperty ("node", juce::var (n.get()));
         o->setProperty ("listening", listening);
         webView.emitEventIfBrowserIsVisible ("diagData", payload);
     }
@@ -116,6 +128,7 @@ private:
     {
         const auto cmd = d.getProperty ("cmd", {}).toString();
         if (cmd == "clearLog") { logEntries.clear(); send(); }
+        else if (cmd == "node") { const bool on = (bool) d.getProperty ("on", true); if (node != nullptr) { if (on) nodeOn = node->start(); else { node->stop(); nodeOn = false; } } send(); }
         else if (cmd == "export")
         {
             const bool xml = d.getProperty ("format", "csv").toString() == "xml";
@@ -141,6 +154,8 @@ private:
 
     struct Counts { int ov = 0, er = 0; bool seen = false; };
     juce::SharedResourcePointer<SolutionDiag::SystemMonitor> monitor;
+    std::unique_ptr<SolutionNet::NodeServer> node;
+    bool nodeOn = false;
     juce::DatagramSocket socket { false };
     bool listening = false;
     std::map<juce::int64, Daw> daws;

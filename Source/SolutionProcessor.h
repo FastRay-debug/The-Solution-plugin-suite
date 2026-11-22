@@ -12,6 +12,7 @@
 #include "ModuleEngines.h"
 #include "Dialogue.h"
 #include "HeadTracker.h"
+#include "NetOffload.h"
 #include "PresetManager.h"
 #include "Metering.h"
 #include "Dynamics.h"
@@ -37,7 +38,8 @@ class SolutionAudioProcessor final : public juce::AudioProcessor,
                                      private juce::Timer
 {
 public:
-    SolutionAudioProcessor();
+    // moduleOverride: run as a specific module (the DSP Node hosts every module in one app).
+    explicit SolutionAudioProcessor (const juce::String& moduleOverride = {});
     ~SolutionAudioProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -120,6 +122,12 @@ public:
     void turnOffMonitoring();                                    // message thread
     void turnOffMonitoringEverywhere();                          // every instance in the session
     void applyPendingChanges() { handleUpdateNowIfNeeded(); }
+    // LAN / local DSP offload (message thread).
+    bool connectOffload (const juce::String& host, int port, int latencyBudget, juce::String& error);
+    void disconnectOffload();
+    bool isOffloaded() const { return offloadActive.load(); }
+    const SolutionNet::OffloadClient* getOffload() const { return offload.get(); }
+    juce::String offloadNotice;
     // Safe / Vanilla Load (Ctrl+Shift while loading): the saved settings wait here until restored.
     std::atomic<bool> vanillaLoaded { false };
     bool restoreSkippedState()
@@ -247,6 +255,7 @@ private:
     void parameterChanged (const juce::String& id, float) override
     {
         markParamsChanged();
+        offloadStateDirty = true;
         if (id == "limiter_lookahead") { lookaheadChanged = true; triggerAsyncUpdate(); }
     }
     std::atomic<bool> lookaheadChanged { false };
@@ -255,7 +264,8 @@ private:
     std::atomic<bool> paramsChanged { true };
     int currentProgram = 0;
 
-    const SolutionDSP::ModuleId moduleId { SolutionDSP::moduleIdFromName (SOLUTION_MODULE_ID) };
+    const juce::String moduleKey;                     // e.g. "TheBunker"
+    const SolutionDSP::ModuleId moduleId { SolutionDSP::moduleIdFromName (moduleKey.toRawUTF8()) };
     SolutionDSP::SuiteModuleEngine moduleEngine;
     juce::SharedResourcePointer<SolutionDSP::RackLinkBus> rackLinkBus;
     juce::AudioBuffer<float> dryCopy;
@@ -278,7 +288,15 @@ private:
     float ownLoadSmoothed = 0.0f;
     SolutionDSP::MotionPlayer motion;
     double motionFreeSeconds = 0.0;
-    void timerCallback() override { pollSessionRequests(); }
+    void timerCallback() override
+    {
+        pollSessionRequests();
+        if (offloadActive.load() && offload != nullptr && offloadStateDirty.exchange (false))
+        {
+            juce::MemoryBlock st; getStateInformation (st); offload->sendState (st);       // the node sounds identical
+        }
+        if (offloadFellBack.exchange (false)) { disconnectOffload(); offloadNotice = "The DSP node fell behind - processing locally again"; }
+    }
 public:
     std::array<std::atomic<float>, SolutionDSP::Unmask::numBands> unmaskDipDb {};
 private:
@@ -320,6 +338,8 @@ private:
     std::shared_ptr<bool> aliveFlag = std::make_shared<bool> (true);   // lets async callbacks check we still exist
     juce::ThreadPool analysisPool { 1 };                         // declared last: joins first on destruction
     int rackSlot = -1;
+    std::unique_ptr<SolutionNet::OffloadClient> offload;
+    std::atomic<bool> offloadActive { false }, offloadStateDirty { false }, offloadFellBack { false };
     juce::MemoryBlock skippedState;
 public:
     juce::String pendingSkin;          // Skin Studio upload waiting to be shown (message thread only)

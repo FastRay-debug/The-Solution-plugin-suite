@@ -7,11 +7,12 @@
 #include <cmath>
 #include <algorithm>
 
-SolutionAudioProcessor::SolutionAudioProcessor()
+SolutionAudioProcessor::SolutionAudioProcessor (const juce::String& moduleOverride)
     : AudioProcessor (BusesProperties()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, &undoManager, "SolutionState", createParameterLayout())
+      apvts (*this, &undoManager, "SolutionState", createParameterLayout()),
+      moduleKey (moduleOverride.isNotEmpty() ? moduleOverride : juce::String (SOLUTION_MODULE_ID))
 {
     rackLinkBus->activeInstances.fetch_add (1, std::memory_order_relaxed);
     rackSlot = rackLinkBus->claimSlot (static_cast<int> (moduleId));
@@ -257,6 +258,17 @@ bool SolutionAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+    if (offloadActive.load (std::memory_order_acquire))
+    {
+        // LAN / local DSP offload: the node does the processing; we play what it sent back.
+        if (! offload->hasFailed())
+        {
+            offload->process (buffer.getWritePointer (0), buffer.getWritePointer (1), buffer.getNumSamples());
+            loudness.process (buffer.getWritePointer (0), buffer.getWritePointer (1), buffer.getNumSamples());
+            return;
+        }
+        offloadFellBack = true;                // the timer reconnects us to local processing
+    }
     const auto blockStartTicks = juce::Time::getHighResolutionTicks();
     {
         // DQS: decide this block's oversampling from the suite's real-time load.
@@ -1061,7 +1073,34 @@ bool SolutionAudioProcessor::pollAutoGainStage()
 
 void SolutionAudioProcessor::updateLatencyNow()
 {
-    setLatencySamples (getBaseLatency() + (stemActive.load() ? SolutionDSP::StemSplitter::latency : 0));
+    setLatencySamples (getBaseLatency() + (stemActive.load() ? SolutionDSP::StemSplitter::latency : 0)
+                       + (offloadActive.load() && offload != nullptr ? offload->getLatency() : 0));
+}
+
+bool SolutionAudioProcessor::connectOffload (const juce::String& host, int port, int latencySamples, juce::String& error)
+{
+    disconnectOffload();
+    auto client = std::make_unique<SolutionNet::OffloadClient>();
+    if (! client->connect (host, port, moduleKey, preparedSampleRate > 0 ? preparedSampleRate : 48000.0, std::max (preparedBlockSize, 512), latencyBudget, error))
+        return false;
+    juce::MemoryBlock st; getStateInformation (st); client->sendState (st);
+    suspendProcessing (true);                  // swap while the audio thread is out of processBlock
+    offload = std::move (client);
+    offloadActive = true;
+    suspendProcessing (false);
+    updateLatencyNow();
+    return true;
+}
+
+void SolutionAudioProcessor::disconnectOffload()
+{
+    if (offload == nullptr) return;
+    suspendProcessing (true);
+    offloadActive = false;
+    auto old = std::move (offload);
+    suspendProcessing (false);
+    old.reset();                               // closes the connection off the audio thread
+    updateLatencyNow();
 }
 
 void SolutionAudioProcessor::updateTrackProperties (const TrackProperties& properties)
