@@ -551,6 +551,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v26: The Orbit - tube stage (true bypass when off) + Regen Throttle clocked loop (mix 0 by default)
+    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "orbit_tube_on", 26 }, "Tube Stage", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "orbit_tube_drive", 26 }, "Tube Drive (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 40.00f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "orbit_tube_bias", 26 }, "Tube Bias", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.00f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "orbit_tube_mix", 26 }, "Tube Mix (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.00f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "orbit_regen_mix", 26 }, "Regen Loop Mix (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.00f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "orbit_regen_clock", 26 }, "Regen Clock (Hz)", juce::NormalisableRange<float> (2000.0f, 48000.0f, 1.0f), 12000.00f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "orbit_regen_time", 26 }, "Regen Time", juce::StringArray { "1/16", "1/8", "1/8 D", "1/4", "1/4 D", "1/2", "1 Bar", "Free" }, 3));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "orbit_regen_ms", 26 }, "Regen Free (ms)", juce::NormalisableRange<float> (20.0f, 2000.0f, 1.0f), 375.00f));
     // --- v25: The Void acoustic modeller (off by default)
     params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "void_on", 25 }, "Acoustic Modeller", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "void_mix", 25 }, "Room Mix (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 35.00f));
@@ -759,6 +768,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     anchorCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Aether) aetherCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Mosaic) mosaicCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    if (moduleId == SolutionDSP::ModuleId::Orbit) orbitCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Void) { voidCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock)); voidHash = -1; updateVoidRoom(); }
     mosaicLatencyOn = mosaicActive();
     dcGuardIn.prepare (sampleRate);
@@ -1200,6 +1210,17 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             anchorDistPct.store (anchorCore.getDistortionPct(), std::memory_order_relaxed);
             anchorCrestLost.store (anchorCore.getCrestLostDb(), std::memory_order_relaxed);
             anchorVerdict.store (ap.on ? anchorCore.verdict() : -1, std::memory_order_relaxed);
+        }
+        if (moduleId == SolutionDSP::ModuleId::Orbit)
+        {
+            SolutionDSP::OrbitCore::Params op;
+            auto v = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
+            op.tubeOn = v ("orbit_tube_on") > 0.5f; op.drive = v ("orbit_tube_drive") / 100.0f; op.bias = v ("orbit_tube_bias"); op.tubeMix = v ("orbit_tube_mix") / 100.0f;
+            if (safeOn) op.drive = std::min (op.drive, 0.5f);
+            op.regenMix = v ("orbit_regen_mix") / 100.0f; op.regen = v ("regen_throttle"); op.clockHz = v ("orbit_regen_clock");
+            const int div = (int) v ("orbit_regen_time");
+            op.regenMs = div >= 7 ? v ("orbit_regen_ms") : (float) SolutionDSP::AetherCore::tempoMs (div, hostBpm.load());
+            orbitCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, op);
         }
         if (moduleId == SolutionDSP::ModuleId::Void && apvts.getRawParameterValue ("void_on")->load() > 0.5f)
             voidCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples,

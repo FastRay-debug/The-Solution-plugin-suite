@@ -769,6 +769,15 @@
           <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
           <label style="display:flex;gap:2px;align-items:center;" data-tip="WIDE: let the lift's skirt also fill 15-30 Hz. Off = true infrasonics only (the original trick). Shift+I"><input type="checkbox" data-sync="infra_lift_wide" onchange="bind('infra_lift_wide', this.checked ? 1 : 0, '', 1)">WIDE</label>
         </div>
+        <div id="orbitCore" style="display:none;flex-direction:column;gap:3px;font-size:9px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
+            <label style="display:flex;gap:3px;align-items:center;" data-tip="Tube stage. Off = true bypass."><input type="checkbox" data-sync="orbit_tube_on" onchange="bind('orbit_tube_on', this.checked ? 1 : 0, '', 1)">◉ TUBE</label>
+            <button onclick="openAutoConnect()" style="font-size:9px;padding:1px 6px;" data-tip="Auto-Connect: put every track of the session into its spatial zone in one go (Ctrl+Alt+O)">⚙ AUTO-CONNECT…</button></div>
+          <div class="bk-grid2"><div class="bk-row" data-tip="Tube drive"><span>DRIVE</span><input type="range" data-sync="orbit_tube_drive" min="0" max="100" step="1" value="40" oninput="bind('orbit_tube_drive', +this.value, '', 1); bkShow('orbit_tube_drive', +this.value)" ondblclick="this.value=40; bind('orbit_tube_drive', 40, '', 1); bkShow('orbit_tube_drive', 40)"><b id="v-orbit_tube_drive">40%</b></div><div class="bk-row" data-tip="Bias: shifts the operating point (more even harmonics one way, more bite the other)"><span>BIAS</span><input type="range" data-sync="orbit_tube_bias" min="-1" max="1" step="0.01" value="0" oninput="bind('orbit_tube_bias', +this.value, '', 1); bkShow('orbit_tube_bias', +this.value)" ondblclick="this.value=0; bind('orbit_tube_bias', 0, '', 1); bkShow('orbit_tube_bias', 0)"><b id="v-orbit_tube_bias">0.00</b></div><div class="bk-row" data-tip="Blend of the tube stage"><span>MIX</span><input type="range" data-sync="orbit_tube_mix" min="0" max="100" step="1" value="100" oninput="bind('orbit_tube_mix', +this.value, '', 1); bkShow('orbit_tube_mix', +this.value)" ondblclick="this.value=100; bind('orbit_tube_mix', 100, '', 1); bkShow('orbit_tube_mix', 100)"><b id="v-orbit_tube_mix">100%</b></div></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;margin-top:3px;"><span>⟲ REGEN THROTTLE</span>
+            <select data-sync="orbit_regen_time" onchange="bind('orbit_regen_time', +this.value, '', 1)" style="font-size:9px;"><option value="0">1/16</option><option value="1">1/8</option><option value="2">1/8 D</option><option value="3">1/4</option><option value="4">1/4 D</option><option value="5">1/2</option><option value="6">1 Bar</option><option value="7">Free</option></select></div>
+          <div class="bk-grid2"><div class="bk-row" data-tip="Level of the Regen loop repeats"><span>LOOP</span><input type="range" data-sync="orbit_regen_mix" min="0" max="100" step="1" value="0" oninput="bind('orbit_regen_mix', +this.value, '', 1); bkShow('orbit_regen_mix', +this.value)" ondblclick="this.value=0; bind('orbit_regen_mix', 0, '', 1); bkShow('orbit_regen_mix', 0)"><b id="v-orbit_regen_mix">0%</b></div><div class="bk-row" data-tip="Regen Throttle: how much of each repeat goes round again - past 1.0 it runs away (softly)"><span>THROTTLE</span><input type="range" data-sync="regen_throttle" min="0" max="1" step="0.01" value="0" oninput="bind('regen_throttle', +this.value, '', 1); bkShow('regen_throttle', +this.value)" ondblclick="this.value=0; bind('regen_throttle', 0, '', 1); bkShow('regen_throttle', 0)"><b id="v-regen_throttle">0.00</b></div><div class="bk-row" data-tip="Loop sample rate: lower = darker, grittier, bucket-brigade repeats"><span>CLOCK</span><input type="range" data-sync="orbit_regen_clock" min="2000" max="48000" step="100" value="12000" oninput="bind('orbit_regen_clock', +this.value, '', 1); bkShow('orbit_regen_clock', +this.value)" ondblclick="this.value=12000; bind('orbit_regen_clock', 12000, '', 1); bkShow('orbit_regen_clock', 12000)"><b id="v-orbit_regen_clock">12 kHz</b></div><div class="bk-row" data-tip="Loop time when set to Free"><span>FREE</span><input type="range" data-sync="orbit_regen_ms" min="20" max="2000" step="1" value="375" oninput="bind('orbit_regen_ms', +this.value, '', 1); bkShow('orbit_regen_ms', +this.value)" ondblclick="this.value=375; bind('orbit_regen_ms', 375, '', 1); bkShow('orbit_regen_ms', 375)"><b id="v-orbit_regen_ms">375 ms</b></div></div>
+        </div>
         <div id="voidCore" style="display:none;flex-direction:column;gap:3px;font-size:9px;">
           <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
             <label style="display:flex;gap:3px;align-items:center;"><input type="checkbox" data-sync="void_on" onchange="bind('void_on', this.checked ? 1 : 0, '', 1)">⬡ ROOM MODELLER</label>
@@ -1568,6 +1577,16 @@
     </div>
   </div>
 
+  <div class="modal" id="acModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:min(640px,94vw);max-height:84vh;overflow-y:auto;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">⚙ AUTO-CONNECT · SOURCES → SPATIAL ZONES</strong>
+      <div class="dg-hint" style="font-size:11px;margin:6px 0;">Every Solution track in the session, what it sounds like it is, and the zone it will go to. Change anything, then CONNECT. Undo from 🕘 History.</div>
+      <div id="acList"></div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:8px;"><input type="checkbox" id="acDuck" checked> Vocals / dialogue become the duck source; music beds make room for them</label>
+      <div style="display:flex;gap:6px;margin-top:10px;"><button onclick="applyAutoConnect()">✓ CONNECT</button><span style="flex:1"></span><button onclick="document.getElementById('acModal').classList.remove('open')">CLOSE</button></div>
+    </div>
+  </div>
+
   <div class="modal" id="anaModal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box" style="width:min(900px,94vw);">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -1944,6 +1963,7 @@
       }
       if (e.code === 'Backquote' && !typing && e.altKey && !mod) { e.preventDefault(); toggleTilePick(hoverPanel); return; }
       if (e.code === 'Backquote' && !typing) { e.preventDefault(); if (mod) popOutPanel(); else toggleMaxPanel(); return; }
+      if (mod && e.altKey && e.key.toLowerCase() === 'o') { e.preventDefault(); openAutoConnect(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'g') { e.preventDefault(); toggleAutoSafe(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); addCueHere(); return; }
       if (mod && e.altKey && e.key.toLowerCase() === 'a') { e.preventDefault(); openAnalyzer(); return; }
@@ -2465,7 +2485,7 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
-        if (/^(bunker|anchor|aether|mosaic|void)_/.test(id) && typeof bkShow === 'function') bkShow(id, v);
+        if ((/^(bunker|anchor|aether|mosaic|void|orbit)_/.test(id) || id === 'regen_throttle') && typeof bkShow === 'function') bkShow(id, v);
         if (id === 'transient_attack' || id === 'transient_sustain') document.getElementById('v-' + id).textContent = (v > 0 ? '+' : '') + Math.round(v) + '%';
         if (id === 'dialogue_duck_db') document.getElementById('v-dialogue_duck_db').textContent = (+v).toFixed(1) + ' dB';
         if (id === 'infra_lift_db') document.getElementById('v-infra_lift_db').textContent = '+' + (+v).toFixed(1) + ' dB';
@@ -3576,6 +3596,7 @@
       ['analyzer', 'Ctrl+Alt+A', 'Test-tone analyser (response, harmonics, transfer)', () => openAnalyzer()],
       ['addCue', 'Ctrl+Alt+K', 'Add a cinematic cue at the playhead', () => addCueHere()],
       ['autoSafe', 'Ctrl+Alt+G', 'Auto Safe Mode (beginner guard)', () => toggleAutoSafe()],
+      ['autoConnect', 'Ctrl+Alt+O', 'Auto-Connect: tracks to spatial zones', () => openAutoConnect()],
       ['aiSpatial', '', 'AI Analyze: spatial optimization', () => { openAssistant('spatial'); spatialPlanRes = planSpatial(); renderSpatial(); }],
       ['aiCues', '', 'AI Analyze: cinematic cues', () => openAssistant('cues')],
       ['aiMood', '', 'AI Analyze: emotional resonance', () => openAssistant('mood')],
@@ -3905,6 +3926,45 @@
       window.__JUCE__.backend.addEventListener('metaState', (d) => { metaData = Object.assign({}, metaData, d); if (!d.message) delete metaData.message; else metaData.message = d.message; if (aiTab === 'meta') renderMeta(); });
     }
 
+    // ===================== AUTO-CONNECT WIZARD (The Orbit): sources -> spatial zones =====================
+    const AC_ZONES = { 'Front centre': { az: 0, el: 0, dist: 1.6, width: 0.8 }, 'Front left': { az: -30, el: 0, dist: 2.2, width: 1 }, 'Front right': { az: 30, el: 0, dist: 2.2, width: 1 },
+      'Side left': { az: -90, el: 5, dist: 2.5, width: 1.1 }, 'Side right': { az: 90, el: 5, dist: 2.5, width: 1.1 }, 'Rear left': { az: -145, el: 10, dist: 3, width: 1.3 },
+      'Rear right': { az: 145, el: 10, dist: 3, width: 1.3 }, 'Overhead': { az: 0, el: 60, dist: 3, width: 1.4 }, 'Surround bed': { az: 180, el: 20, dist: 4, width: 2 } };
+    const AC_ROLES = ['Vocal / dialogue', 'Bass', 'Kick / drums', 'Guitar / keys', 'Pad / strings', 'FX / ambience', 'Other'];
+    let acRows = [];
+    function acGuess(o) {
+      const n = ((o.name || '') + ' ' + (o.module || '')).toLowerCase(), p = (o.bands || []).map(d => Math.pow(10, d / 10)), tot = p.reduce((a, b) => a + b, 0) || 1;
+      const low = ((p[0] || 0) + (p[1] || 0)) / tot; let cen = 0; p.forEach((v, k) => cen += v * k); cen /= tot;
+      if (o.dialogue || /voc|vox|dialog|voice|narr|sing|rap|lead/.test(n)) return 'Vocal / dialogue';
+      if (/bass|sub|808|bunker/.test(n) || low > 0.5) return 'Bass';
+      if (/kick|drum|snare|hat|perc|beat|loop/.test(n)) return 'Kick / drums';
+      if (/pad|string|choir|organ|atmos|drone|aether/.test(n)) return 'Pad / strings';
+      if (/fx|amb|verb|noise|rise|swell|foley|void/.test(n)) return 'FX / ambience';
+      if (/gtr|guitar|key|piano|synth|lead|pluck|rhodes/.test(n) || cen > 5) return 'Guitar / keys';
+      return 'Other';
+    }
+    function openAutoConnect() {
+      const objs = stageObjects(); let side = 0;
+      acRows = objs.map(o => { const role = acGuess(o);
+        const zone = role === 'Vocal / dialogue' || role === 'Bass' || role === 'Kick / drums' ? 'Front centre' : role === 'Guitar / keys' ? (side++ % 2 ? 'Front right' : 'Front left')
+          : role === 'Pad / strings' ? (side++ % 2 ? 'Rear right' : 'Rear left') : role === 'FX / ambience' ? (side++ % 3 === 0 ? 'Overhead' : 'Surround bed') : (side++ % 2 ? 'Side right' : 'Side left');
+        return { o, role, zone }; });
+      document.getElementById('acList').innerHTML = acRows.map((r, i) => `<div class="km-row" style="grid-template-columns:1fr 150px 130px;">
+        <span><b>${escapeHtml(r.o.self ? 'This track' : (r.o.name || r.o.module))}</b> <small style="opacity:.6">${escapeHtml(r.o.module || '')}</small></span>
+        <select onchange="acRows[${i}].role=this.value">${AC_ROLES.map(x => `<option ${x === r.role ? 'selected' : ''}>${x}</option>`).join('')}</select>
+        <select onchange="acRows[${i}].zone=this.value">${Object.keys(AC_ZONES).map(z => `<option ${z === r.zone ? 'selected' : ''}>${z}</option>`).join('')}</select></div>`).join('') || '<div class="dg-hint">No Solution tracks found in this session yet.</div>';
+      document.getElementById('acModal').classList.add('open');
+    }
+    function applyAutoConnect() {
+      const duck = document.getElementById('acDuck').checked;
+      acRows.forEach(r => { moveObject(r.o, Object.assign({}, AC_ZONES[r.zone]));
+        if (duck && r.o.slot !== undefined && r.o.slot >= 0) {
+          const isVox = r.role === 'Vocal / dialogue', isBed = r.role === 'Pad / strings' || r.role === 'Guitar / keys' || r.role === 'FX / ambience';
+          if (isVox) emit('diag', { cmd: 'slotParam', slot: r.o.slot, id: 'dialogue_source', value: 1 });
+          if (isBed) emit('diag', { cmd: 'slotParam', slot: r.o.slot, id: 'dialogue_duck', value: 1 });
+        } });
+      document.getElementById('acModal').classList.remove('open'); flashHint('⚙ ' + acRows.length + ' tracks connected to their zones');
+    }
     // ===================== TEST-TONE ANALYSER (PluginDoctor-style) =====================
     let anaRes = null, anaTab = 'response';
     function openAnalyzer() { document.getElementById('anaModal').classList.add('open'); setAnaTab(anaTab); }
@@ -4370,6 +4430,7 @@
     // ---------- fullscreen panels ----------
     const IS_POPOUT = params.get('popout') === '1';
     if (/anchor/i.test(params.get('module') || '')) document.getElementById('anchorCore').style.display = 'flex';   // The Anchor only
+    if (/orbit/i.test(params.get('module') || '')) document.getElementById('orbitCore').style.display = 'flex';   // The Orbit only
     let voidData = null, voidPolyEdit = null;
     if (/void/i.test(params.get('module') || '')) { document.getElementById('voidCore').style.display = 'flex'; startVoidCanvas(); }   // The Void only
     function voidPreset(name) {
@@ -4482,6 +4543,9 @@
     if (/bunker/i.test(params.get('module') || '')) { document.getElementById('infraRow').style.display = 'flex'; document.getElementById('bunkerCore').style.display = 'flex'; }   // The Bunker only
     function bkShow(id, v) {
       const el = document.getElementById('v-' + id); if (!el) return;
+      if (id === 'orbit_regen_clock') { el.textContent = (v / 1000).toFixed(1) + ' kHz'; return; }
+      if (id === 'orbit_tube_bias' || id === 'regen_throttle') { el.textContent = (+v).toFixed(2); return; }
+      if (id === 'orbit_regen_ms') { el.textContent = Math.round(v) + ' ms'; return; }
       if (id === 'void_height') { el.textContent = v.toFixed(1) + ' m'; return; }
       if (id === 'void_warp') { el.textContent = (v > 0 ? '+' : '') + Math.round(v) + '%'; return; }
       if (id === 'aether_dly_ms') { el.textContent = Math.round(v) + ' ms'; return; }

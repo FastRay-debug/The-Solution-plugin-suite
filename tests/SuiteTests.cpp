@@ -2194,6 +2194,39 @@ static void testVoidCore()
       EXPECT (std::abs (dB) < 1.0 && corr < 0.5, "scramble keeps the level and decorrelates"); }
 }
 
+
+static void testOrbitCore()
+{
+    std::printf ("The Orbit: triode tube (true bypass) + Regen Throttle clocked loop\n");
+    using SolutionDSP::OrbitCore;
+    const double fs = 48000.0;
+    auto run = [&] (OrbitCore& c, const OrbitCore::Params& p, std::vector<float>& L, std::vector<float>& R) { for (size_t o = 0; o < L.size(); o += 512) c.process (L.data() + o, R.data() + o, (int) std::min<size_t> (512, L.size() - o), p); };
+    auto sineBuf = [&] (double hz, double a, int N) { std::vector<float> v (N); for (int i = 0; i < N; ++i) v[(size_t) i] = (float) (a * std::sin (2 * juce::MathConstants<double>::pi * hz * i / fs)); return v; };
+    { OrbitCore c; c.prepare (fs, 512); OrbitCore::Params p; auto L = sineBuf (200, 0.5, 9600), R = L; const auto in = L; run (c, p, L, R);
+      EXPECT (L == in, "tube off + loop off = true bypass (bit-exact)"); }
+    { OrbitCore c; c.prepare (fs, 512); OrbitCore::Params p; p.tubeOn = true; p.drive = 0.5f; p.bias = 0.2f; auto L = sineBuf (200, 0.3, 48000), R = L; run (c, p, L, R);
+      const double f = toneLevelDb (L.data() + 24000, 24000, 200, fs), h2 = toneLevelDb (L.data() + 24000, 24000, 400, fs) - f, h3 = toneLevelDb (L.data() + 24000, 24000, 600, fs) - f;
+      std::printf ("  triode: H2 %.1f dBc, H3 %.1f dBc\n", h2, h3);
+      EXPECT (h2 > -35.0 && h2 > h3, "even (2nd) harmonic leads, like a triode"); }
+    { auto gainAt = [&] (double amp) { OrbitCore c; c.prepare (fs, 512); OrbitCore::Params p; p.tubeOn = true; p.drive = 0.6f; auto L = sineBuf (150, amp, 48000), R = L; run (c, p, L, R);
+        return toneLevelDb (L.data() + 24000, 24000, 150, fs) - 20 * std::log10 (amp); };
+      const double quiet = gainAt (0.01), loud = gainAt (0.5);
+      std::printf ("  tube gain: %.1f dB quiet, %.1f dB loud (sag + saturation)\n", quiet, loud);
+      EXPECT (quiet - loud > 3.0, "loud passages compress"); }
+    { auto repeats = [&] (float throttle, float clock, double& firstHf) { OrbitCore c; c.prepare (fs, 512); OrbitCore::Params p; p.regenMix = 1.0f; p.regen = throttle; p.regenMs = 200.0f; p.clockHz = clock;
+        const int N = 48000; std::vector<float> L (N, 0.0f), R (N, 0.0f); juce::Random rng (5); for (int i = 0; i < 480; ++i) L[(size_t) i] = R[(size_t) i] = rng.nextFloat() - 0.5f;
+        run (c, p, L, R);
+        auto e = [&] (int s0) { double x = 0; for (int i = s0; i < s0 + 600; ++i) x += L[(size_t) i] * L[(size_t) i]; return 10 * std::log10 (x + 1e-20); };
+        { SolutionDSP::DBiquad hp; hp.set (1, fs, 4000, 0.707); double h = 0, a = 0; for (int i = 9600; i < 10600; ++i) { const double y = hp.run (L[(size_t) i]); h += y * y; a += L[(size_t) i] * L[(size_t) i]; } firstHf = 10 * std::log10 (h / (a + 1e-20)); }
+        return std::make_pair (e (9600), e (3 * 9600)); };
+      double hf1, hf2, hf3;
+      const auto lo = repeats (0.4f, 48000, hf1), hi = repeats (0.9f, 48000, hf2); repeats (0.4f, 4000, hf3);
+      std::printf ("  regen: 3rd repeat %.1f dB (throttle 0.4) vs %.1f dB (0.9); top-end share %.1f dB at 48 kHz clock, %.1f dB at 4 kHz\n", lo.second, hi.second, hf1, hf3);
+      EXPECT (lo.first > -40.0, "first repeat arrives on time (200 ms)");
+      EXPECT (hi.second > lo.second + 10.0, "the throttle keeps more repeats alive");
+      EXPECT (hf3 < hf1 - 15.0, "a lower loop clock darkens the repeats (bucket-brigade)"); }
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2346,6 +2379,7 @@ int main()
     testAetherCore();
     testMosaicCore();
     testVoidCore();
+    testOrbitCore();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();
