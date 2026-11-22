@@ -356,7 +356,11 @@
       background-image:
         radial-gradient(circle at 50% 50%, rgba(0,0,0,0.05) 35%, rgba(4,6,9,0.58) 100%),
         var(--skin-stripes, linear-gradient(transparent, transparent)),
+        var(--paint-a, linear-gradient(transparent, transparent)),
+        var(--paint-b, linear-gradient(transparent, transparent)),
+        var(--paint-tint, linear-gradient(transparent, transparent)),
         var(--skin-img);
+      background-blend-mode: normal, normal, var(--paint-a-blend, normal), var(--paint-b-blend, normal), var(--paint-tint-blend, normal), normal;
       background-size: cover; background-position: center; padding: 10px 12px;
       border: 1.5px solid rgba(212,175,55,0.45); border-radius: 8px;
       box-shadow: inset 0 0 28px rgba(0,0,0,0.85), 0 10px 26px rgba(0,0,0,0.85);
@@ -582,6 +586,25 @@
       opacity: 0; pointer-events: none; transition: opacity 0.15s ease; transition-delay: 0ms; z-index: 30;
     }
     [data-tip]:hover::after { opacity: 1; transition-delay: 600ms; }
+    /* ===== Floating 3D console (Ctrl+Alt+3): the plugin as a lit hardware console hovering in a dark studio ===== */
+    html.console3d body { background: radial-gradient(ellipse 80% 45% at 50% 108%, color-mix(in srgb, var(--accent) 22%, #0b1220) 0%, #070a10 55%, #030407 100%); padding: 10px 14px 22px; gap: 9px; }
+    html.console3d .main {
+      border-radius: 16px; border: 1px solid rgba(255,255,255,0.10);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -2px 0 rgba(0,0,0,0.7), inset 0 0 30px rgba(0,0,0,0.75),
+                  0 5px 0 -1px #20262f, 0 9px 0 -2px #12161d, 0 11px 0 -3px color-mix(in srgb, var(--accent) 70%, transparent),
+                  0 34px 50px -12px rgba(0,0,0,0.95), 0 26px 60px -20px color-mix(in srgb, var(--accent) 45%, transparent);
+      animation: c3dFloat 7s ease-in-out infinite;
+    }
+    html.console3d .main::after { content: ''; position: absolute; inset: 0; border-radius: 16px; pointer-events: none; z-index: 5;
+      background: linear-gradient(165deg, rgba(255,255,255,0.10) 0%, transparent 22%, transparent 78%, rgba(255,255,255,0.04) 100%); }
+    html.console3d .wing { border-radius: 12px; padding: 8px 6px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.30)), rgba(8,11,16,0.55);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.8), 0 3px 0 -1px rgba(0,0,0,0.6), 0 10px 18px -8px rgba(0,0,0,0.9);
+      border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); }
+    html.console3d .viewport { border-radius: 14px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.10), inset 0 18px 40px rgba(255,255,255,0.05), 0 0 26px -6px color-mix(in srgb, var(--accent) 55%, transparent), 0 14px 24px -12px rgba(0,0,0,0.9); }
+    html.console3d .ribbon, html.console3d .footer { border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 3px 0 -1px #11151b, 0 14px 22px -10px rgba(0,0,0,0.95); }
+    @keyframes c3dFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    @media (prefers-reduced-motion: reduce) { html.console3d .main { animation: none; } }
   </style>
 </head>
 <body>
@@ -1034,6 +1057,12 @@
         <option value="gunmetal">Knob: Gunmetal</option>
         <option value="billet">Knob: Billet Red</option>
       </select>
+      <input type="color" id="paintColor" value="#7f1d1d" oninput="setPaint(this.value, null)" data-tip="Car paint colour - any colour (car skins). Ctrl+Alt+C opens it" style="width:24px;height:20px;padding:0;border:none;background:none;">
+      <select id="paintFinish" onchange="setPaint(null, this.value)" data-tip="Paint finish (Ctrl+Alt+P cycles)" style="font-size:9px;">
+        <option value="factory">Paint: Factory</option><option value="gloss">Gloss</option><option value="metallic">Metallic</option><option value="pearl">Pearl</option>
+        <option value="satin">Satin</option><option value="flat">Flat / Matte</option><option value="candy">Candy</option><option value="chrome">Chrome</option>
+      </select>
+      <button id="c3dBtn" onclick="toggleConsole3d()" data-tip="Floating 3D console look (Ctrl+Alt+3)" style="font-size:9px;">⬢ 3D</button>
       <select id="skinSelect" onchange="applySkin(this.value)" title="Select from 50 /cars & /places skins">
         <optgroup label="/cars (29 Classic & Muscle)">
           <option value="lincoln69" selected>'69 Lincoln Continental</option>
@@ -1947,8 +1976,58 @@
       // racing stripes: twin stripes down the middle with fine pinstripe edges (on the photo too)
       r.setProperty('--skin-stripes', s.stripes ? `linear-gradient(90deg, transparent 0 40.6%, ${s.accent}55 40.6% 40.9%, ${s.stripes}ee 40.9% 47.2%, ${s.accent}55 47.2% 47.5%, transparent 47.5% 52.5%, ${s.accent}55 52.5% 52.8%, ${s.stripes}ee 52.8% 59.1%, ${s.accent}55 59.1% 59.4%, transparent 59.4%)` : 'linear-gradient(transparent, transparent)');
       if (!s.img && !String(key).startsWith('custom_')) {          // photo installed later (Skins installer / dropped in the folder)? use it
-        const probe = new Image(); probe.onload = () => { s.img = true; r.setProperty('--skin-img', "url('/skins/" + key + ".jpg')"); }; probe.src = '/skins/' + key + '.jpg';
+        const probe = new Image(); probe.onload = () => { s.img = true; r.setProperty('--skin-img', "url('/skins/" + key + ".jpg')"); applyPaint(); }; probe.src = '/skins/' + key + '.jpg';
       }
+      currentSkin = key; applyPaint();
+    }
+
+    // ----- car paint: any colour, any finish (photo cars are tinted; painted cars are re-sprayed) -----
+    let paint = { color: '', finish: 'factory' }, currentSkin = 'lincoln69';
+    const PAINT_FINISHES = ['factory', 'gloss', 'metallic', 'pearl', 'satin', 'flat', 'candy', 'chrome'];
+    const FLAKES = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='1.6' numOctaves='2' seed='7'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 9 -5.2'/></filter><rect width='100%' height='100%' filter='url(%23f)'/></svg>\")";
+    function isCarSkin(key) { const o = document.querySelector('#skinSelect option[value="' + key + '"]'); return !!(o && o.parentElement.label && o.parentElement.label.startsWith('/cars')); }
+    function paintLayers(c, finish) {
+      const shine = (a, at = 25) => `linear-gradient(172deg, transparent 0 ${at - 4}%, rgba(255,255,255,${a}) ${at}%, rgba(255,255,255,${a * 0.2}) ${at + 6}%, transparent ${at + 15}%)`;
+      switch (finish) {
+        case 'gloss':    return [[shine(0.30), 'screen'], ['radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.18), transparent 55%)', 'screen']];
+        case 'metallic': return [[FLAKES, 'overlay'], [shine(0.22, 30), 'screen']];
+        case 'pearl':    return [['linear-gradient(120deg, rgba(255,170,220,0.26), rgba(150,215,255,0.26) 35%, rgba(255,250,200,0.20) 65%, rgba(205,170,255,0.26))', 'screen'], [shine(0.20), 'screen']];
+        case 'satin':    return [['radial-gradient(ellipse 90% 60% at 50% 12%, rgba(255,255,255,0.20), transparent 70%)', 'soft-light'], ['linear-gradient(rgba(0,0,0,0.08), rgba(0,0,0,0.08))', 'multiply']];
+        case 'flat':     return [['linear-gradient(rgba(70,70,70,0.30), rgba(70,70,70,0.30))', 'multiply'], ['linear-gradient(rgba(128,128,128,0.25), rgba(128,128,128,0.25))', 'saturation']];
+        case 'candy':    return [[`linear-gradient(${c}66, ${c}88)`, 'multiply'], [shine(0.38, 22), 'screen']];
+        case 'chrome':   return [['repeating-linear-gradient(180deg, rgba(255,255,255,0.35) 0 3%, rgba(0,0,0,0.30) 7%, rgba(255,255,255,0.15) 11%)', 'overlay'], [shine(0.45, 20), 'screen']];
+        default:         return [];
+      }
+    }
+    function applyPaint() {
+      const r = document.documentElement.style, car = isCarSkin(currentSkin), s = SKINS[currentSkin] || {};
+      const pc = document.getElementById('paintColor'), pf = document.getElementById('paintFinish');
+      if (pc) pc.disabled = !car; if (pf) pf.disabled = !car;
+      ['a', 'b'].forEach(k => { r.setProperty('--paint-' + k, 'linear-gradient(transparent, transparent)'); r.setProperty('--paint-' + k + '-blend', 'normal'); });
+      r.setProperty('--paint-tint', 'linear-gradient(transparent, transparent)'); r.setProperty('--paint-tint-blend', 'normal');
+      if (!car || (!paint.color && paint.finish === 'factory')) return;
+      const c = paint.color || s.paint || s.accent || '#7f1d1d';
+      if (paint.color) {
+        if (s.img) { r.setProperty('--paint-tint', `linear-gradient(${c}, ${c})`); r.setProperty('--paint-tint-blend', 'color'); }
+        else r.setProperty('--skin-img', `linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.6)), radial-gradient(ellipse at 50% 10%, ${c}, ${s.bg || '#0a0a0a'} 80%)`);
+      }
+      paintLayers(c, paint.finish).forEach(([img, blend], i) => { const k = i ? 'b' : 'a'; r.setProperty('--paint-' + k, img); r.setProperty('--paint-' + k + '-blend', blend); });
+    }
+    function setPaint(color, finish, silent) {
+      if (color !== null && color !== undefined) paint.color = color;
+      if (finish) paint.finish = finish;
+      const pc = document.getElementById('paintColor'), pf = document.getElementById('paintFinish');
+      if (pc && paint.color) pc.value = paint.color; if (pf) pf.value = paint.finish;
+      if (finish === 'factory') { paint.color = ''; applySkin(currentSkin, true); }      // Factory = back to the car's own paint
+      else applyPaint();
+      if (!silent) { emit('setUiProp', { key: 'paintColor', value: paint.color }); emit('setUiProp', { key: 'paintFinish', value: paint.finish }); }
+    }
+    function cyclePaintFinish() { const i = (PAINT_FINISHES.indexOf(paint.finish) + 1) % PAINT_FINISHES.length; setPaint(null, PAINT_FINISHES[i]); flashHint('Paint: ' + document.getElementById('paintFinish').selectedOptions[0].textContent.replace('Paint: ', '')); }
+    function toggleConsole3d(on, silent) {
+      on = on === undefined ? !document.documentElement.classList.contains('console3d') : on;
+      document.documentElement.classList.toggle('console3d', on);
+      const b = document.getElementById('c3dBtn'); if (b) b.classList.toggle('active', on);
+      if (!silent) emit('setUiProp', { key: 'console3d', value: on ? '1' : '0' });
     }
 
     function toggleClassicOS() {
@@ -2078,6 +2157,9 @@
       if (mod && !e.altKey && !e.shiftKey && k === 'p') { e.preventDefault(); openPalette(); return; }
       if (!mod && !e.altKey && e.key === '/' && !e.target.closest('input,select,textarea')) { e.preventDefault(); openPalette(); return; }
       if (mod && e.altKey && k === 'z') { e.preventDefault(); openHistory(); return; }
+      if (mod && e.altKey && e.code === 'Digit3') { e.preventDefault(); toggleConsole3d(); return; }
+      if (mod && e.altKey && k === 'p') { e.preventDefault(); cyclePaintFinish(); return; }
+      if (mod && e.altKey && k === 'c') { e.preventDefault(); document.getElementById('paintColor').click(); return; }
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
       if (mod && k === 'y') { e.preventDefault(); doRedo(); return; }
       if (mod && !e.altKey && k === 's') { e.preventDefault(); openVault(); setTimeout(() => document.getElementById('presetName').focus(), 50); return; }
@@ -2633,6 +2715,8 @@
           if (m.ui.theme !== undefined && (m.ui.theme || '') !== (document.documentElement.getAttribute('data-theme') || '')) applyTheme(m.ui.theme, 'init');
           if (m.ui.lamps) lampSrc = m.ui.lamps.split(',').slice(0, 4);
           if (m.ui.modFocus !== undefined) setModFocus(m.ui.modFocus !== '0', true); if (typeof renderMacros === 'function' && diagOpen) renderMacros(); }
+        if (m.ui && (m.ui.paintColor !== undefined || m.ui.paintFinish)) { paint.color = m.ui.paintColor || ''; paint.finish = m.ui.paintFinish || 'factory'; setPaint(null, null, true); }
+        if (m.ui && m.ui.console3d !== undefined) toggleConsole3d(m.ui.console3d === '1', true);
         if (m.ui && m.ui.skin && SKINS[m.ui.skin]) {
           const sel = document.getElementById('skinSelect');
           if (sel) sel.value = m.ui.skin;
