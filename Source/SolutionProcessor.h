@@ -244,6 +244,11 @@ public:
     float toneAnalysisProgress() const { return toneProgress.load(); }
     bool toneAnalysisRunning() const { return toneJob != nullptr; }
     juce::var takeToneAnalysisResult();                          // non-void once, when a run has finished
+    // Live response curve for the holograms: re-measured on a private copy whenever a setting changes.
+    bool curveWanted = false;                                    // the 3D view is showing
+    int getCurveGen() const { return curveGen; }
+    juce::var getResponseCurve() const { return curveResult; }
+    juce::var measureResponseCurveNow();                         // blocking (tests)
     juce::var runToneAnalysisNow (float toneHz, float levelDb);  // blocking (tests, offline)
     std::atomic<float> dialogueCarveHz { 2200.0f };            // where the dialogue notch sits right now
     // AI Analyze (message thread unless noted)
@@ -342,6 +347,14 @@ private:
     std::unique_ptr<SolutionAudioProcessor> makeMeasurementCopy();
     static juce::var measure (SolutionAudioProcessor& copy, float hz, float db, std::atomic<float>& progress);
     void pollToneJob();
+    struct CurveJob { std::unique_ptr<SolutionAudioProcessor> copy; std::thread worker; std::atomic<bool> done { false }; juce::var result; };
+    std::unique_ptr<CurveJob> curveJob;
+    juce::var curveResult;
+    int curveGen = 0;
+    double lastCurveHash = -1.0;
+    juce::uint32 lastCurveStart = 0;
+    static juce::var measureCurve (SolutionAudioProcessor& copy);
+    void pollCurve();
     SolutionCinema::CueList cueList;
     std::map<juce::String, float> cueFrom;
     int cuesGen = 0, activeCue = -1;
@@ -368,6 +381,7 @@ private:
         pollSessionRequests();
         pollHistory();
         pollToneJob();
+        pollCurve();
         pollMood();
         recordTrajectory();
         if (offloadActive.load() && offload != nullptr && offloadStateDirty.exchange (false))

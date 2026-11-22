@@ -16,6 +16,7 @@ public:
 
 private:
     static juce::String voiceKeysProp();
+    int lastCurveGen = -1;
     void sendAiState();
     void emitMeta (const juce::String& message);
     bool aiPanelOpen = false;

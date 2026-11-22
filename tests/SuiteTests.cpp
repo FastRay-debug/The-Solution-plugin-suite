@@ -1919,6 +1919,18 @@ static void testToneAnalyzer()
         EXPECT (! proc.startToneAnalysis (1000.0f, -18.0f), "only one runs at a time");
         juce::var res; for (int i = 0; i < 600 && res.isVoid(); ++i) { juce::Thread::sleep (20); res = proc.takeToneAnalysisResult(); }
         EXPECT (! res.isVoid() && res["transfer"]["in"].size() == 23, "background analysis finished with a transfer curve");
+        // Live hologram curve: fast, and it follows the settings.
+        setParam (proc, "global_mix", 0.0f);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        auto flat = proc.measureResponseCurveNow();
+        const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        setParam (proc, "global_mix", 1.0f);
+        const float base1k = (float) proc.measureResponseCurveNow()["l"][40];
+        setParam (proc, "stage_ms_mid", 6.0f);
+        auto lifted = proc.measureResponseCurveNow();
+        std::printf ("  hologram curve: %d points in %.0f ms, 1 kHz %.1f dB -> %.1f dB with Mid +6\n", flat["l"].size(), ms, base1k, (float) lifted["l"][40]);
+        EXPECT (flat["l"].size() == 64 && std::abs ((float) flat["l"][32]) < 1.0f, "dry curve is flat (%.2f dB)", (float) flat["l"][32]);
+        EXPECT ((float) lifted["l"][40] - base1k > 4.0f, "curve shows the Mid +6 dB move");
     }
     std::printf ("  done\n");
 }

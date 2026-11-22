@@ -196,6 +196,7 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("curveWanted", [this] (const juce::var& d) { audioProcessor.curveWanted = (bool) d.getProperty ("on", false); lastCurveGen = -1; })
            .withEventListener ("aiPanel", [this] (const juce::var& d)
            {
                aiPanelOpen = (bool) d.getProperty ("open", false);
@@ -926,6 +927,7 @@ void SolutionAudioProcessorEditor::rackRevert (int slot, int seq)
 void SolutionAudioProcessorEditor::timerCallback()
 {
     if (audioProcessor.getHistoryGen() != lastHistoryGen) sendHistory();
+    if (audioProcessor.getCurveGen() != lastCurveGen && ! audioProcessor.getResponseCurve().isVoid()) { lastCurveGen = audioProcessor.getCurveGen(); emitToViews ("responseCurve", audioProcessor.getResponseCurve()); }
     if (aiPanelOpen && frameCounter % 12 == 0) sendAiState();
     if (audioProcessor.toneAnalysisRunning() && frameCounter % 6 == 0) emitToViews ("toneProgress", (double) audioProcessor.toneAnalysisProgress());
     if (auto res = audioProcessor.takeToneAnalysisResult(); ! res.isVoid()) emitToViews ("toneAnalysis", res);

@@ -2472,6 +2472,8 @@
       });
       window.__JUCE__.backend.addEventListener('applySkin', (key) => { const sel = document.getElementById('skinSelect'); if (sel) sel.value = key; applySkin(key); flashHint('📸 New skin from your phone'); });
       window.__JUCE__.backend.addEventListener('scope', (m) => { window._scope = m; });
+      window.__JUCE__.backend.addEventListener('responseCurve', (m) => { window._respCurve = m; });
+      { let lastWant = null; setInterval(() => { const want = !!(typeof gl3dOn === 'function' && gl3dOn()) && !document.hidden; if (want !== lastWant) { lastWant = want; emit('curveWanted', { on: want }); } }, 1000); }
       window.__JUCE__.backend.addEventListener('alignResult', (msg) => { document.getElementById('alignMsg').textContent = msg; });
       window.__JUCE__.backend.addEventListener('roomList', (m) => { roomList = m || []; renderRooms(); });
       window.__JUCE__.backend.addEventListener('remoteState', (m) => { window._remote = m; renderRemote(); });

@@ -56,6 +56,7 @@ SolutionAudioProcessor::~SolutionAudioProcessor()
             apvts.removeParameterListener (ranged->getParameterID(), this);
     cueClock.stopTimer();
     if (toneJob != nullptr && toneJob->worker.joinable()) toneJob->worker.join();
+    if (curveJob != nullptr && curveJob->worker.joinable()) curveJob->worker.join();
     if (! isMeasurementCopy)
     {
         rackLinkBus->releaseSlot (rackSlot);
@@ -281,6 +282,51 @@ juce::var SolutionAudioProcessor::measure (SolutionAudioProcessor& copy, float h
     out->setProperty ("toneHz", hz); out->setProperty ("levelDb", db);
     progress = 1.0f;
     return juce::var (out.get());
+}
+
+juce::var SolutionAudioProcessor::measureCurve (SolutionAudioProcessor& copy)
+{
+    SolutionAnalyzer::Device dev;
+    dev.sampleRate = copy.getSampleRate() > 0.0 ? copy.getSampleRate() : 48000.0;
+    dev.latency = copy.getLatencySamples();
+    dev.reset = [&copy, sr = dev.sampleRate] { copy.prepareToPlay (sr, 512); };
+    dev.process = [&copy] (juce::AudioBuffer<float>& b)
+    {
+        juce::MidiBuffer midi;
+        for (int pos = 0; pos < b.getNumSamples(); pos += 512)
+        { const int n = std::min (512, b.getNumSamples() - pos); juce::AudioBuffer<float> view (b.getArrayOfWritePointers(), 2, pos, n); copy.processBlock (view, midi); }
+    };
+    SolutionAnalyzer::Curve mag, ph;
+    SolutionAnalyzer::response (dev, mag, ph, 64, -18.0f, dev.sampleRate > 100000.0 ? 16 : 15);   // quick: ~0.35 s of audio
+    juce::DynamicObject::Ptr o = new juce::DynamicObject();
+    juce::Array<juce::var> hz, l, r;
+    for (size_t i = 0; i < mag.hz.size(); ++i) { hz.add (std::round (mag.hz[i])); l.add (std::round (mag.l[i] * 10.0f) / 10.0f); r.add (std::round (mag.r[i] * 10.0f) / 10.0f); }
+    o->setProperty ("hz", hz); o->setProperty ("l", l); o->setProperty ("r", r);
+    return juce::var (o.get());
+}
+
+void SolutionAudioProcessor::pollCurve()
+{
+    if (curveJob != nullptr)
+    {
+        if (! curveJob->done.load()) return;
+        curveJob->worker.join(); curveResult = curveJob->result; curveGen++; curveJob.reset();
+    }
+    if (! curveWanted || isMeasurementCopy || toneJob != nullptr) return;
+    double h = 0; int k = 1;
+    for (auto& [id, v] : cueableValues()) h += v * (double) (k++ % 97 + 1) * 1.000173;
+    if (std::abs (h - lastCurveHash) < 1e-7 || juce::Time::getMillisecondCounter() - lastCurveStart < 250) return;
+    lastCurveHash = h; lastCurveStart = juce::Time::getMillisecondCounter();
+    curveJob = std::make_unique<CurveJob>();
+    curveJob->copy = makeMeasurementCopy();
+    auto* job = curveJob.get();
+    job->worker = std::thread ([job] { job->result = measureCurve (*job->copy); job->done = true; });
+}
+
+juce::var SolutionAudioProcessor::measureResponseCurveNow()
+{
+    auto copy = makeMeasurementCopy();
+    return measureCurve (*copy);
 }
 
 bool SolutionAudioProcessor::startToneAnalysis (float toneHz, float levelDb)

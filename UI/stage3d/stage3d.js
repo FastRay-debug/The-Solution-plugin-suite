@@ -394,7 +394,45 @@ function init() {
     for (let i = 0; i < 2; i++) { const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, 0.9 + i * 0.35, 0.9 + i * 0.35).getPoints(96).map(p => new THREE.Vector3(p.x, p.y, 0))), i ? holoMat2 : holoMat);
       holo.add(ring); }
   }
+  // ---------- EQ ribbon: the module's real response curve (measured live), over the live spectrum ----------
+  const RIB = { cube: { w: 2.2, h: 0.09, y: -1.25, z: 0.75 }, ring: { w: 1.4, h: 0.05, y: 0, z: 0.05 }, dome: { w: 2.6, h: 0.1, y: -1.4, z: 0 }, spectral: { w: 8, h: 0.12, y: 0, z: -0.4 } }[kind];
+  const RN = 64, ribbon = new THREE.Group(); ribbon.position.set(0, RIB.y, RIB.z); holo.add(ribbon);
+  const mkLine = (n, mat) => { const l = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3)), mat); ribbon.add(l); return l; };
+  const curveMatL = new THREE.LineBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
+  const curveMatR = new THREE.LineBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false });
+  const zeroMat = new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.25, depthWrite: false });
+  const specMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+  const curveL = mkLine(RN, curveMatL), curveR = mkLine(RN, curveMatR), specLine = mkLine(RN, specMat);
+  const zero = mkLine(2, zeroMat); zero.geometry.attributes.position.array.set([-RIB.w / 2, 0, 0, RIB.w / 2, 0, 0]);
+  const fillGeo = new THREE.BufferGeometry(); fillGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(RN * 2 * 3), 3));
+  const idx = []; for (let i = 0; i < RN - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } fillGeo.setIndex(idx);
+  const fillMat = new THREE.MeshBasicMaterial({ color: 0xff8a1c, transparent: true, opacity: 0.18, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
+  ribbon.add(new THREE.Mesh(fillGeo, fillMat));
+  const shownL = new Float32Array(RN), shownR = new Float32Array(RN);
+  // the camera looks toward +z, so screen-left is +x: lows on the left
+  const ribX = (i) => RIB.w / 2 - RIB.w * i / (RN - 1), ribY = (db) => Math.max(-14, Math.min(14, db)) * RIB.h;
+  function updateRibbon(dt) {
+    const c = window._respCurve, k = 1 - Math.exp(-dt / 0.12);              // glide to each new measurement
+    const L = curveL.geometry.attributes.position.array, R = curveR.geometry.attributes.position.array, F = fillGeo.attributes.position.array;
+    let diff = 0;
+    for (let i = 0; i < RN; i++) {
+      const tl = c && c.l ? (c.l[Math.round(i * (c.l.length - 1) / (RN - 1))] || 0) : 0, tr = c && c.r ? (c.r[Math.round(i * (c.r.length - 1) / (RN - 1))] || 0) : 0;
+      shownL[i] += (tl - shownL[i]) * k; shownR[i] += (tr - shownR[i]) * k; diff = Math.max(diff, Math.abs(shownL[i] - shownR[i]));
+      L.set([ribX(i), ribY(shownL[i]), 0.01], i * 3); R.set([ribX(i), ribY(shownR[i]), -0.01], i * 3);
+      F.set([ribX(i), 0, 0, ribX(i), ribY(shownL[i]), 0], i * 6);
+    }
+    curveR.visible = diff > 0.3;                                         // right curve only when L and R really differ
+    curveL.geometry.attributes.position.needsUpdate = true; curveR.geometry.attributes.position.needsUpdate = true; fillGeo.attributes.position.needsUpdate = true;
+    const sp = (window._scope || {}).spec;
+    if (sp && sp.length) {
+      const S = specLine.geometry.attributes.position.array;
+      for (let i = 0; i < RN; i++) { const db = sp[Math.floor(i * (sp.length - 1) / (RN - 1))] ?? -90; S.set([ribX(i), Math.max(-14, (db + 60) / 4) * RIB.h, -0.02], i * 3); }
+      specLine.geometry.attributes.position.needsUpdate = true;
+    }
+  }
+  gl3d.ribbon = () => ({ l: Array.from(shownL), visibleR: curveR.visible });
   function updateHologram(t, dt) {
+    updateRibbon(dt); ribbon.rotation.y = -holo.rotation.y;          // always faces you, whatever the hologram does
     const sc = window._scope || {};
     holo.rotation.y = kind === 'cube' ? Math.sin(t * 0.3) * 0.35 : kind === 'ring' ? t * 0.4 : holo.rotation.y;
     if (kind === 'dome') holo.children.forEach((r, i) => { r.rotation.z += dt * (0.2 + i * 0.15); });
@@ -417,7 +455,7 @@ function init() {
                           abyssal: [0x2dd4bf, 0x60a5fa], brass: [0xf2b04b, 0xf7e2b0], holo: [0xfbbf24, 0x22d3ee], sunset: [0xff6a1a, 0x3ba9ff] };
   gl3d.setTheme = (id) => {
     const [a, b] = THEME_COLOURS[id] || THEME_COLOURS[''];
-    holoMat.color.setHex(a); holoMat2.color.setHex(b); goldRingMat.color.setHex(a); ringMat.color.setHex(b);
+    holoMat.color.setHex(a); holoMat2.color.setHex(b); fillMat.color.setHex(a); specMat.color.setHex(b); goldRingMat.color.setHex(a); ringMat.color.setHex(b);
     bars.forEach(x => x.material.color.setHex(a)); if (dome) dome.material.color.setHex(b);
   };
   gl3d.setTheme(document.documentElement.getAttribute('data-theme') || '');

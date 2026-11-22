@@ -50,10 +50,10 @@ namespace SolutionAnalyzer
     }
 
     // ---------- frequency & phase response ----------
-    inline void response (Device& d, Curve& mag, Curve& phase, int points = 320, float levelDb = -18.0f)
+    inline void response (Device& d, Curve& mag, Curve& phase, int points = 320, float levelDb = -18.0f, int orderOverride = 0)
     {
         const double fs = d.sampleRate;
-        const int order = fs > 100000.0 ? 18 : 17, N = 1 << order, sweepLen = N / 2;
+        const int order = orderOverride > 0 ? orderOverride : (fs > 100000.0 ? 18 : 17), N = 1 << order, sweepLen = N / 2;
         const double f1 = 10.0, f2 = std::min (22000.0, fs * 0.47), T = sweepLen / fs, L = T / std::log (f2 / f1);
         const float amp = juce::Decibels::decibelsToGain (levelDb);
         std::vector<float> x ((size_t) N, 0.0f);
