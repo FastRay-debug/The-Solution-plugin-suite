@@ -29,6 +29,7 @@
 #include "Distance.h"
 #include "MotionPath.h"
 #include "Dqs.h"
+#include "EditHistory.h"
 #include <atomic>
 #include <array>
 
@@ -222,6 +223,16 @@ public:
     void armMidiLearn (const juce::String& paramId);
     int getLastLearnedCc() const { return lastLearnedCc.load (std::memory_order_relaxed); }
     // MIDI mappings (CC -> parameter), saved with the session. Message thread.
+    // Edit history with selective undo (message thread).
+    juce::var historyJson() const;                                   // [{seq,time,label,changes:[{id,from,to,later}]}]
+    int revertHistory (int seq);                                     // undo just that entry; returns controls moved
+    int restoreHistory (int seq, const juce::StringArray& keepIds);  // go back to there, keep chosen controls
+    void clearHistory() { history.clear(); historyGen++; publishHistory(); }
+    int getHistoryGen() const { return historyGen; }
+    void markTouched (const juce::String& id);                       // a person moved it (UI, voice, remote)
+    juce::String historyText() const { return history.toString (40); }
+    void pollHistoryForTest() { pollHistory(); }
+    void setHostPlayingForTest (bool on) { hostPlaying.store (on); }
     juce::String getCcMapString() const;
     void setCcMapString (const juce::String& map);
     bool setCcMapping (int cc, const juce::String& paramId);
@@ -295,9 +306,18 @@ private:
     float ownLoadSmoothed = 0.0f;
     SolutionDSP::MotionPlayer motion;
     double motionFreeSeconds = 0.0;
+    SolutionHistory::EditHistory history;
+    std::unique_ptr<std::atomic<bool>[]> touchFlags;               // indexed like learnableParamIds (MIDI touches on the audio thread)
+    std::map<juce::String, int> learnIndex;
+    int historyGen = 0;
+    juce::String historyLabel;
+    void pollHistory();
+    void publishHistory();
+    int applyHistoryValues (const std::map<juce::String, float>& values, const juce::String& label);
     void timerCallback() override
     {
         pollSessionRequests();
+        pollHistory();
         if (offloadActive.load() && offload != nullptr && offloadStateDirty.exchange (false))
         {
             juce::MemoryBlock st; getStateInformation (st); offload->sendState (st);       // the node sounds identical

@@ -44,7 +44,7 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - ✅ LAN / local DSP server (AudioGridder-style): Solution Utility runs a DSP Node (auto-discovered on the LAN / this PC); plugins offload with a chosen latency (reported to the DAW), state kept in sync, automatic fallback to local; output matches local processing exactly
 - ✅ Voice: choose the microphone source (Voice settings → Microphone; saved, falls back to the Windows default)
 - ✅ MIDI Controllers panel (Ctrl+Alt+M): presets (Korg nanoKONTROL2, Akai MPK Mini, Novation Launch Control XL, Behringer X-Touch Mini, Arturia MiniLab 3 / KeyLab Essential, generic), auto-setup wizard, mapping list with delete, MIDI map saved with the session; joystick/gamepad axes → any control
-- ☐ Undo history per module + global, with selective undo (go back but keep chosen changes)
+- ✅ History panel (Ctrl+Alt+Z, 🕘, voice "history"): every edit logged once it settles (presets = one entry), Undo This (selective), Go Back Here… keeping ticked controls, Whole Rack tab undoes edits in other instances, automation playback ignored, saved with the session
 - ☐ Test-tone analyser (PluginDoctor-style): tone before/after a plugin, before/after stacked; precision grid follows the calibration tone
 - ☐ Global search (presets/sounds)
 

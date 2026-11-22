@@ -49,6 +49,93 @@ SolutionAudioProcessor::~SolutionAudioProcessor()
     rackLinkBus->activeInstances.fetch_sub (1, std::memory_order_relaxed);
 }
 
+// ===================== Edit history (selective undo) =====================
+void SolutionAudioProcessor::markTouched (const juce::String& id)
+{
+    auto it = learnIndex.find (id);
+    if (it != learnIndex.end() && touchFlags != nullptr) touchFlags[(size_t) it->second].store (true, std::memory_order_relaxed);
+}
+
+void SolutionAudioProcessor::pollHistory()
+{
+    if (touchFlags == nullptr)
+    {
+        touchFlags.reset (new std::atomic<bool>[learnableParamIds.size()]);
+        for (size_t i = 0; i < learnableParamIds.size(); ++i) { touchFlags[i] = false; learnIndex[learnableParamIds[i]] = (int) i; }
+    }
+    std::vector<std::pair<juce::String, float>> values;
+    values.reserve (learnableParamIds.size());
+    for (auto& id : learnableParamIds)
+        if (auto* q = apvts.getParameter (id)) values.emplace_back (id, q->getValue());
+    std::vector<char> touched (learnableParamIds.size(), 0);
+    for (size_t i = 0; i < learnableParamIds.size(); ++i) touched[i] = touchFlags[i].exchange (false, std::memory_order_relaxed) ? 1 : 0;
+    const auto label = historyLabel.isNotEmpty() ? historyLabel : undoManager.getUndoDescription();
+    const bool added = history.poll (values, juce::Time::currentTimeMillis(), hostPlaying.load(),
+                                     [&] (const juce::String& id) { auto it = learnIndex.find (id); return it != learnIndex.end() && touched[(size_t) it->second]; },
+                                     label.startsWith ("Load preset") || historyLabel.isNotEmpty() ? label : juce::String());
+    if (added) { historyLabel.clear(); historyGen++; publishHistory(); }
+}
+
+void SolutionAudioProcessor::publishHistory()
+{
+    if (rackSlot >= 0) rackLinkBus->slots[(size_t) rackSlot].historyText = history.toString (40);
+}
+
+int SolutionAudioProcessor::applyHistoryValues (const std::map<juce::String, float>& values, const juce::String& label)
+{
+    if (values.empty()) return 0;
+    undoManager.beginNewTransaction (label);
+    historyLabel = label;                                  // the history logs this as one entry with that name
+    int n = 0;
+    for (auto& [id, v] : values)
+        if (auto* q = apvts.getParameter (id)) { q->beginChangeGesture(); q->setValueNotifyingHost (v); q->endChangeGesture(); markTouched (id); ++n; }
+    return n;
+}
+
+int SolutionAudioProcessor::revertHistory (int seq)
+{
+    const auto* e = history.find (seq);
+    if (e == nullptr) return 0;
+    const auto label = "Reverted: " + (e->label.isNotEmpty() ? e->label : e->changes.front().id);
+    return applyHistoryValues (history.revertOne (seq), label);
+}
+
+int SolutionAudioProcessor::restoreHistory (int seq, const juce::StringArray& keepIds)
+{
+    std::map<juce::String, float> current;
+    for (auto& id : learnableParamIds) if (auto* q = apvts.getParameter (id)) current[id] = q->getValue();
+    std::set<juce::String> keep; for (auto& k : keepIds) keep.insert (k);
+    return applyHistoryValues (history.restoreTo (seq, keep, current), "Went back to step " + juce::String (seq) + (keep.empty() ? juce::String() : " (kept " + juce::String ((int) keep.size()) + ")"));
+}
+
+juce::var SolutionAudioProcessor::historyJson() const
+{
+    juce::Array<juce::var> list;
+    for (auto& e : history.getEntries())
+    {
+        juce::DynamicObject::Ptr o = new juce::DynamicObject();
+        o->setProperty ("seq", e.seq); o->setProperty ("time", (double) e.timeMs); o->setProperty ("label", e.label);
+        const auto later = history.changedAfter (e.seq);
+        juce::Array<juce::var> ch;
+        for (auto& c : e.changes)
+        {
+            juce::DynamicObject::Ptr co = new juce::DynamicObject();
+            co->setProperty ("id", c.id);
+            if (auto* q = apvts.getParameter (c.id))
+            {
+                co->setProperty ("name", q->getName (40));
+                co->setProperty ("from", q->getText (c.from, 16) + (q->getLabel().isNotEmpty() ? " " + q->getLabel() : juce::String()));
+                co->setProperty ("to",   q->getText (c.to,   16) + (q->getLabel().isNotEmpty() ? " " + q->getLabel() : juce::String()));
+            }
+            co->setProperty ("later", later.count (c.id) > 0);
+            ch.add (juce::var (co.get()));
+        }
+        o->setProperty ("changes", ch);
+        list.add (juce::var (o.get()));
+    }
+    return list;
+}
+
 void SolutionAudioProcessor::armMidiLearn (const juce::String& paramId)
 {
     for (size_t i = 0; i < learnableParamIds.size(); ++i)
@@ -346,7 +433,10 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             if (mappedIdx >= 0 && mappedIdx < static_cast<int> (learnableParamIds.size()))
             {
                 if (auto* param = apvts.getParameter (learnableParamIds[static_cast<size_t> (mappedIdx)]))
+                {
                     param->setValueNotifyingHost (norm);
+                    if (touchFlags != nullptr) touchFlags[(size_t) mappedIdx].store (true, std::memory_order_relaxed);   // a hand on a controller, not automation
+                }
             }
         }
     }
@@ -962,6 +1052,7 @@ void SolutionAudioProcessor::setParamReal (const juce::String& id, float value)
         q->beginChangeGesture();
         q->setValueNotifyingHost (q->convertTo0to1 (juce::jlimit (q->getNormalisableRange().start, q->getNormalisableRange().end, value)));
         q->endChangeGesture();
+        markTouched (id);
     }
 }
 
@@ -1325,6 +1416,7 @@ void SolutionAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
    #endif
     state.setProperty ("module", moduleKey, nullptr);
     state.setProperty ("midimap", getCcMapString(), nullptr);          // MIDI Learn survives reopening the session
+    state.setProperty ("history", history.toString(), nullptr);        // edit history survives reopening too
     state.setProperty ("preset", presets.getCurrentPresetName(), nullptr);
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     copyXmlToBinary (*xml, destData);
@@ -1363,6 +1455,9 @@ void SolutionAudioProcessor::setStateInformation (const void* data, int sizeInBy
     migrateState (tree, savedVersion);
     apvts.replaceState (tree);
     setCcMapString (apvts.state.getProperty ("midimap").toString());
+    if (apvts.state.hasProperty ("history")) history.fromString (apvts.state.getProperty ("history").toString());
+    else history.rebaseline();                                          // a loaded session is not an edit
+    historyGen++; publishHistory();
 
     // Restore the measuring mic, then the saved room measurement (refitted for that mic).
     const auto micId = apvts.state.getProperty ("micProfile", "generic").toString();

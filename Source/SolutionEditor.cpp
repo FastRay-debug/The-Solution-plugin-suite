@@ -97,6 +97,7 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                    {
                        audioProcessor.undoManager.beginNewTransaction (paramId);
                        param->setValueNotifyingHost (param->convertTo0to1 (value));
+                       audioProcessor.markTouched (paramId);
                    }
                }
            })
@@ -195,6 +196,21 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                }
            })
            .withEventListener ("voice", [this] (const juce::var& d) { handleVoice (d); })
+           .withEventListener ("history", [this] (const juce::var& d)
+           {
+               const auto cmd = d.getProperty ("cmd", {}).toString();
+               if (cmd == "revert")  audioProcessor.revertHistory ((int) d.getProperty ("seq", 0));
+               else if (cmd == "restore")
+               {
+                   juce::StringArray keep;
+                   if (auto* arr = d.getProperty ("keep", {}).getArray()) for (auto& k : *arr) keep.add (k.toString());
+                   audioProcessor.restoreHistory ((int) d.getProperty ("seq", 0), keep);
+               }
+               else if (cmd == "clear") audioProcessor.clearHistory();
+               else if (cmd == "rackRevert") rackRevert ((int) d.getProperty ("slot", -1), (int) d.getProperty ("seq", 0));
+               if (cmd == "rack" || cmd == "rackRevert") sendRackHistory();
+               sendHistory();
+           })
            .withEventListener ("midimap", [this] (const juce::var& d)
            {
                const auto cmd = d.getProperty ("cmd", {}).toString();
@@ -791,8 +807,52 @@ void SolutionAudioProcessorEditor::sendRemoteState (const juce::String& error)
     emitToViews ("remoteState", juce::var (payload.get()));
 }
 
+void SolutionAudioProcessorEditor::sendHistory()
+{
+    lastHistoryGen = audioProcessor.getHistoryGen();
+    emitToViews ("historyState", audioProcessor.historyJson());
+}
+
+// Every other instance's recent edits (the Rack tab of the History panel).
+void SolutionAudioProcessorEditor::sendRackHistory()
+{
+    auto& bus = audioProcessor.getRackBus();
+    juce::Array<juce::var> list;
+    for (int i = 0; i < SolutionDSP::RackLinkBus::maxSlots; ++i)
+    {
+        const auto& slot = bus.slots[(size_t) i];
+        if (! slot.active.load() || i == audioProcessor.getRackSlot() || slot.historyText.isEmpty()) continue;
+        SolutionHistory::EditHistory h; h.fromString (slot.historyText);
+        const auto who = juce::String (SolutionDSP::moduleDisplayName ((SolutionDSP::ModuleId) slot.moduleId.load()))
+                         + (slot.trackName.isNotEmpty() ? " (" + slot.trackName + ")" : juce::String());
+        for (auto& e : h.getEntries())
+        {
+            juce::DynamicObject::Ptr o = new juce::DynamicObject();
+            o->setProperty ("slot", i); o->setProperty ("who", who); o->setProperty ("seq", e.seq); o->setProperty ("time", (double) e.timeMs);
+            juce::StringArray names;
+            for (auto& c : e.changes) if (auto* q = audioProcessor.apvts.getParameter (c.id)) names.add (q->getName (30) + " " + q->getText (c.from, 12) + " → " + q->getText (c.to, 12));
+            o->setProperty ("label", e.label.isNotEmpty() ? e.label : names.joinIntoString (", "));
+            o->setProperty ("detail", names.joinIntoString (", "));
+            list.add (juce::var (o.get()));
+        }
+    }
+    emitToViews ("rackHistoryState", list);
+}
+
+// Undo one edit in another instance: every module shares the same parameter layout, so its values convert here.
+void SolutionAudioProcessorEditor::rackRevert (int slot, int seq)
+{
+    auto& bus = audioProcessor.getRackBus();
+    if (! juce::isPositiveAndBelow (slot, SolutionDSP::RackLinkBus::maxSlots)) return;
+    SolutionHistory::EditHistory h; h.fromString (bus.slots[(size_t) slot].historyText);
+    for (auto& [id, norm] : h.revertOne (seq))
+        if (auto* q = audioProcessor.apvts.getParameter (id))
+            audioProcessor.requestParamOnSlot (slot, id, q->convertFrom0to1 (norm));
+}
+
 void SolutionAudioProcessorEditor::timerCallback()
 {
+    if (audioProcessor.getHistoryGen() != lastHistoryGen) sendHistory();
     audioProcessor.pollAutoGainStage();          // sets the trims when the 3 s listen is done
     if (frameCounter % 120 == 60 && audioProcessor.getRemote() != nullptr && audioProcessor.getRemote()->isRunning())
         sendRemoteState();

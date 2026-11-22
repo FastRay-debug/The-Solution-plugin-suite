@@ -107,6 +107,10 @@
     }
     .dg-macros.bank button { font-size: 15px; padding: 3px 0; }
     .dg-macros .bank-btn { flex: 0 0 54px; font-size: 12px !important; }
+    .hist-row { display: grid; grid-template-columns: 88px 1fr auto; gap: 8px; align-items: center; padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; }
+    .hist-row.sel { background: rgba(255,255,255,0.06); outline: 1px solid var(--gold); }
+    .hist-row small { opacity: 0.7; } .hist-t { font-family: monospace; opacity: 0.6; font-size: 11px; }
+    #histTabs button.active { background: var(--gold); color: #000; }
     .km-row { display: grid; grid-template-columns: 1fr 140px 26px; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; }
     .km-key { font-family: monospace; font-size: 11.5px; } .km-key.custom { border-color: var(--gold); color: var(--gold); }
     .km-key.clash { border-color: #ef4444; color: #fca5a5; } .km-key.capturing { border-color: #38bdf8; color: #38bdf8; }
@@ -666,6 +670,7 @@
       <button onclick="openMatrix()" data-tip="The Matrix: CV & MIDI Learn">⚡ <span class="lbl">MATRIX</span></button>
       <button onclick="doUndo()" data-tip="Undo">↩</button>
       <button onclick="doRedo()" data-tip="Redo">↪</button>
+      <button onclick="openHistory()" data-tip="History: undo any single change, or go back and keep what you like (Ctrl+Alt+Z)">🕘</button>
       <button id="precBtn" onclick="togglePrecision()" data-tip="Oscilloscope (Shift+Space)">⌖</button>
       <button id="rearBtn" onclick="toggleRear()" data-tip="180° rear patch bay (Shift+R)">↻</button>
       
@@ -1413,6 +1418,17 @@
     </div>
   </div>
 
+  <div class="modal" id="histModal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="width:680px;max-height:640px;overflow-y:auto;">
+      <strong style="color:var(--gold);letter-spacing:0.1em;">🕘 HISTORY</strong>
+      <div class="dg-hint" style="font-size:11px;margin:6px 0 8px;">Undo any single change without losing the ones after it, or go back to any step and keep what you like. ↑↓ choose · Enter undo this · B go back here · Tab this module / whole rack. Saved with your session.</div>
+      <div id="histTabs" style="display:flex;gap:6px;margin-bottom:6px;"><button data-tab="mine" onclick="openHistory('mine')">THIS MODULE</button><button data-tab="rack" onclick="openHistory('rack')">WHOLE RACK</button></div>
+      <div id="histList"></div>
+      <div id="histKeep"></div>
+      <div style="display:flex;gap:6px;margin-top:10px;"><button onclick="histAskKeep(0)">GO BACK TO THE START…</button><button onclick="if(confirm('Clear this module\'s history? (The sound doesn\'t change.)')) emit('history',{cmd:'clear'})">CLEAR HISTORY</button><span style="flex:1"></span><button onclick="document.getElementById('histModal').classList.remove('open')">CLOSE</button></div>
+    </div>
+  </div>
+
   <div class="modal" id="midiModal" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box" style="width:560px;max-height:620px;overflow-y:auto;">
       <strong style="color:var(--gold);letter-spacing:0.1em;">🎹 MIDI CONTROLLERS &amp; JOYSTICKS</strong>
@@ -1435,6 +1451,8 @@
       <div class="kbd-grid">
         <div><h4>EVERYWHERE</h4>
           <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> Undo <i>(every app)</i></p>
+          <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd> History: undo any one change, go back &amp; keep <i>(every app)</i></p>
+          <p><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd> MIDI controllers &amp; joysticks <i>(every app)</i></p>
           <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> Redo</p>
           <p><kbd>Ctrl</kbd>+<kbd>S</kbd> Save preset</p>
           <p><kbd>,</kbd> <kbd>.</kbd> Previous / next preset</p>
@@ -1748,6 +1766,7 @@
       if (e.shiftKey && !mod && k === 'f') { e.preventDefault(); toggleFly(); return; }
       if (e.shiftKey && !mod && k === 'v') { e.preventDefault(); toggleVoice(); return; }
       // --- universal (every app) ---
+      if (mod && e.altKey && k === 'z') { e.preventDefault(); openHistory(); return; }
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); return; }
       if (mod && k === 'y') { e.preventDefault(); doRedo(); return; }
       if (mod && !e.altKey && k === 's') { e.preventDefault(); openVault(); setTimeout(() => document.getElementById('presetName').focus(), 50); return; }
@@ -3239,6 +3258,7 @@
           presets: () => openVault(), nextPreset: () => stepPreset(1), prevPreset: () => stepPreset(-1),
           nextRoom: () => stepRoom(1), prevRoom: () => stepRoom(-1), rooms: () => openRooms(), beginner: () => toggleBeginner(),
           prerender: () => openPreRender(), help: () => openShortcuts(), hub: () => toggleFastRayHub(),
+          undo: () => doUndo(), redo: () => doRedo(), history: () => openHistory(), midi: () => openMidi(),
           nextTheme: () => cycleTheme(1), prevTheme: () => cycleTheme(-1),
           macroStore: () => macro(Math.round(v.value), true), macroRecall: () => macro(Math.round(v.value), false),
         };
@@ -3312,6 +3332,8 @@
       ['headRecenter', 'Ctrl+Alt+H', 'Head tracking: recentre', () => recenterHead()],
       ['headPanel', '', 'Head tracking panel', () => openHeadTracking()],
       ['midiPanel', 'Ctrl+Alt+M', 'MIDI controllers & joysticks', () => openMidi()],
+      ['history', 'Ctrl+Alt+Z', 'History (selective undo)', () => openHistory()],
+      ['rackHistory', '', 'History of the whole rack', () => openHistory('rack')],
       ...Array.from({ length: 20 }, (_, i) => ['macro' + (i + 1), '', 'Recall macro ' + (i + 1), () => macro(i + 1, false)]),
     ];
     let customKeys = {};                                   // action id -> combo (only the ones the user changed)
@@ -3520,6 +3542,58 @@
     if (window.__JUCE__ && window.__JUCE__.backend) {
       window.__JUCE__.backend.addEventListener('learnData', (d) => { try { const all = JSON.parse(d || '{}'); if (all.modules) LEARN.data = all; LEARN.never = all.never || {}; } catch (e) {} });
       setTimeout(() => emit('learn', { cmd: 'load' }), 500);
+    }
+
+    // ===================== HISTORY: selective undo per module + across the rack =====================
+    let histList = [], rackHist = [], histTab = 'mine', histSel = 0, histKeepFor = null;
+    function openHistory(tab) { histTab = tab || 'mine'; histSel = 0; histKeepFor = null; emit('history', { cmd: histTab === 'rack' ? 'rack' : 'list' }); renderHistory(); document.getElementById('histModal').classList.add('open'); }
+    const histTime = (ms) => { const d = new Date(ms); return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
+    function histRowText(e) {
+      const ch = e.changes || [];
+      if (e.label && ch.length !== 1) return `<b>${escapeHtml(e.label)}</b> <small>(${ch.length} controls)</small>`;
+      const c = ch[0] || {}; return (e.label ? `<b>${escapeHtml(e.label)}</b> · ` : '') + `${escapeHtml(c.name || c.id)} <small>${escapeHtml(c.from)} → ${escapeHtml(c.to)}</small>`;
+    }
+    function renderHistory() {
+      document.querySelectorAll('#histTabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === histTab));
+      const box = document.getElementById('histList');
+      if (histTab === 'rack') {
+        box.innerHTML = rackHist.length ? rackHist.slice().reverse().map((e, i) => `<div class="hist-row${i === histSel ? ' sel' : ''}"><span class="hist-t">${histTime(e.time)}</span><span><b>${escapeHtml(e.who)}</b> · ${escapeHtml(e.label)}</span><button onclick="emit('history',{cmd:'rackRevert',slot:${e.slot},seq:${e.seq}})" data-tip="Undo just this change on that track">UNDO THIS</button></div>`).join('') : '<div class="dg-hint">No edits on other tracks yet (they show here once other Solution plugins are touched).</div>';
+        document.getElementById('histKeep').innerHTML = ''; return;
+      }
+      const rows = histList.slice().reverse();
+      box.innerHTML = rows.length ? rows.map((e, i) => {
+        const later = (e.changes || []).some(c => c.later);
+        return `<div class="hist-row${i === histSel ? ' sel' : ''}" data-seq="${e.seq}"><span class="hist-t">${histTime(e.time)}</span><span>${histRowText(e)}${later ? ' <span title="Changed again later - undoing this also replaces the later value" style="color:#fbbf24">⚠</span>' : ''}</span>
+          <span style="display:flex;gap:4px;"><button onclick="emit('history',{cmd:'revert',seq:${e.seq}})" data-tip="Undo only this change - everything else stays (Enter)">UNDO THIS</button><button onclick="histAskKeep(${e.seq})" data-tip="Go back to right after this step; choose controls to keep (B)">GO BACK HERE…</button></span></div>`;
+      }).join('') : '<div class="dg-hint">Nothing changed yet. Every edit you make shows here - undo any one of them on its own.</div>';
+      renderKeep();
+    }
+    function histAskKeep(seq) { histKeepFor = seq; renderKeep(); }
+    function renderKeep() {
+      const el = document.getElementById('histKeep');
+      if (histKeepFor === null) { el.innerHTML = ''; return; }
+      const ids = {}; histList.filter(e => e.seq > histKeepFor).forEach(e => (e.changes || []).forEach(c => ids[c.id] = c.name || c.id));
+      const keys = Object.keys(ids);
+      el.innerHTML = `<div style="font-size:12px;color:var(--gold);margin:8px 0 4px;">GO BACK TO ${histKeepFor === 0 ? 'THE START' : 'STEP ' + histKeepFor} - tick anything to keep as it is now:</div>`
+        + (keys.length ? keys.map(id => `<label style="display:inline-flex;gap:4px;margin:2px 10px 2px 0;font-size:12px;"><input type="checkbox" class="hist-keep" value="${id}">${escapeHtml(ids[id])}</label>`).join('') : '<div class="dg-hint">Nothing changed after that step.</div>')
+        + `<div style="margin-top:6px;display:flex;gap:6px;"><button onclick="histDoRestore()">GO BACK</button><button onclick="histKeepFor=null;renderKeep()">CANCEL</button></div>`;
+    }
+    function histDoRestore() {
+      const keep = Array.from(document.querySelectorAll('.hist-keep:checked')).map(b => b.value);
+      emit('history', { cmd: 'restore', seq: histKeepFor, keep }); flashHint('🕘 Went back' + (keep.length ? ' - kept ' + keep.length + ' control' + (keep.length > 1 ? 's' : '') : '')); histKeepFor = null;
+    }
+    document.addEventListener('keydown', (e) => {
+      if (!document.getElementById('histModal').classList.contains('open') || e.target.closest('input,select,textarea')) return;
+      const n = histTab === 'rack' ? rackHist.length : histList.length, rows = histTab === 'rack' ? rackHist.slice().reverse() : histList.slice().reverse();
+      if (e.key === 'ArrowDown') { histSel = Math.min(n - 1, histSel + 1); renderHistory(); e.preventDefault(); e.stopPropagation(); }
+      else if (e.key === 'ArrowUp') { histSel = Math.max(0, histSel - 1); renderHistory(); e.preventDefault(); e.stopPropagation(); }
+      else if (e.key === 'Enter' && rows[histSel]) { const r = rows[histSel]; emit('history', histTab === 'rack' ? { cmd: 'rackRevert', slot: r.slot, seq: r.seq } : { cmd: 'revert', seq: r.seq }); e.preventDefault(); e.stopPropagation(); }
+      else if ((e.key === 'b' || e.key === 'B') && histTab === 'mine' && rows[histSel]) { histAskKeep(rows[histSel].seq); e.preventDefault(); e.stopPropagation(); }
+      else if (e.key === 'Tab') { openHistory(histTab === 'rack' ? 'mine' : 'rack'); e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    if (window.__JUCE__ && window.__JUCE__.backend) {
+      window.__JUCE__.backend.addEventListener('historyState', (l) => { histList = Array.isArray(l) ? l : []; if (document.getElementById('histModal').classList.contains('open')) renderHistory(); });
+      window.__JUCE__.backend.addEventListener('rackHistoryState', (l) => { rackHist = Array.isArray(l) ? l : []; if (histTab === 'rack') renderHistory(); });
     }
 
     // ===================== MIDI CONTROLLERS: presets, auto-setup wizard, joystick mapping =====================

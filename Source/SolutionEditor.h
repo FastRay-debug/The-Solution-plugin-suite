@@ -15,6 +15,10 @@ public:
     void resized() override;
 
 private:
+    void sendHistory();
+    void sendRackHistory();
+    void rackRevert (int slot, int seq);
+    int lastHistoryGen = -1;
     void timerCallback() override;
     void sendParamState();
     void sendPresetList (const juce::String& message = {});

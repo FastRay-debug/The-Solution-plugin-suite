@@ -88,7 +88,7 @@ namespace SolutionDSP
         std::atomic<bool>  dialogueSource { false };   // this track is dialogue (its voice detector feeds the duckers)
         std::atomic<float> voice { 0.0f };             // its live voice-activity confidence 0..1
         // Parameter change requests from another instance's stage (index into getParameters(), real value).
-        static constexpr int maxRequests = 8;
+        static constexpr int maxRequests = 32;     // enough for a whole preset revert from the rack history
         std::array<std::atomic<int>, maxRequests> reqParam;
         std::array<std::atomic<float>, maxRequests> reqValue;
         bool pushRequest (int paramIndex, float value)
@@ -105,6 +105,7 @@ namespace SolutionDSP
             return false;
         }
         juce::String trackName;                       // message thread only
+        juce::String historyText;                     // this instance's recent edits (EditHistory::toString), message thread only
     };
 
     struct RackLinkBus

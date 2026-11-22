@@ -1660,6 +1660,9 @@ static void testVoiceParser()
         { "solution a b", Command::Ui, "ab", 0, -1 },
         { "solution full screen", Command::Ui, "fullscreen", 0, -1 },
         { "solution next preset", Command::Ui, "nextPreset", 0, -1 },
+        { "solution undo", Command::Ui, "undo", 0, -1 },
+        { "solution show history", Command::Ui, "history", 0, -1 },
+        { "solution midi controllers", Command::Ui, "midi", 0, -1 },
         { "solution turn the monitors off", Command::Ui, "monitorsOff", 0, -1 },
         { "play", Command::None, "", 0, -1 },                         // no wake word: ignored
         { "solution what's for lunch", Command::None, "", 0, -1 },   // nonsense: ignored
@@ -1751,6 +1754,56 @@ static void testNetworkOffload()
     node.stop();
 }
 
+
+static void testEditHistory()
+{
+    std::printf ("Edit history: selective undo, go back but keep, automation ignored, saved with the session\n");
+    SolutionAudioProcessor proc; proc.prepareToPlay (48000.0, 512);
+    auto tick = [&] (int n = 2) { for (int i = 0; i < n; ++i) proc.pollHistoryForTest(); };
+    auto norm = [&] (const char* id) { return proc.apvts.getParameter (id)->getValue(); };
+    tick();                                                      // adopt the starting values
+    const float w0 = norm ("stage_width"), g0 = norm ("glue_amount"), m0 = norm ("global_mix");
+    proc.setParamReal ("stage_width", 1.5f); tick();
+    proc.setParamReal ("glue_amount", 0.7f); tick();
+    proc.setParamReal ("global_mix", 0.4f); tick();
+    auto list = proc.historyJson();
+    EXPECT (list.size() == 3, "three edits logged (%d)", list.size());
+    const int sWidth = list[0]["seq"], sGlue = list[1]["seq"];
+    EXPECT ((bool) list[0]["changes"][0]["later"] == false, "width not changed later");
+
+    // Selective undo: only the glue edit goes back.
+    EXPECT (proc.revertHistory (sGlue) == 1, "revert one moves one control"); tick();
+    EXPECT (std::abs (norm ("glue_amount") - g0) < 1e-4f && std::abs (norm ("stage_width") - w0) > 0.01f && std::abs (norm ("global_mix") - m0) > 0.01f,
+            "glue reverted, width and mix kept");
+    list = proc.historyJson();
+    EXPECT (list.size() == 4 && list[3]["label"].toString().startsWith ("Reverted"), "the revert is itself in the history (%s)", list[3]["label"].toString().toRawUTF8());
+
+    // Go back to before everything, but keep the mix as it is now.
+    proc.restoreHistory (0, juce::StringArray ("global_mix")); tick();
+    EXPECT (std::abs (norm ("stage_width") - w0) < 1e-4f && std::abs (norm ("glue_amount") - g0) < 1e-4f, "went back to the start");
+    EXPECT (std::abs (norm ("global_mix") - m0) > 0.01f, "kept the chosen control (mix)");
+    (void) sWidth;
+
+    // Automation while playing is not an edit; a hand on a control while playing is.
+    const auto before = proc.historyJson().size();
+    proc.setHostPlayingForTest (true);
+    proc.apvts.getParameter ("stage_depth")->setValueNotifyingHost (0.9f); tick();
+    EXPECT (proc.historyJson().size() == before, "automation playback not logged");
+    proc.setParamReal ("stage_depth", 0.1f); tick();
+    EXPECT (proc.historyJson().size() == before + 1, "a user move during playback is logged");
+    proc.setHostPlayingForTest (false);
+
+    // Saved with the session; loading is not itself an edit.
+    juce::MemoryBlock saved; proc.getStateInformation (saved);
+    SolutionAudioProcessor p2; p2.prepareToPlay (48000.0, 512);
+    for (int i = 0; i < 2; ++i) p2.pollHistoryForTest();
+    p2.setStateInformation (saved.getData(), (int) saved.getSize());
+    for (int i = 0; i < 3; ++i) p2.pollHistoryForTest();
+    EXPECT (p2.historyJson().size() == proc.historyJson().size(), "history restored, load not logged (%d vs %d)", p2.historyJson().size(), proc.historyJson().size());
+    EXPECT (p2.revertHistory (sGlue) == 1, "old entries still revertible after reload");
+    std::printf ("  done\n");
+}
+
 static void testDiagnostics()
 {
     std::printf ("Diagnostics: real counters + real system readings\n");
@@ -1826,6 +1879,7 @@ int main()
     testVoiceParser();
     testHeadTracking();
     testNetworkOffload();
+    testEditHistory();
     testDiagnostics();
     std::printf ("\n%d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
