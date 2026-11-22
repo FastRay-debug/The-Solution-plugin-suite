@@ -634,6 +634,12 @@
     #plate .meter-strip-hdr, #plate .meter-strip-hdr span { font-family: var(--plate-font) !important; font-weight: 600; letter-spacing: 0.14em; color: #d9d2c2 !important; font-size: max(7px, calc(var(--s) * 12px)); text-shadow: 0 -1px 0 rgba(0,0,0,0.85); }
     #plate .ptog { position: absolute; transform: translate(-50%, -50%); cursor: pointer; border-radius: 6px; }
     #plate .plamp { border-radius: 50%; }
+    /* lettering legibility per plate: light stone / brushed metal get dark engraved ink; busy plates get a small tag behind each label */
+    #plate .knob-lbl { font-size: max(8.5px, calc(var(--s) * 13px)); }
+    #plate .knob-val { font-size: max(8.5px, calc(var(--s) * 12px)); }
+    #plate .ptog b { font-size: max(8px, calc(var(--s) * 12px)); }
+    #plate.ink-dark .knob-lbl, #plate.ink-dark .ptog:not(.btn) b { color: #2a1d0e; text-shadow: 0 1px 0 rgba(255,255,255,0.45), 0 -1px 0 rgba(0,0,0,0.25); font-weight: 600; }
+    #plate.ink-tag .knob-lbl, #plate.ink-tag .ptog:not(.btn) b { background: rgba(8,8,10,0.72); border: 1px solid rgba(255,255,255,0.12); border-radius: 3px; padding: 0 calc(var(--s) * 6px); line-height: 1.4; }
     #plate [data-win].float #vp { background: transparent; box-shadow: none; }
     #plate [data-win].float #vp::after { background: none; box-shadow: none; }
     #plate [data-win].rect #vp { border-radius: 10px; }
@@ -2105,22 +2111,22 @@
       camaro71: { w: 1376, h: 768, globe: 0xff8a2a, window: [465, 330, 150], strip: [548, 584, 832, 658], tach: [898, 330, 142],
         knobs: [[248, 180, 30], [248, 330, 30], [248, 480, 30], [690, 175, 30], [690, 330, 30], [690, 485, 30], [1130, 180, 30], [1130, 330, 30], [1130, 480, 30]],
         toggles: tg([[440, 620, 'lever', 36, 80], [494, 620, 'lever', 36, 80], [882, 620, 'lever', 36, 80], [935, 620, 'lever', 36, 80], [320, 620, 'btn', 120, 28], [1056, 620, 'btn', 120, 28]]) },
-      cuda70: { w: 1376, h: 768, globe: 0xa3e635, window: { rect: [464, 292, 912, 472] }, strip: [507, 187, 868, 235], styleLamp: [1110, 212],
+      cuda70: { w: 1376, h: 768, ink: 'tag', globe: 0xa3e635, window: { rect: [464, 292, 912, 472] }, strip: [507, 187, 868, 235], styleLamp: [1110, 212],
         knobs: [[265, 382, 46], [190, 212, 22], [340, 212, 22], [157, 608, 26], [322, 608, 32], [1110, 628, 26], [1001, 328, 22], [1218, 328, 22], [1001, 432, 18]],
         toggles: tg([[525, 532, 'lamp', 34, 34], [687, 532, 'lamp', 34, 34], [850, 532, 'lamp', 34, 34], [1000, 532, 'lamp', 40, 40], [1110, 532, 'lamp', 40, 40], [1218, 532, 'lamp', 40, 40]]) },
-      eldorado59: { w: 1376, h: 768, globe: 0x2dd4bf, window: [688, 385, 150], float: true, strip: [560, 108, 816, 146],
+      eldorado59: { w: 1376, h: 768, ink: 'tag', globe: 0x2dd4bf, window: [688, 385, 150], float: true, strip: [560, 108, 816, 146],
         knobs: [[458, 497, 38], [238, 270, 32], [348, 270, 32], [238, 497, 32], [345, 497, 34], [924, 497, 38], [914, 270, 36], [1031, 270, 32], [1140, 270, 32]],
         toggles: tg([[461, 270, 'lamp', 72, 72], [1148, 497, 'lamp', 60, 60], [545, 645, 'btn', 84, 24], [640, 645, 'btn', 84, 24], [737, 645, 'btn', 84, 24], [832, 645, 'btn', 84, 24]]) },
       eviltwin: { w: 1376, h: 768, globe: 0xff3344, window: [688, 300, 150], float: true, strip: [230, 142, 472, 214],
         knobs: [[237, 405, 42], [343, 405, 40], [292, 548, 26], [190, 560, 28], [440, 560, 30], [1140, 405, 42], [1033, 405, 40], [920, 560, 28], [1082, 548, 26]],
         toggles: tg([[1008, 180, 'btn', 38, 30], [1100, 180, 'btn', 96, 30], [1193, 180, 'btn', 40, 30], [181, 182, 'btn', 34, 62], [630, 563, 'btn', 96, 30], [735, 563, 'btn', 96, 30]]) },
-      giza: { w: 1376, h: 768, globe: 0xffb020, window: [688, 450, 160], float: true, strip: [922, 532, 1153, 583],
+      giza: { w: 1376, h: 768, ink: 'dark', globe: 0xffb020, window: [688, 450, 160], float: true, strip: [922, 532, 1153, 583],
         knobs: [[330, 555, 60], [340, 262, 56], [200, 470, 28], [460, 470, 28], [200, 625, 28], [1040, 262, 56], [960, 472, 24], [1110, 472, 24], [1040, 642, 26]],
         toggles: tg([[230, 383, 'bar', 122, 16], [440, 383, 'bar', 122, 16], [935, 383, 'bar', 122, 16], [1147, 383, 'bar', 122, 16], [555, 262, 'bar', 30, 90], [815, 262, 'bar', 30, 90]]) },
-      gto67: { w: 1376, h: 768, globe: 0xffa64d, window: [692, 330, 165], float: true, strip: [947, 427, 1090, 503],
+      gto67: { w: 1376, h: 768, ink: 'tag', globe: 0xffa64d, window: [692, 330, 165], float: true, strip: [947, 427, 1090, 503],
         knobs: [[270, 308, 66], [437, 308, 66], [270, 463, 32], [404, 463, 26], [525, 490, 30], [955, 305, 30], [909, 463, 26], [1126, 463, 26], [1095, 305, 30]],
         toggles: tg([[300, 610, 'btn', 96, 28], [420, 610, 'btn', 96, 28], [540, 610, 'btn', 96, 28], [840, 610, 'btn', 96, 28], [960, 610, 'btn', 96, 28], [1080, 610, 'btn', 96, 28]]) },
-      mach1: { w: 1376, h: 768, globe: 0x22d3ee, window: [705, 385, 170], float: true, strip: [224, 444, 544, 548],
+      mach1: { w: 1376, h: 768, ink: 'tag', globe: 0x22d3ee, window: [705, 385, 170], float: true, strip: [224, 444, 544, 548],
         knobs: [[362, 320, 48], [155, 323, 22], [470, 627, 22], [492, 323, 22], [250, 627, 22], [980, 628, 38], [1160, 628, 32], [958, 492, 26], [1145, 492, 26]],
         toggles: tg([[560, 325, 'lever', 30, 56], [536, 630, 'lever', 30, 56], [655, 150, 'lamp', 72, 72], [752, 150, 'lamp', 72, 72], [165, 627, 'lamp', 48, 48], [232, 323, 'lamp', 48, 48]]) },
       museum: { w: 1376, h: 768, globe: 0xffd27a, window: [688, 300, 170], float: true, strip: [282, 359, 543, 410],
@@ -2129,7 +2135,7 @@
       piano: { w: 1376, h: 768, globe: 0xffe0a3, window: [303, 285, 185], float: true, strip: [870, 200, 1280, 256],
         knobs: [[128, 590, 32], [216, 590, 32], [304, 590, 32], [392, 590, 32], [480, 590, 32], [920, 590, 36], [1030, 590, 36], [1140, 590, 36], [1240, 590, 34]],
         toggles: tg([[628, 215, 'bar', 26, 230], [745, 215, 'bar', 26, 230], [640, 470, 'btn', 80, 30], [735, 470, 'btn', 80, 30], [640, 600, 'btn', 80, 30], [735, 600, 'btn', 80, 30]]) },
-      rome: { w: 1376, h: 768, globe: 0xffc070, window: [700, 395, 262], float: true, strip: [142, 58, 322, 90],
+      rome: { w: 1376, h: 768, ink: 'dark', globe: 0xffc070, window: [700, 395, 262], float: true, strip: [142, 58, 322, 90],
         knobs: [[212, 155, 28], [205, 268, 28], [196, 390, 28], [212, 515, 28], [235, 622, 28], [1165, 155, 28], [1170, 268, 28], [1180, 385, 28], [1160, 515, 28]],
         toggles: tg([[330, 732, 'btn', 100, 26], [450, 732, 'btn', 100, 26], [570, 732, 'btn', 100, 26], [830, 732, 'btn', 100, 26], [950, 732, 'btn', 100, 26], [1070, 732, 'btn', 100, 26]]) },
       serengeti: { w: 1376, h: 768, globe: 0x3ee8f0, window: [460, 215, 155], float: true, strip: [168, 402, 667, 484],
@@ -2145,7 +2151,7 @@
     function enterPlate(map) {
       const main = document.querySelector('.main'); let pl = document.getElementById('plate');
       if (!pl) { pl = document.createElement('div'); pl.id = 'plate'; main.appendChild(pl); }
-      pl.innerHTML = ''; pl.style.backgroundImage = "url('/skins/" + currentSkin + ".jpg')";
+      pl.className = map.ink ? 'ink-' + map.ink : ''; pl.innerHTML = ''; pl.style.backgroundImage = "url('/skins/" + currentSkin + ".jpg')";
       plateHome = [];
       const park = (el) => { plateHome.push([el, el.parentNode, el.nextSibling]); };
       plateMoves().slice(0, map.knobs.length).forEach((cell, i) => { const slot = document.createElement('div'); slot.className = 'pslot'; slot.dataset.k = i; pl.appendChild(slot); park(cell); slot.appendChild(cell); });
