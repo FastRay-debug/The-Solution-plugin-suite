@@ -634,6 +634,39 @@
     #plate .meter-strip-hdr, #plate .meter-strip-hdr span { font-family: var(--plate-font) !important; font-weight: 600; letter-spacing: 0.14em; color: #d9d2c2 !important; font-size: max(7px, calc(var(--s) * 12px)); text-shadow: 0 -1px 0 rgba(0,0,0,0.85); }
     #plate .ptog { position: absolute; transform: translate(-50%, -50%); cursor: pointer; border-radius: 6px; }
     #plate .plamp { border-radius: 50%; }
+    /* ---- faceplate FX ---- */
+    #plate .pbg, #plate .pglow { position: absolute; inset: 0; background-size: 100% 100%; border-radius: inherit; pointer-events: none; }
+    #plate .pglow { mix-blend-mode: screen; filter: brightness(0.8) contrast(4.5) saturate(1.7) blur(1.2px); opacity: var(--glow, 0); }
+    #plate.night .pbg { filter: brightness(0.2) saturate(0.75); }
+    #plate.night .pglow { opacity: calc(0.6 + var(--glow, 0)); filter: brightness(0.9) contrast(5) saturate(1.8) blur(1px); }
+    #plate.night .knob-cap { filter: brightness(0.55); }
+    #plate.night .knob-lbl, #plate.night .ptog b { color: #c9b58e !important; text-shadow: 0 0 6px rgba(255,170,60,0.35) !important; }
+    #plate .knob-svg { filter: drop-shadow(0 0 calc(var(--glow, 0) * 9px) var(--accent)); }
+    #plate .ptog.on i { filter: brightness(calc(1 + var(--glow, 0) * 0.8)); }
+    #plate .pvu { z-index: 3; pointer-events: none; }
+    #plate { transform: perspective(1700px) rotateX(calc(var(--py, 0) * -1.8deg)) rotateY(calc(var(--px, 0) * 2.4deg)); transition: transform 0.25s ease-out; }
+    #plate .pslot { transform: translate(calc(-50% + var(--px, 0) * 3px), calc(-50% + var(--py, 0) * 3px)); }
+    #plate .pslot[data-win] { transform: translate(calc(-50% + var(--px, 0) * 8px), calc(-50% + var(--py, 0) * 8px)); }
+    #plate .pslot .knob-wrap { filter: drop-shadow(calc(var(--px, 0) * -5px) calc(5px + var(--py, 0) * -5px) 6px rgba(0,0,0,0.85)); }
+    #plate.powering .pbg { animation: pwrBg 1.5s ease-out both; }
+    #plate.powering .pglow { animation: pwrGlow 1.6s ease-out both; }
+    #plate.powering .pslot, #plate.powering .ptog { animation: pwrIn 0.5s ease-out both; animation-delay: var(--d, 0.4s); }
+    #plate.powering [data-win] #vp { animation: pwrIn 0.9s ease-out 1.1s both; }
+    @keyframes pwrBg { 0% { filter: brightness(0.02); } 18% { filter: brightness(0.35); } 22% { filter: brightness(0.08); } 30% { filter: brightness(0.5); } 100% { filter: brightness(1); } }
+    @keyframes pwrGlow { 0%, 25% { opacity: 0; } 32% { opacity: 0.9; } 38% { opacity: 0.1; } 48% { opacity: 0.7; } 100% { opacity: var(--glow, 0); } }
+    @keyframes pwrIn { from { opacity: 0; filter: brightness(2.2) blur(2px); } to { opacity: 1; filter: none; } }
+    #fxPop { display: none; position: fixed; z-index: 900; background: rgba(10,12,16,0.96); border: 1px solid rgba(212,175,55,0.5); border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #e5e7eb; box-shadow: 0 10px 30px rgba(0,0,0,0.8); min-width: 240px; }
+    #fxPop.open { display: block; }
+    #fxPop label { display: flex; gap: 6px; align-items: center; padding: 3px 0; cursor: pointer; }
+    #fxPop kbd { margin-left: auto; font-size: 9px; color: #94a3b8; }
+    #fxPop button { width: 100%; margin-top: 5px; font-size: 10px; display: flex; }
+    #mapper { display: none; position: absolute; inset: 0; z-index: 60; background: #05070a; cursor: crosshair; }
+    #mapper.open { display: block; }
+    #mapper img { position: absolute; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+    #mapper svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    #mapBar { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); background: rgba(5,7,10,0.92); border: 1px solid var(--accent); border-radius: 8px; padding: 6px 12px; font-size: 12px; color: #f5d08a; z-index: 2; white-space: nowrap; }
+    #mapBar small { color: #94a3b8; margin-left: 8px; }
+
     /* lettering legibility per plate: light stone / brushed metal get dark engraved ink; busy plates get a small tag behind each label */
     #plate .knob-lbl { font-size: max(8.5px, calc(var(--s) * 13px)); }
     #plate .knob-val { font-size: max(8.5px, calc(var(--s) * 12px)); }
@@ -670,6 +703,20 @@
   </style>
 </head>
 <body>
+  <div id="fxPop">
+    <label><input type="checkbox" data-fx="glow"> Audio glow (lamps, neon, river pulse)</label>
+    <label><input type="checkbox" data-fx="power"> Power-up when it opens</label>
+    <label><input type="checkbox" data-fx="vu"> Analog VU needles</label>
+    <label><input type="checkbox" data-fx="parallax"> Floating parallax</label>
+    <label><input type="checkbox" data-fx="night"> Night mode <kbd>Ctrl+Alt+N</kbd></label>
+    <label><input type="checkbox" data-fx="ticks"> Knob ticks &amp; switch clunks</label>
+    <label>Globe scene <select id="sceneSel" onchange="setGlobeScene(this.value)" style="margin-left:auto;font-size:10px;">
+      <option value="glass">Deep ocean</option><option value="wire">Wireframe</option><option value="stars">Starfield</option><option value="fire">Fire</option><option value="lava">Lava lamp</option><option value="rain">Rain</option></select></label>
+    <button onclick="closeFxPop(); snapshotCard()">📸 Session snapshot card <kbd>Ctrl+Alt+J</kbd></button>
+    <button onclick="closeFxPop(); startMapper()">📐 Map this faceplate (any skin photo)</button>
+    <button onclick="closeFxPop(); resetPlateMap()">↺ Reset this faceplate's map</button>
+    <button onclick="closeFxPop(); replayPower()">⚡ Replay power-up</button>
+  </div>
   <div id="fsBadge"></div>
   <div id="voiceCaption"></div>
   <div id="learnChip"><span></span><button onclick="suggestionAnswer('apply')">APPLY</button><button onclick="suggestionAnswer('later')">NOT NOW</button><button onclick="suggestionAnswer('never')">NEVER</button></div>
@@ -824,6 +871,7 @@
   </div>
 
   <div class="main">
+    <div id="mapper"><img id="mapImg"><svg id="mapSvg"></svg><div id="mapBar"></div></div>
     <div class="wing" data-panel="left">
       <div class="knob-grid">
         <div class="knob-cell big" style="grid-column:span 2;" data-tip="Horizontal 3D Azimuth (-180° to +180°)">
@@ -1124,7 +1172,8 @@
         <option value="factory">Paint: Factory</option><option value="gloss">Gloss</option><option value="metallic">Metallic</option><option value="pearl">Pearl</option>
         <option value="satin">Satin</option><option value="flat">Flat / Matte</option><option value="candy">Candy</option><option value="chrome">Chrome</option>
       </select>
- <button id="plateBtn" class="active" onclick="togglePlateFit()" data-tip="Faceplate fit: the knobs, meter and 3D stage sit in the skin's own sockets (Ctrl+Alt+B). Off = every panel" style="font-size:9px;">▣ FIT</button>
+ <button id="fxBtn" onclick="openFxPop(this)" data-tip="Faceplate FX: glow, power-up, VU needles, parallax, night mode, knob ticks, globe scenes, snapshot, map your own faceplate" style="font-size:9px;">✨ FX</button>
+      <button id="plateBtn" class="active" onclick="togglePlateFit()" data-tip="Faceplate fit: the knobs, meter and 3D stage sit in the skin's own sockets (Ctrl+Alt+B). Off = every panel" style="font-size:9px;">▣ FIT</button>
       <button id="c3dBtn" onclick="toggleConsole3d()" data-tip="Floating 3D console look (Ctrl+Alt+3)" style="font-size:9px;">⬢ 3D</button>
       <select id="skinSelect" onchange="applySkin(this.value)" title="Select from 50 /cars & /places skins">
         <optgroup label="/cars (29 Classic & Muscle)">
@@ -1992,7 +2041,7 @@
           const k = e.shiftKey ? 0.2 : 1;                      // Shift = 5x finer
           if (k !== (el._k || 1)) { startY = e.clientY; startVal = val; el._k = k; }
           const next = Math.max(min, Math.min(max, startVal + ((startY - e.clientY) / 140) * (max - min) * k));
-          renderKnob(next); bind(param, next, unit, mult);
+          renderKnob(next); bind(param, next, unit, mult); if (window.knobTick) window.knobTick(param, (next - min) / (max - min || 1));
         });
         window.addEventListener('mouseup', () => {
           if (dragging && activeDragParam === param) activeDragParam = null;
@@ -2002,7 +2051,7 @@
         el.addEventListener('wheel', (e) => {
           e.preventDefault();
           const next = Math.max(min, Math.min(max, val + (max - min) * (e.deltaY < 0 ? 0.03 : -0.03)));
-          renderKnob(next); bind(param, next, unit, mult);
+          renderKnob(next); bind(param, next, unit, mult); if (window.knobTick) window.knobTick(param, (next - min) / (max - min || 1));
         });
       });
     }
@@ -2108,8 +2157,9 @@
       aztec: { w: 1376, h: 768, globe: 0x34d399, window: [688, 395, 228], float: true, strip: [420, 60, 956, 92],
         knobs: [[215, 385, 36], [160, 165, 38], [285, 165, 32], [160, 605, 38], [285, 605, 32], [1161, 385, 36], [1216, 165, 38], [1091, 165, 32], [1216, 605, 38]],
         toggles: tg([[230, 675, 'btn', 84, 26], [330, 675, 'btn', 84, 26], [430, 675, 'btn', 84, 26], [946, 675, 'btn', 84, 26], [1046, 675, 'btn', 84, 26], [1146, 675, 'btn', 84, 26]]) },
-      camaro71: { w: 1376, h: 768, globe: 0xff8a2a, window: [465, 330, 150], strip: [548, 584, 832, 658], tach: [898, 330, 142],
+      camaro71: { w: 1376, h: 768, globe: 0xff8a2a, window: [465, 330, 150], strip: [548, 584, 832, 658],
         knobs: [[248, 180, 30], [248, 330, 30], [248, 480, 30], [690, 175, 30], [690, 330, 30], [690, 485, 30], [1130, 180, 30], [1130, 330, 30], [1130, 480, 30]],
+        vu: { circle: [898, 330, 142], face: 'dark' },
         toggles: tg([[440, 620, 'lever', 36, 80], [494, 620, 'lever', 36, 80], [882, 620, 'lever', 36, 80], [935, 620, 'lever', 36, 80], [320, 620, 'btn', 120, 28], [1056, 620, 'btn', 120, 28]]) },
       cuda70: { w: 1376, h: 768, ink: 'tag', globe: 0xa3e635, window: { rect: [464, 292, 912, 472] }, strip: [507, 187, 868, 235], styleLamp: [1110, 212],
         knobs: [[265, 382, 46], [190, 212, 22], [340, 212, 22], [157, 608, 26], [322, 608, 32], [1110, 628, 26], [1001, 328, 22], [1218, 328, 22], [1001, 432, 18]],
@@ -2117,7 +2167,7 @@
       eldorado59: { w: 1376, h: 768, ink: 'tag', globe: 0x2dd4bf, window: [688, 385, 150], float: true, strip: [560, 108, 816, 146],
         knobs: [[458, 497, 38], [238, 270, 32], [348, 270, 32], [238, 497, 32], [345, 497, 34], [924, 497, 38], [914, 270, 36], [1031, 270, 32], [1140, 270, 32]],
         toggles: tg([[461, 270, 'lamp', 72, 72], [1148, 497, 'lamp', 60, 60], [545, 645, 'btn', 84, 24], [640, 645, 'btn', 84, 24], [737, 645, 'btn', 84, 24], [832, 645, 'btn', 84, 24]]) },
-      eviltwin: { w: 1376, h: 768, globe: 0xff3344, window: [688, 300, 150], float: true, strip: [230, 142, 472, 214],
+      eviltwin: { w: 1376, h: 768, flicker: true, globe: 0xff3344, window: [688, 300, 150], float: true, strip: [230, 142, 472, 214],
         knobs: [[237, 405, 42], [343, 405, 40], [292, 548, 26], [190, 560, 28], [440, 560, 30], [1140, 405, 42], [1033, 405, 40], [920, 560, 28], [1082, 548, 26]],
         toggles: tg([[1008, 180, 'btn', 38, 30], [1100, 180, 'btn', 96, 30], [1193, 180, 'btn', 40, 30], [181, 182, 'btn', 34, 62], [630, 563, 'btn', 96, 30], [735, 563, 'btn', 96, 30]]) },
       giza: { w: 1376, h: 768, ink: 'dark', globe: 0xffb020, window: [688, 450, 160], float: true, strip: [922, 532, 1153, 583],
@@ -2126,7 +2176,7 @@
       gto67: { w: 1376, h: 768, ink: 'tag', globe: 0xffa64d, window: [692, 330, 165], float: true, strip: [947, 427, 1090, 503],
         knobs: [[270, 308, 66], [437, 308, 66], [270, 463, 32], [404, 463, 26], [525, 490, 30], [955, 305, 30], [909, 463, 26], [1126, 463, 26], [1095, 305, 30]],
         toggles: tg([[300, 610, 'btn', 96, 28], [420, 610, 'btn', 96, 28], [540, 610, 'btn', 96, 28], [840, 610, 'btn', 96, 28], [960, 610, 'btn', 96, 28], [1080, 610, 'btn', 96, 28]]) },
-      mach1: { w: 1376, h: 768, ink: 'tag', globe: 0x22d3ee, window: [705, 385, 170], float: true, strip: [224, 444, 544, 548],
+      mach1: { w: 1376, h: 768, vu: { rect: [848, 118, 1178, 258], face: 'cream' }, ink: 'tag', globe: 0x22d3ee, window: [705, 385, 170], float: true, strip: [224, 444, 544, 548],
         knobs: [[362, 320, 48], [155, 323, 22], [470, 627, 22], [492, 323, 22], [250, 627, 22], [980, 628, 38], [1160, 628, 32], [958, 492, 26], [1145, 492, 26]],
         toggles: tg([[560, 325, 'lever', 30, 56], [536, 630, 'lever', 30, 56], [655, 150, 'lamp', 72, 72], [752, 150, 'lamp', 72, 72], [165, 627, 'lamp', 48, 48], [232, 323, 'lamp', 48, 48]]) },
       museum: { w: 1376, h: 768, globe: 0xffd27a, window: [688, 300, 170], float: true, strip: [282, 359, 543, 410],
@@ -2142,16 +2192,20 @@
         knobs: [[140, 650, 34], [260, 650, 34], [380, 650, 34], [500, 650, 34], [620, 650, 34], [775, 460, 36], [1000, 440, 34], [800, 640, 34], [1020, 650, 34]],
         toggles: tg([[960, 215, 'btn', 100, 34], [1080, 215, 'btn', 100, 34], [1200, 215, 'btn', 100, 34], [420, 540, 'btn', 84, 26], [520, 540, 'btn', 84, 26], [620, 540, 'btn', 84, 26]]) },
     });
+    setTimeout(() => { if (!BUILTIN_PLATES) BUILTIN_PLATES = JSON.parse(JSON.stringify(PLATES)); }, 0);
+    function plateFor() { return PLATES[(SKINS[currentSkin] || {}).plate] || PLATES[currentSkin]; }
     let plateFit = true, plateHome = [], plateOn = false, globeStyle = 'glass', globeBig = false, globePinned = false, globeHoverT = 0;
     function setGlobeBig(on) { if (globeBig === on) return; globeBig = on; layoutPlate(); }
     function toggleGlobePin() { globePinned = !globePinned; setGlobeBig(globePinned); flashHint(globePinned ? 'Globe expanded (Ctrl+Alt+E to shrink)' : 'Globe back in its window'); }
-    function applyGlobeLook() { const map = PLATES[(SKINS[currentSkin] || {}).plate]; if (!window.gl3d || !window.gl3d.setGlobeStyle) return; window.gl3d.setGlobeStyle(globeStyle); if (map) window.gl3d.setGlobeColour(map.globe || 0x22c5ff); }
-    function cycleGlobeStyle(silent) { globeStyle = globeStyle === 'glass' ? 'wire' : 'glass'; applyGlobeLook(); if (!silent) { emit('setUiProp', { key: 'globeStyle', value: globeStyle }); flashHint(globeStyle === 'glass' ? 'Globe: glass sphere (Ctrl+Alt+Y)' : 'Globe: holographic wireframe (Ctrl+Alt+Y)'); } }
+    function applyGlobeLook() { const map = plateFor(); if (!window.gl3d || !window.gl3d.setGlobeStyle) return; window.gl3d.setGlobeStyle(globeStyle); if (map) window.gl3d.setGlobeColour(map.globe || 0x22c5ff); }
+    function cycleGlobeStyle(silent) { setGlobeScene(SCENES[(SCENES.indexOf(globeStyle) + 1) % SCENES.length], silent); }
     function plateMoves() { return [...document.querySelectorAll('.main > .wing .knob-cell')]; }
     function enterPlate(map) {
       const main = document.querySelector('.main'); let pl = document.getElementById('plate');
       if (!pl) { pl = document.createElement('div'); pl.id = 'plate'; main.appendChild(pl); }
-      pl.className = map.ink ? 'ink-' + map.ink : ''; pl.innerHTML = ''; pl.style.backgroundImage = "url('/skins/" + currentSkin + ".jpg')";
+      pl.className = (map.ink ? 'ink-' + map.ink : '') + (plateFx.night ? ' night' : ''); pl.innerHTML = ''; const imgUrl = "url('" + (map.src || '/skins/' + currentSkin + '.jpg') + "')"; pl.style.backgroundImage = imgUrl;
+      ['pbg', 'pglow'].forEach(c => { const d = document.createElement('div'); d.className = c; d.style.backgroundImage = imgUrl; pl.appendChild(d); });
+      if (map.vu && plateFx.vu) { const c = document.createElement('canvas'); c.className = 'pslot pvu'; c.dataset.vu = 1; pl.appendChild(c); }
       plateHome = [];
       const park = (el) => { plateHome.push([el, el.parentNode, el.nextSibling]); };
       plateMoves().slice(0, map.knobs.length).forEach((cell, i) => { const slot = document.createElement('div'); slot.className = 'pslot'; slot.dataset.k = i; pl.appendChild(slot); park(cell); slot.appendChild(cell); });
@@ -2161,11 +2215,12 @@
       const strip = document.createElement('div'); strip.className = 'pslot'; strip.dataset.strip = 1; pl.appendChild(strip); const ms = document.getElementById('meterStrip'); park(ms); strip.appendChild(ms);
       map.toggles.forEach(([x, y, label, target], i) => {
         const t = document.createElement('div'); t.className = 'ptog ' + (map.toggles[i][4] || 'lever'); t.dataset.t = i; t.innerHTML = '<i></i><b>' + label + '</b>';
-        t.title = label === 'PANELS' ? 'Show every panel (Ctrl+Alt+B)' : label; t.onclick = () => { if (target === 'panels') togglePlateFit(); else { const b = document.querySelector(target); if (b) b.click(); } syncPlateToggles(); };
+        t.title = label === 'PANELS' ? 'Show every panel (Ctrl+Alt+B)' : label; t.onclick = () => { fxClunk(); if (target === 'panels') togglePlateFit(); else { const b = document.querySelector(target); if (b) b.click(); } syncPlateToggles(); };
         pl.appendChild(t);
       });
       if (map.tach) { const g = document.createElement('div'); g.className = 'pslot ptach'; g.dataset.tach = 1; pl.appendChild(g); const tr = document.querySelector('.tach.right'); if (tr) { park(tr); g.appendChild(tr); } }
       if (map.styleLamp) { const t = document.createElement('div'); t.className = 'ptog plamp'; t.dataset.lamp = 1; t.title = 'Globe style: glass sphere / holographic wireframe (Ctrl+Alt+Y)'; t.onclick = () => cycleGlobeStyle(); pl.appendChild(t); }
+      if (plateFx.power && !window._platePowered) { window._platePowered = true; powerUp(pl); }
       document.documentElement.classList.add('plate-on'); plateOn = true; if (window.gl3d && window.gl3d.setGlobe) { window.gl3d.setGlobe(true); applyGlobeLook(); } layoutPlate(); syncPlateToggles();
     }
     function exitPlate() {
@@ -2176,7 +2231,7 @@
       window.dispatchEvent(new Event('resize'));
     }
     function layoutPlate() {
-      if (!plateOn) return; const map = PLATES[(SKINS[currentSkin] || {}).plate]; const pl = document.getElementById('plate'), main = document.querySelector('.main'); if (!map || !pl) return;
+      if (!plateOn) return; const map = plateFor(); const pl = document.getElementById('plate'), main = document.querySelector('.main'); if (!map || !pl) return;
       const W = main.clientWidth - 8, H = main.clientHeight - 8, k = Math.min(W / map.w, H / map.h);
       pl.style.width = map.w * k + 'px'; pl.style.height = map.h * k + 'px'; pl.style.left = (main.clientWidth - map.w * k) / 2 + 'px'; pl.style.top = (main.clientHeight - map.h * k) / 2 + 'px';
       pl.style.setProperty('--s', k.toFixed(3));
@@ -2195,29 +2250,220 @@
       st.classList.toggle('thin', (y1 - y0) * k < 40);
       const tg = pl.querySelector('[data-tach]'); if (tg && map.tach) { const [tx, ty, trr] = map.tach; tg.style.left = tx * k + 'px'; tg.style.top = ty * k + 'px'; tg.style.width = tg.style.height = 2 * trr * k + 'px'; }
       st.style.left = (x0 + x1) / 2 * k + 'px'; st.style.top = (y0 + y1) / 2 * k + 'px'; st.style.width = (x1 - x0) * k + 'px'; st.style.height = (y1 - y0) * k + 'px';
+      const vuc = pl.querySelector('[data-vu]');
+      if (vuc && map.vu) { const v = map.vu, r = v.rect || [v.circle[0] - v.circle[2], v.circle[1] - v.circle[2], v.circle[0] + v.circle[2], v.circle[1] + v.circle[2]];
+        vuc.style.left = (r[0] + r[2]) / 2 * k + 'px'; vuc.style.top = (r[1] + r[3]) / 2 * k + 'px'; vuc.style.width = (r[2] - r[0]) * k + 'px'; vuc.style.height = (r[3] - r[1]) * k + 'px';
+        const dpr = Math.min(2, window.devicePixelRatio || 1); vuc.width = Math.round((r[2] - r[0]) * k * dpr); vuc.height = Math.round((r[3] - r[1]) * k * dpr); }
       const lamp = pl.querySelector('[data-lamp]'); if (lamp) { lamp.style.left = map.styleLamp[0] * k + 'px'; lamp.style.top = map.styleLamp[1] * k + 'px'; lamp.style.width = lamp.style.height = 40 * k + 'px'; }
       pl.querySelectorAll('.ptog:not([data-lamp])').forEach(t => { const [x, y, , , , w, h] = map.toggles[+t.dataset.t]; t.style.left = x * k + 'px'; t.style.top = y * k + 'px'; t.style.width = (w || 46) * k + 'px'; t.style.height = (h || 80) * k + 'px'; });
       window.dispatchEvent(new Event('resize'));
     }
     function syncPlateToggles() {
-      if (!plateOn) return; const map = PLATES[(SKINS[currentSkin] || {}).plate]; if (!map) return;
+      if (!plateOn) return; const map = plateFor(); if (!map) return;
       document.querySelectorAll('#plate .ptog:not([data-lamp])').forEach(t => { const target = map.toggles[+t.dataset.t][3]; const b = target !== 'panels' && document.querySelector(target);
         const on = !!b && (b.classList.contains('active') || /: ON/.test(b.textContent)); t.classList.toggle('on', on); });
     }
     function refreshPlate() {
-      const want = plateFit && !!PLATES[(SKINS[currentSkin] || {}).plate] && !document.documentElement.hasAttribute('data-theme');
+      const want = plateFit && !!plateFor() && !document.documentElement.hasAttribute('data-theme');
       if (plateOn) exitPlate();
-      if (want) enterPlate(PLATES[SKINS[currentSkin].plate]);
+      if (want) enterPlate(plateFor());
     }
     function togglePlateFit(on, silent) {
       plateFit = on === undefined ? !plateFit : on; refreshPlate();
       const b = document.getElementById('plateBtn'); if (b) b.classList.toggle('active', plateFit);
       if (!silent) emit('setUiProp', { key: 'plateFit', value: plateFit ? '1' : '0' });
-      if (on === undefined && !PLATES[(SKINS[currentSkin] || {}).plate]) flashHint('Faceplate fit: this skin has no socket map yet (the Lincoln has one)');
+      if (on === undefined && !plateFor()) flashHint('Faceplate fit: this skin has no socket map yet (the Lincoln has one)');
     }
     window.addEventListener('resize', (e) => { if (plateOn && e.isTrusted) layoutPlate(); });
     setInterval(syncPlateToggles, 400);
     new MutationObserver(() => refreshPlate()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    // ===================== Faceplate FX =====================
+    const plateFx = { glow: true, power: true, vu: true, parallax: true, night: false, ticks: false };
+    function saveFx() { emit('setUiProp', { key: 'plateFx', value: JSON.stringify(plateFx) }); }
+    function setFx(key, on, silent) {
+      plateFx[key] = on; const cb = document.querySelector('#fxPop [data-fx="' + key + '"]'); if (cb) cb.checked = on;
+      const pl = document.getElementById('plate');
+      if (key === 'night' && pl) pl.classList.toggle('night', on);
+      if (key === 'parallax' && !on && pl) { pl.style.setProperty('--px', 0); pl.style.setProperty('--py', 0); }
+      if (key === 'vu') refreshPlate();
+      if (!silent) saveFx();
+    }
+    document.querySelectorAll('#fxPop [data-fx]').forEach(cb => { cb.checked = plateFx[cb.dataset.fx]; cb.onchange = () => setFx(cb.dataset.fx, cb.checked); });
+    function openFxPop(btn) { const p = document.getElementById('fxPop'), r = btn.getBoundingClientRect(); p.classList.add('open');
+      p.style.left = Math.max(6, Math.min(innerWidth - p.offsetWidth - 6, r.left - 60)) + 'px'; p.style.top = Math.max(6, r.top - p.offsetHeight - 6) + 'px';
+      document.getElementById('sceneSel').value = globeStyle; }
+    function closeFxPop() { document.getElementById('fxPop').classList.remove('open'); }
+    document.addEventListener('mousedown', e => { if (!e.target.closest('#fxPop,#fxBtn')) closeFxPop(); });
+
+    // power-up: plate flickers up, lamps flick on, controls and the globe arrive in sequence, VU needles sweep
+    function powerUp(pl) {
+      pl.classList.add('powering'); vuSweepT = performance.now();
+      pl.querySelectorAll('.pslot, .ptog').forEach((el, i) => el.style.setProperty('--d', (0.35 + (i % 9) * 0.07 + (el.classList.contains('ptog') ? 0.5 : 0)).toFixed(2) + 's'));
+      clearTimeout(pl._pwr); pl._pwr = setTimeout(() => pl.classList.remove('powering'), 2300);
+      if (plateFx.ticks) [0, 380, 900].forEach(ms => setTimeout(fxClunk, ms));
+    }
+    function replayPower() { const pl = document.getElementById('plate'); if (!plateOn || !pl) { flashHint('Power-up plays on a faceplate skin'); return; } pl.classList.remove('powering'); void pl.offsetWidth; powerUp(pl); }
+
+    // knob ticks & switch clunks (synthesised, quiet, off by default)
+    let fxAc = null; const lastDetent = {}; let lastTickT = 0;
+    function fxCtx() { try { fxAc = fxAc || new (window.AudioContext || window.webkitAudioContext)(); if (fxAc.state === 'suspended') fxAc.resume(); } catch (e) { fxAc = null; } return fxAc; }
+    function fxNoise(ac, dur) { const b = ac.createBuffer(1, Math.ceil(ac.sampleRate * dur), ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (d.length * 0.18)); const s = ac.createBufferSource(); s.buffer = b; return s; }
+    function fxTick() {
+      if (!plateFx.ticks) return; const ac = fxCtx(); if (!ac) return; const now = performance.now(); if (now - lastTickT < 22) return; lastTickT = now;
+      const n = fxNoise(ac, 0.006), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = 'bandpass'; f.frequency.value = 3200 + Math.random() * 500; f.Q.value = 3; g.gain.value = 0.09;
+      n.connect(f).connect(g).connect(ac.destination); n.start();
+    }
+    function fxClunk() {
+      if (!plateFx.ticks) return; const ac = fxCtx(); if (!ac) return; const t = ac.currentTime;
+      const o = ac.createOscillator(), g = ac.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(55, t + 0.07); g.gain.setValueAtTime(0.22, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.1);
+      const n = fxNoise(ac, 0.012), f = ac.createBiquadFilter(), g2 = ac.createGain(); f.type = 'highpass'; f.frequency.value = 1800; g2.gain.value = 0.12; n.connect(f).connect(g2).connect(ac.destination); n.start(t);
+    }
+    window.knobTick = (param, norm) => { const d = Math.floor(norm * 40); if (lastDetent[param] !== undefined && d !== lastDetent[param]) fxTick(); lastDetent[param] = d; };
+
+    // floating parallax: the plate tilts a touch toward the mouse, the knobs and globe float above it
+    document.addEventListener('mousemove', e => {
+      if (!plateOn || !plateFx.parallax || globeBig) return; const pl = document.getElementById('plate'); if (!pl) return;
+      const r = pl.getBoundingClientRect(), nx = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1)), ny = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1));
+      pl.style.setProperty('--px', nx.toFixed(3)); pl.style.setProperty('--py', ny.toFixed(3));
+    });
+
+    // audio glow + analog VU (real ballistics: ~300 ms rise, slight overshoot; 0 VU = -18 dBFS)
+    let glowLvl = 0, vuSweepT = 0, lastFxT = performance.now();
+    const vuState = [{ p: -20, v: 0 }, { p: -20, v: 0 }];
+    function drawPlateVu(c, face, vals) {
+      const x = c.getContext('2d'), W = c.width, H = c.height; x.clearRect(0, 0, W, H);
+      const n = vals.length, round = face === 'dark';
+      for (let m = 0; m < n; m++) {
+        const cw = W / n, ox = m * cw, cx = ox + cw / 2, cy = round ? H * 0.62 : H * 0.95, R = round ? Math.min(cw, H) * 0.4 : Math.min(cw * 0.48, H * 0.8);
+        if (!round) { const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#f6e7bf'); g.addColorStop(1, '#d6bb80'); x.fillStyle = g; x.fillRect(ox + 3, 3, cw - 6, H - 6);
+          const gl = x.createRadialGradient(cx, H, 2, cx, H, cw * 0.7); gl.addColorStop(0, 'rgba(255,190,100,0.4)'); gl.addColorStop(1, 'rgba(255,190,100,0)'); x.fillStyle = gl; x.fillRect(ox + 3, 3, cw - 6, H - 6); }
+        const a0 = -Math.PI * 0.78, a1 = -Math.PI * 0.22, ang = (db) => a0 + (a1 - a0) * Math.max(0, Math.min(1, (db + 20) / 23)), ink = round ? 'rgba(255,170,90,0.92)' : '#2b2118';
+        x.lineWidth = Math.max(1, R * 0.02); x.strokeStyle = ink; x.beginPath(); x.arc(cx, cy, R, a0, ang(0)); x.stroke();
+        x.strokeStyle = '#c62828'; x.lineWidth = Math.max(2, R * 0.05); x.beginPath(); x.arc(cx, cy, R, ang(0), a1); x.stroke();
+        x.textAlign = 'center'; x.font = `600 ${Math.max(7, R * 0.11)}px PlateFont, sans-serif`;
+        [-20, -10, -7, -5, -3, 0, 3].forEach(db => { const a = ang(db), col = db > 0 ? '#c62828' : ink; x.strokeStyle = col; x.lineWidth = Math.max(1, R * 0.018);
+          x.beginPath(); x.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); x.lineTo(cx + Math.cos(a) * R * 0.9, cy + Math.sin(a) * R * 0.9); x.stroke();
+          x.fillStyle = col; x.fillText(db > 0 ? '+' + db : String(Math.abs(db)), cx + Math.cos(a) * R * 1.13, cy + Math.sin(a) * R * 1.13 + R * 0.04); });
+        x.font = `700 ${Math.max(8, R * 0.16)}px PlateFont, sans-serif`; x.fillStyle = ink; x.fillText('VU', cx, cy - R * 0.4);
+        if (n > 1) { x.font = `600 ${Math.max(6, R * 0.09)}px PlateFont, sans-serif`; x.fillText(m ? 'R' : 'L', cx, cy - R * 0.22); }
+        const a = ang(vals[m]); x.strokeStyle = round ? '#ff7a2a' : '#111'; x.lineWidth = Math.max(1.5, R * 0.025); x.shadowColor = round ? '#ff7a2a' : 'rgba(0,0,0,0.45)'; x.shadowBlur = round ? 8 : 3; x.shadowOffsetY = round ? 0 : 2;
+        x.beginPath(); x.moveTo(cx + Math.cos(a) * R * 0.08, cy + Math.sin(a) * R * 0.08); x.lineTo(cx + Math.cos(a) * R * 1.02, cy + Math.sin(a) * R * 1.02); x.stroke(); x.shadowBlur = 0; x.shadowOffsetY = 0;
+        x.fillStyle = round ? '#222' : '#1a1410'; x.beginPath(); x.arc(cx, cy, Math.max(3, R * 0.07), 0, Math.PI * 2); x.fill();
+      }
+    }
+    function fxFrame() {
+      requestAnimationFrame(fxFrame);
+      const now = performance.now(), dt = Math.min(0.05, (now - lastFxT) / 1000); lastFxT = now;
+      if (!plateOn) return; const pl = document.getElementById('plate'); if (!pl) return;
+      const lv = window._lvl || { l: -60, r: -60, peak: -60 }, map = plateFor() || {};
+      const target = Math.max(0, Math.min(1, (Math.max(lv.l, lv.r) + 42) / 36));
+      glowLvl += (target - glowLvl) * (target > glowLvl ? 0.35 : 0.06);
+      let g = plateFx.glow ? glowLvl * 0.6 : 0;
+      if (map.flicker && plateFx.glow && lv.peak > -4 && Math.random() < 0.35) g = Math.random() < 0.5 ? g * 0.15 : Math.min(1, g + 0.4);   // Evil Twin neon stutters on peaks
+      pl.style.setProperty('--glow', g.toFixed(3));
+      const vuc = pl.querySelector('[data-vu]');
+      if (vuc && map.vu) {
+        const sweep = now - vuSweepT < 1400 ? Math.sin(Math.min(1, (now - vuSweepT) / 1400) * Math.PI) * 26 - 20 : null;
+        [lv.l, lv.r].forEach((db, i) => { const tgt = sweep !== null ? sweep : Math.max(-22, Math.min(4, db + 18)), s = vuState[i];
+          const k = 190, c = 2 * Math.sqrt(k) * 0.66; s.v += ((tgt - s.p) * k - s.v * c) * dt; s.p += s.v * dt; });
+        const wide = map.vu.rect && (map.vu.rect[2] - map.vu.rect[0]) / (map.vu.rect[3] - map.vu.rect[1]) > 1.6;
+        drawPlateVu(vuc, map.vu.face, wide ? [vuState[0].p, vuState[1].p] : [(vuState[0].p + vuState[1].p) / 2]);
+      }
+    }
+    requestAnimationFrame(fxFrame);
+
+    // globe scenes
+    const SCENES = ['glass', 'wire', 'stars', 'fire', 'lava', 'rain'], SCENE_NAMES = { glass: 'Deep ocean', wire: 'Wireframe', stars: 'Starfield', fire: 'Fire', lava: 'Lava lamp', rain: 'Rain' };
+    function setGlobeScene(sc, silent) { globeStyle = SCENES.includes(sc) ? sc : 'glass'; applyGlobeLook(); const ss = document.getElementById('sceneSel'); if (ss) ss.value = globeStyle;
+      if (!silent) { emit('setUiProp', { key: 'globeStyle', value: globeStyle }); flashHint('Globe: ' + SCENE_NAMES[globeStyle] + ' (Ctrl+Alt+Y)'); } }
+
+    // session snapshot card (1080x1080 PNG: the globe with every track, names, date)
+    function snapshotCard() {
+      const S = 1080, c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d');
+      const bg = x.createRadialGradient(S / 2, S * 0.42, 40, S / 2, S / 2, S * 0.75); bg.addColorStop(0, '#1a1208'); bg.addColorStop(1, '#030303'); x.fillStyle = bg; x.fillRect(0, 0, S, S);
+      try {
+        const gl = !!(window.gl3d && window.gl3d.render && window.gl3d.active); if (gl) window.gl3d.render();
+        const gc = document.getElementById('glCanvas'), sc = document.getElementById('stageCanvas'), size = S * 0.72, cy = S * 0.43;
+        x.save(); x.beginPath(); x.arc(S / 2, cy, size / 2, 0, Math.PI * 2); x.clip();
+        [gl && gc && gc.style.display !== 'none' ? gc : sc].forEach(src => { if (!src || !src.width) return; const side = Math.min(src.width, src.height); x.drawImage(src, (src.width - side) / 2, (src.height - side) / 2, side, side, S / 2 - size / 2, cy - size / 2, size, size); });
+        x.restore(); x.strokeStyle = 'rgba(220,220,230,0.55)'; x.lineWidth = 6; x.beginPath(); x.arc(S / 2, cy, size / 2 + 6, 0, Math.PI * 2); x.stroke();
+      } catch (e) {}
+      const objs = (window._rackState && window._rackState.instances) || [];
+      x.textAlign = 'center'; x.fillStyle = '#f5d08a'; x.font = "600 30px PlateFont, sans-serif"; x.fillText('SESSION SNAPSHOT  ·  ' + new Date().toLocaleDateString(), S / 2, S * 0.86);
+      x.font = "600 22px PlateFont, sans-serif"; x.fillStyle = '#cbd5e1';
+      const names = objs.map(o => (o.name || o.module || '').toUpperCase()).filter(Boolean).slice(0, 10); x.fillText(names.join('  ·  ') || 'THE SOLUTION', S / 2, S * 0.9);
+      x.font = "600 18px PlateFont, sans-serif"; x.fillStyle = 'rgba(245,208,138,0.7)'; x.fillText('BILLET AUDIO  ·  THE SOLUTION', S / 2, S * 0.955);
+      const url = c.toDataURL('image/png'); window._lastSnapshot = url;
+      emit('saveSnapshot', { png: url }); flashHint('Snapshot saved to Documents / Billet Audio / Snapshots');
+      return url;
+    }
+
+    // map your own faceplate: click each socket in turn (drag to size); saved for every Solution plugin
+    let mapper = null;
+    function startMapper() {
+      const s = SKINS[currentSkin] || {}; if (!s.img && !String(currentSkin).startsWith('custom_')) { flashHint('Pick a skin with a photo first'); return; }
+      if (plateOn) exitPlate();
+      const knobs = plateMoves().slice(0, 9).map(c => ((c.querySelector('.knob-lbl') || {}).textContent || 'KNOB').trim());
+      const steps = knobs.map(n => ({ kind: 'knob', label: 'the ' + n + ' knob socket' }))
+        .concat([{ kind: 'window', label: 'the GLOBE window (drag across it)' }, { kind: 'strip', label: 'the LEVEL METER slot (drag a box)' }])
+        .concat(PT.map(([n]) => ({ kind: 'toggle', label: 'the ' + n + ' switch (click, or drag a box for a button)' })));
+      const img = document.getElementById('mapImg'), url = '/skins/' + currentSkin + '.jpg';
+      mapper = { steps, i: 0, res: [], url, w: 0, h: 0, k: 1, ox: 0, oy: 0 };
+      img.onload = () => { if (!mapper) return; mapper.w = img.naturalWidth; mapper.h = img.naturalHeight; layoutMapper(); };
+      img.src = url; document.getElementById('mapper').classList.add('open'); drawMapper();
+    }
+    function layoutMapper() {
+      if (!mapper || !mapper.w) return; const box = document.getElementById('mapper'), img = document.getElementById('mapImg');
+      const k = Math.min(box.clientWidth / mapper.w, box.clientHeight / mapper.h); mapper.k = k; mapper.ox = (box.clientWidth - mapper.w * k) / 2; mapper.oy = (box.clientHeight - mapper.h * k) / 2;
+      Object.assign(img.style, { width: mapper.w * k + 'px', height: mapper.h * k + 'px', left: mapper.ox + 'px', top: mapper.oy + 'px' }); drawMapper();
+    }
+    function drawMapper(live) {
+      const st = mapper.steps[mapper.i], k = mapper.k, X = v => mapper.ox + v * k, Y = v => mapper.oy + v * k;
+      document.getElementById('mapBar').innerHTML = st ? `Click the centre of <b>${st.label}</b> and drag to size it &nbsp;(${mapper.i + 1}/${mapper.steps.length})<small>Backspace undo · S skip · Esc cancel</small>` : 'Saving…';
+      let h = '';
+      mapper.res.concat(live ? [live] : []).forEach((r, i) => { if (!r) return;
+        if (r.rect) h += `<rect x="${X(r.rect[0])}" y="${Y(r.rect[1])}" width="${(r.rect[2] - r.rect[0]) * k}" height="${(r.rect[3] - r.rect[1]) * k}" fill="rgba(245,178,43,0.15)" stroke="#f5b22b" stroke-width="2"/>`;
+        else h += `<circle cx="${X(r.c[0])}" cy="${Y(r.c[1])}" r="${r.c[2] * k}" fill="rgba(245,178,43,0.15)" stroke="#f5b22b" stroke-width="2"/><text x="${X(r.c[0])}" y="${Y(r.c[1]) + 4}" fill="#fff" font-size="11" text-anchor="middle">${i + 1}</text>`; });
+      document.getElementById('mapSvg').innerHTML = h;
+    }
+    (function () {
+      const box = document.getElementById('mapper'); let down = null;
+      const toImg = e => { const r = box.getBoundingClientRect(); return [(e.clientX - r.left - mapper.ox) / mapper.k, (e.clientY - r.top - mapper.oy) / mapper.k]; };
+      const shape = (a, b, kind) => (kind === 'strip' || (kind === 'toggle' && Math.abs(b[0] - a[0]) > 8 && Math.abs(b[1] - a[1]) > 4)) ? { rect: [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])] }
+        : kind === 'window' ? { c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.max(20, Math.hypot(b[0] - a[0], b[1] - a[1]) / 2)] } : { c: [a[0], a[1], Math.max(12, Math.hypot(b[0] - a[0], b[1] - a[1]))] };
+      box.addEventListener('mousedown', e => { if (!mapper || !mapper.w || !mapper.steps[mapper.i]) return; down = toImg(e); e.preventDefault(); e.stopPropagation(); });
+      box.addEventListener('mousemove', e => { if (!mapper || !down) return; drawMapper(shape(down, toImg(e), mapper.steps[mapper.i].kind)); });
+      box.addEventListener('mouseup', e => { if (!mapper || !down) return; const st = mapper.steps[mapper.i], sh = shape(down, toImg(e), st.kind); down = null;
+        if (sh.c && sh.c[2] <= 12) sh.c[2] = st.kind === 'toggle' ? 22 : 30;
+        mapper.res[mapper.i] = sh; mapper.i++; fxTick(); if (mapper.i >= mapper.steps.length) finishMapper(); else drawMapper(); });
+      window.addEventListener('keydown', e => { if (!mapper) return; const k = e.key.toLowerCase();
+        if (k === 'escape') { e.preventDefault(); e.stopImmediatePropagation(); mapper = null; document.getElementById('mapper').classList.remove('open'); refreshPlate(); }
+        else if (k === 'backspace') { e.preventDefault(); e.stopImmediatePropagation(); if (mapper.i > 0) { mapper.i--; mapper.res.length = mapper.i; drawMapper(); } }
+        else if (k === 's') { e.preventDefault(); e.stopImmediatePropagation(); mapper.res[mapper.i] = null; mapper.i++; if (mapper.i >= mapper.steps.length) finishMapper(); else drawMapper(); } }, true);
+      window.addEventListener('resize', () => mapper && layoutMapper());
+    })();
+    function finishMapper() {
+      const r = mapper.res, W = mapper.w, H = mapper.h, m = { w: W, h: H, src: mapper.url, knobs: [], toggles: [], float: true };
+      for (let i = 0; i < 9; i++) m.knobs.push(r[i] ? r[i].c : [W * (0.06 + i * 0.03), H - 10, 1]);
+      const w = r[9]; m.window = w ? (w.rect ? { rect: w.rect } : w.c) : [W / 2, H / 2, Math.min(W, H) * 0.3];
+      const st = r[10]; m.strip = st && st.rect ? st.rect : [W * 0.3, 8, W * 0.7, 40];
+      PT.forEach(([n, sel], i) => { const t = r[11 + i];
+        if (!t) m.toggles.push([W * (0.12 + i * 0.15), H - 24, n, sel, 'btn', 90, 26]);
+        else if (t.rect) m.toggles.push([(t.rect[0] + t.rect[2]) / 2, (t.rect[1] + t.rect[3]) / 2, n, sel, 'btn', t.rect[2] - t.rect[0], t.rect[3] - t.rect[1]]);
+        else m.toggles.push([t.c[0], t.c[1], n, sel, 'lamp', t.c[2] * 2, t.c[2] * 2]); });
+      const key = currentSkin; PLATES[key] = m; if (SKINS[key]) SKINS[key].plate = key;
+      emit('savePlateMap', { skin: key, map: m });
+      mapper = null; document.getElementById('mapper').classList.remove('open'); plateFit = true; refreshPlate(); flashHint('Faceplate mapped - every Solution plugin can use it now');
+    }
+    let BUILTIN_PLATES = null;
+    function resetPlateMap() { const k = currentSkin; emit('savePlateMap', { skin: k, remove: true });
+      if (BUILTIN_PLATES[k]) PLATES[k] = JSON.parse(JSON.stringify(BUILTIN_PLATES[k])); else { delete PLATES[k]; if (SKINS[k] && SKINS[k].plate === k && !BUILTIN_PLATES[k]) delete SKINS[k].plate; }
+      refreshPlate(); flashHint(BUILTIN_PLATES[k] ? 'Faceplate map back to the original' : 'Faceplate map removed'); }
+    function applyPlateMaps(all) { if (!all || typeof all !== 'object') return; let hit = false;
+      for (const k in all) { const m = all[k]; if (!m || !Array.isArray(m.knobs)) continue; PLATES[k] = m; if (SKINS[k]) SKINS[k].plate = k; if (k === currentSkin) hit = true; }
+      if (hit) refreshPlate(); }
 
     function toggleClassicOS() {
       const on = document.body.classList.toggle('classic-os');
@@ -2346,6 +2592,8 @@
       if (mod && !e.altKey && !e.shiftKey && k === 'p') { e.preventDefault(); openPalette(); return; }
       if (!mod && !e.altKey && e.key === '/' && !e.target.closest('input,select,textarea')) { e.preventDefault(); openPalette(); return; }
       if (mod && e.altKey && k === 'z') { e.preventDefault(); openHistory(); return; }
+      if (mod && e.altKey && k === 'n') { e.preventDefault(); setFx('night', !plateFx.night); flashHint(plateFx.night ? 'Night mode' : 'Day mode'); return; }
+      if (mod && e.altKey && k === 'j') { e.preventDefault(); snapshotCard(); return; }
       if (mod && e.altKey && k === 'e' && plateOn) { e.preventDefault(); toggleGlobePin(); return; }
       if (mod && e.altKey && k === 'y') { e.preventDefault(); cycleGlobeStyle(); return; }
       if (mod && e.altKey && k === 'b') { e.preventDefault(); togglePlateFit(); return; }
@@ -2909,7 +3157,8 @@
           if (m.ui.modFocus !== undefined) setModFocus(m.ui.modFocus !== '0', true); if (typeof renderMacros === 'function' && diagOpen) renderMacros(); }
         if (m.ui && (m.ui.paintColor !== undefined || m.ui.paintFinish)) { paint.color = m.ui.paintColor || ''; paint.finish = m.ui.paintFinish || 'factory'; setPaint(null, null, true); }
         if (m.ui && m.ui.plateFit !== undefined && (m.ui.plateFit === '1') !== plateFit) togglePlateFit(m.ui.plateFit === '1', true);
-        if (m.ui && m.ui.globeStyle && m.ui.globeStyle !== globeStyle) { globeStyle = m.ui.globeStyle === 'wire' ? 'wire' : 'glass'; applyGlobeLook(); }
+        if (m.ui && m.ui.globeStyle && m.ui.globeStyle !== globeStyle) setGlobeScene(m.ui.globeStyle, true);
+        if (m.ui && m.ui.plateFx) { try { const f = JSON.parse(m.ui.plateFx); Object.keys(plateFx).forEach(k => { if (typeof f[k] === 'boolean' && f[k] !== plateFx[k]) setFx(k, f[k], true); }); } catch (e) {} }
         if (m.ui && m.ui.console3d !== undefined) toggleConsole3d(m.ui.console3d === '1', true);
         if (m.ui && m.ui.skin && SKINS[m.ui.skin]) {
           const sel = document.getElementById('skinSelect');
@@ -2932,6 +3181,7 @@
         if (document.getElementById('roomCorrModal').classList.contains('open')) renderRoomPlot();
       });
       window.__JUCE__.backend.addEventListener('roomNotice', (msg) => flashHint(msg));
+      window.__JUCE__.backend.addEventListener('plateMaps', (all) => applyPlateMaps(all));
       // Skin Studio: skins sent from a phone (any plugin) show up in every plugin's skin list.
       window.__JUCE__.backend.addEventListener('customSkins', (list) => {
         const sel = document.getElementById('skinSelect'); if (!sel || !Array.isArray(list)) return;
@@ -3024,6 +3274,7 @@
           document.getElementById('popHoldTxt').textContent = peakHoldDb.toFixed(1) + ' dB';
         }
         const pL = dbToPct(rmsToDb(t.rmsL)), pR = dbToPct(rmsToDb(t.rmsR));
+        window._lvl = { l: rmsToDb(t.rmsL), r: rmsToDb(t.rmsR), peak: t.peak ?? -60 };
         document.getElementById('barL').style.width = pL + '%';
         document.getElementById('barR').style.width = pR + '%';
         document.getElementById('popBarL').style.width = pL + '%'; document.getElementById('popBarL').style.setProperty('--lvl', pL + '%');

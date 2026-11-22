@@ -622,7 +622,7 @@ function init() {
     shell.material.uniforms.k.value = 0.8 + 0.6 * level; if (gl3d.globeStyle !== 'glass') merMat.opacity = 0.26 + 0.25 * level;
     coreGlow.scale.setScalar(1 + 0.6 * level + 0.08 * Math.sin(t * 4));
     syncGlobeNodes(objs, t);
-    if (gl3d.globeStyle === 'glass') updateGlass(t, dt, objs);
+    if (gl3d.globeStyle !== 'wire') { updateGlass(t, dt, objs); updateScene(t, dt, gl3d.globeStyle); }
     applyGlobeStyle();
   }
   // ---- 'glass' style (the Abyssal look): a water-filled glass sphere, flowing waveform ribbons, creatures swimming inside ----
@@ -674,14 +674,59 @@ function init() {
     });
     for (const [k, c] of swimmers) if (!seen.has(k)) { glassParts.remove(c.group); swimmers.delete(k); }
   }
+  // ---- scenes inside the glass: starfield, fire, lava lamp, rain (all ride the music) ----
+  const SC_N = 420, scPos = new Float32Array(SC_N * 3), scCol = new Float32Array(SC_N * 3), scSeed = [];
+  for (let i = 0; i < SC_N; i++) scSeed.push([Math.random(), Math.random(), Math.random(), Math.random()]);
+  const scGeo = new THREE.BufferGeometry(); scGeo.setAttribute('position', new THREE.BufferAttribute(scPos, 3)); scGeo.setAttribute('color', new THREE.BufferAttribute(scCol, 3));
+  const scPts = new THREE.Points(scGeo, new THREE.PointsMaterial({ size: 0.03, map: glowTex, vertexColors: true, transparent: true, opacity: 0.9, blending: AB, depthWrite: false, fog: false }));
+  const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(160 * 6), 3));
+  const rainLines = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xbfe4ff, transparent: true, opacity: 0.55, blending: AB, depthWrite: false, fog: false }));
+  const blobs = [0, 1, 2, 3, 4, 5].map(i => { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 20), new THREE.MeshBasicMaterial({ color: 0xff5a1f, transparent: true, opacity: 0.85, blending: AB, depthWrite: false }));
+    m.userData = { ph: i * 1.7, sp: 0.18 + i * 0.03, x: (Math.random() - 0.5) * 0.7, z: (Math.random() - 0.5) * 0.5, r: 0.12 + Math.random() * 0.13 }; return m; });
+  const blobHalo = blobs.map(b => { const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xff7a2a, transparent: true, opacity: 0.6, blending: AB, depthWrite: false })); return h; });
+  const sceneGrp = new THREE.Group(); sceneGrp.add(scPts, rainLines, ...blobs, ...blobHalo); glassParts.add(sceneGrp);
+  const inSphere = (u, v, w, rmax) => { const th = u * 6.283, ph = Math.acos(2 * v - 1), r = Math.cbrt(w) * rmax; return [r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph), r * Math.sin(ph) * Math.sin(th)]; };
+  let sceneLevel = 0;
+  function updateScene(t, dt, kind) {
+    const spec = (window._scope || {}).spec || []; let lv = 0; if (spec.length) { for (const db of spec) lv += Math.max(0, (db + 70) / 60); lv /= spec.length; }
+    sceneLevel += (lv - sceneLevel) * 0.15;
+    scPts.visible = kind === 'stars' || kind === 'fire'; rainLines.visible = kind === 'rain'; blobs.forEach((b, i) => b.visible = blobHalo[i].visible = kind === 'lava');
+    if (kind === 'stars') {
+      scPts.material.size = 0.045;
+      for (let i = 0; i < SC_N; i++) { const [u, v, w, q] = scSeed[i], p = inSphere(u, v, w, 0.93); scPos.set(p, i * 3);
+        const tw = 0.45 + 0.55 * Math.max(0, Math.sin(t * (1.5 + q * 3) + q * 40)) * (0.6 + sceneLevel); scCol.set([tw * (0.75 + q * 0.25), tw * 0.85, tw], i * 3); }
+      sceneGrp.rotation.y += dt * (0.03 + sceneLevel * 0.2);
+    } else if (kind === 'fire') {
+      scPts.material.size = 0.11; sceneGrp.rotation.y = 0;
+      for (let i = 0; i < SC_N; i++) { const sd = scSeed[i]; sd[1] += dt * (0.25 + sd[3] * 0.35) * (0.6 + sceneLevel * 2.2); if (sd[1] > 1) { sd[1] = 0; sd[0] = Math.random(); sd[2] = Math.random(); }
+        const life = sd[1], y = -0.85 + life * 1.6, rad = (0.42 * (1 - life * 0.75)) * Math.sqrt(sd[2]), a = sd[0] * 6.283 + t * 0.6 + life * 3;
+        scPos.set([Math.cos(a) * rad + Math.sin(t * 3 + i) * 0.02, y, Math.sin(a) * rad], i * 3);
+        const heat = 1 - life; scCol.set([1 * heat + 0.3, 0.75 * heat * heat + 0.05, 0.25 * heat * heat * heat], i * 3); }
+    } else if (kind === 'rain') {
+      sceneGrp.rotation.y = 0; const a = rainGeo.attributes.position.array;
+      for (let i = 0; i < 160; i++) { const sd = scSeed[i]; sd[1] -= dt * (1.1 + sd[3] * 0.8) * (0.8 + sceneLevel * 1.5); if (sd[1] < 0) { sd[1] = 1; sd[0] = Math.random(); sd[2] = Math.random(); }
+        const x = (sd[0] - 0.5) * 1.5, z = (sd[2] - 0.5) * 1.5, lim = Math.sqrt(Math.max(0, 0.85 - x * x - z * z)), y = -lim + sd[1] * 2 * lim;
+        if (lim <= 0) { a.set([0, 0, 0, 0, 0, 0], i * 6); continue; } a.set([x, y, z, x - 0.01, y + 0.09, z], i * 6); }
+      rainGeo.attributes.position.needsUpdate = true;
+    } else if (kind === 'lava') {
+      sceneGrp.rotation.y = 0;
+      blobs.forEach((b, i) => { const u = b.userData, y = Math.sin(t * u.sp + u.ph) * 0.55, wob = 1 + 0.12 * Math.sin(t * 1.3 + u.ph) + sceneLevel * 0.35;
+        b.position.set(u.x * Math.cos(y), y, u.z); b.scale.set(u.r * wob, u.r * (1.15 + 0.2 * Math.sin(t * 0.9 + i)), u.r * wob); blobHalo[i].position.copy(b.position); blobHalo[i].scale.setScalar(u.r * 4.5); });
+    }
+    if (kind === 'stars' || kind === 'fire') { scGeo.attributes.position.needsUpdate = true; scGeo.attributes.color.needsUpdate = true; }
+  }
+  const SCENE_WATER = { glass: null, stars: 0x0b1030, fire: 0x2a0c02, lava: 0x1a0610, rain: 0x0c1824 };
   gl3d.globeStyle = 'glass';
   function applyGlobeStyle() {
-    const glass = gl3d.globeStyle === 'glass';
+    const glass = gl3d.globeStyle !== 'wire';
+    water.material.uniforms.c.value = SCENE_WATER[gl3d.globeStyle] ? new THREE.Color(SCENE_WATER[gl3d.globeStyle]).multiplyScalar(3) : gCol;
+    rays.forEach(r => r.visible = gl3d.globeStyle === 'glass' || gl3d.globeStyle === 'rain');
+    blobs.forEach(b => b.material.color.copy(gCol).lerp(new THREE.Color(0xff3a10), 0.5)); blobHalo.forEach(h => h.material.color.copy(gCol));
     glassParts.visible = glass; net.visible = scan.visible = gWave.visible = !glass; orbits.forEach(o => o.g.visible = !glass);
     merMat.opacity = glass ? 0.07 : 0.3; parMat.opacity = glass ? 0.06 : 0.34; sparkA.visible = sparkB.visible = !glass;
     for (const n of gNodes.values()) n.dot.visible = n.tether.visible = !glass;
   }
-  gl3d.setGlobeStyle = (st) => { gl3d.globeStyle = st === 'wire' ? 'wire' : 'glass'; applyGlobeStyle(); };
+  gl3d.setGlobeStyle = (st) => { gl3d.globeStyle = ['glass', 'wire', 'stars', 'fire', 'lava', 'rain'].includes(st) ? st : 'glass'; applyGlobeStyle(); };
   const bloomNormal = [bloom.strength, bloom.radius, bloom.threshold];
   gl3d.globe = false;
   gl3d.setGlobe = (on) => {

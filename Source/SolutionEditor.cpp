@@ -159,6 +159,34 @@ juce::WebBrowserComponent::Options SolutionAudioProcessorEditor::makeOptions()
                    emitToViews ("roomList", juce::var (rooms));
                }
            })
+           .withEventListener ("savePlateMap", [this] (const juce::var& data)
+           {
+               // A faceplate the user mapped (knob sockets, globe window...) - shared by every Solution plugin.
+               const juce::var d (data);
+               auto* obj = d.getDynamicObject(); if (obj == nullptr) return;
+               const auto skin = obj->getProperty ("skin").toString().retainCharacters ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-");
+               if (skin.isEmpty()) return;
+               const auto file = SolutionVendor::userFolder ("Skins").getChildFile ("plate_maps.json");
+               auto all = juce::JSON::parse (file);
+               if (! all.isObject()) all = juce::var (new juce::DynamicObject());
+               if (obj->getProperty ("remove")) all.getDynamicObject()->removeProperty (skin);
+               else all.getDynamicObject()->setProperty (skin, obj->getProperty ("map"));
+               file.getParentDirectory().createDirectory();
+               file.replaceWithText (juce::JSON::toString (all));
+               plateMapsStamp = -1;
+           })
+           .withEventListener ("saveSnapshot", [this] (const juce::var& data)
+           {
+               // Session snapshot card: a PNG of the globe with every track, saved to Documents/Billet Audio/Snapshots.
+               const juce::var d (data);
+               auto* obj = d.getDynamicObject(); if (obj == nullptr) return;
+               auto b64 = obj->getProperty ("png").toString().fromFirstOccurrenceOf (",", false, false);
+               juce::MemoryOutputStream png; if (! juce::Base64::convertFromBase64 (png, b64) || png.getDataSize() < 100) return;
+               const auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Billet Audio").getChildFile ("Snapshots");
+               dir.createDirectory();
+               const auto f = dir.getNonexistentChildFile ("Snapshot " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H.%M.%S"), ".png");
+               if (f.replaceWithData (png.getData(), png.getDataSize())) { emitToViews ("roomNotice", juce::var ("Snapshot saved: " + f.getFullPathName())); f.revealToUser(); }
+           })
            .withEventListener ("setUiProp", [this] (const juce::var& data)
            {
                if (auto* obj = data.getDynamicObject())
@@ -1111,6 +1139,9 @@ void SolutionAudioProcessorEditor::timerCallback()
         const auto meta = SolutionVendor::userFolder ("Skins").getChildFile ("custom_skins.json");
         const auto stamp = meta.getLastModificationTime().toMilliseconds();
         if (stamp != customSkinsStamp) { customSkinsStamp = stamp; emitToViews ("customSkins", juce::JSON::parse (meta)); }
+        const auto maps = SolutionVendor::userFolder ("Skins").getChildFile ("plate_maps.json");
+        const auto mstamp = maps.existsAsFile() ? maps.getLastModificationTime().toMilliseconds() : 0;
+        if (mstamp != plateMapsStamp) { plateMapsStamp = mstamp; emitToViews ("plateMaps", mstamp ? juce::JSON::parse (maps) : juce::var (new juce::DynamicObject())); }
         if (audioProcessor.pendingSkin.isNotEmpty()) { emitToViews ("applySkin", juce::var (audioProcessor.pendingSkin)); audioProcessor.pendingSkin.clear(); }
     }
     if (systemMonitor != nullptr && frameCounter % 30 == 0) sendDiagnostics();

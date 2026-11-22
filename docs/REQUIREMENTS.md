@@ -85,3 +85,14 @@ Nothing is removed from this list; items only move from ☐ to ✅. Build order 
 - [x] Faceplate socket maps for all 13 faceplates (Lincoln, Aztec, Camaro, Cuda, Eldorado, Evil Twin, Giza, GTO, Mach 1, Museum, Piano, Rome, Serengeti); globe colour matches each plate.
 - [x] Faceplate globe: the 3D stage becomes a hologram in the faceplate window. Two styles (lamp left of the window, or Ctrl+Alt+Y): Glass sphere (Abyssal look: water, caustic light, flowing waveform ribbons, the tracks' creatures swimming inside, bubbles) and Holographic wireframe (Lincoln look: lat/long globe, orbit rings with sparks, live waveform round the equator, tracks as lights). Live audio drives both.
 - [x] Globe fills its window, and grows to the faceplate's full height on hover (back when the mouse leaves); Ctrl+Alt+E keeps it expanded.
+
+## Faceplate FX (✨ FX button in the footer)
+- [x] Audio glow: the plate's own lamps, neon and painted light pulse with the level; knob arcs and lit switches glow; Evil Twin neon stutters on peaks.
+- [x] Power-up on open: plate flickers up, lamps flick on, controls then the globe arrive, VU needles sweep. Replay from the FX menu.
+- [x] Analog VU needles with real ballistics (~300 ms, slight overshoot, 0 VU = -18 dBFS): Camaro right gauge, Mach 1 twin meters.
+- [x] Floating parallax: plate tilts toward the mouse, knobs and globe float above it with moving shadows.
+- [x] Night mode (Ctrl+Alt+N): plate goes dark, only lit parts glow.
+- [x] Knob detent ticks and switch clunks (off by default).
+- [x] Globe scenes: Deep ocean, Wireframe, Starfield, Fire, Lava lamp, Rain (Ctrl+Alt+Y cycles), all driven by the audio.
+- [x] Session snapshot card (Ctrl+Alt+J): 1080x1080 PNG of the globe + track names, saved to Documents/Billet Audio/Snapshots.
+- [x] Map your own faceplate: click each socket on any skin photo (drag to size, Backspace undo, S skip); saved in the shared Skins folder for every Solution plugin; reset from the FX menu.
