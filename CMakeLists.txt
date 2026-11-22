@@ -69,6 +69,10 @@ if(BUNDLE_SKINS)
         UI/skins/serengeti.jpg
         UI/skins/museum.jpg
         UI/skins/piano.jpg
+        UI/skins/biolum.jpg
+        UI/skins/abyssal.jpg
+        UI/skins/velocityod.jpg
+        UI/skins/hypercar.jpg
     )
 else()
     set(SOLUTION_BUNDLE_SKINS_VAL 0)

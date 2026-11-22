@@ -77,3 +77,12 @@ images you ship - those are trademarks. For Vidalia, your own photos (high schoo
 | key | name | photo | prompt (scene) |
 |---|---|---|---|
 | `vidalia` | Vidalia, Georgia | — | small-town south Georgia at golden hour: a red-brick high school with a football stadium under Friday night lights on one side, a quiet main street and a neighbourhood grocery store on the other, sweet onion fields in the foreground. |
+
+## Your Console Designs
+
+| key | name | photo | prompt (scene) |
+|---|---|---|---|
+| `biolum` | Bioluminescent Console | ✅ | the owner's concept art: sleek black console with teal and magenta bioluminescent circuit traces. |
+| `abyssal` | Abyssal Console | ✅ | the owner's concept art: steel-blue studio console with a glowing sphere of jellyfish in the centre. |
+| `velocityod` | Velocity Overdrive (Brass) | ✅ | the owner's concept art: vintage brass-and-black rack unit with VU meter, a glass orbital dome and a patchbay. |
+| `hypercar` | Hypercar Edition | ✅ | the owner's concept art: carbon-fibre console with gold knobs and an orange holographic waveform. |

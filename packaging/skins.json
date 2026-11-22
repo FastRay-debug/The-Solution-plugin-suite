@@ -218,5 +218,21 @@
  "vidalia": {
   "name": "Vidalia, Georgia",
   "group": "Hometown"
+ },
+ "biolum": {
+  "name": "Bioluminescent Console",
+  "group": "Your Console Designs"
+ },
+ "abyssal": {
+  "name": "Abyssal Console",
+  "group": "Your Console Designs"
+ },
+ "velocityod": {
+  "name": "Velocity Overdrive (Brass)",
+  "group": "Your Console Designs"
+ },
+ "hypercar": {
+  "name": "Hypercar Edition",
+  "group": "Your Console Designs"
  }
 }

@@ -50,6 +50,11 @@ Name: "places\aztec"; Description: "Aztec Ruins"; Types: full custom
 Name: "places\serengeti"; Description: "Serengeti Falls"; Types: full custom
 Name: "places\museum"; Description: "Museum Gallery"; Types: full custom
 Name: "places\piano"; Description: "Concert Piano"; Types: full custom
+Name: "consoles"; Description: "Your Console Designs"; Types: full custom
+Name: "consoles\biolum"; Description: "Bioluminescent Console"; Types: full custom
+Name: "consoles\abyssal"; Description: "Abyssal Console"; Types: full custom
+Name: "consoles\velocityod"; Description: "Velocity Overdrive (Brass)"; Types: full custom
+Name: "consoles\hypercar"; Description: "Hypercar Edition"; Types: full custom
 
 [Files]
 Source: "{#Src}\SkinEditor\Skin Editor.exe"; DestDir: "{app}\Skin Editor"; Components: editor; Flags: ignoreversion skipifsourcedoesntexist
@@ -67,6 +72,10 @@ Source: "{#Src}\Skins\aztec.jpg"; DestDir: "{commonappdata}\Billet Audio\The Sol
 Source: "{#Src}\Skins\serengeti.jpg"; DestDir: "{commonappdata}\Billet Audio\The Solution\Skins"; Components: places\serengeti; Flags: ignoreversion
 Source: "{#Src}\Skins\museum.jpg"; DestDir: "{commonappdata}\Billet Audio\The Solution\Skins"; Components: places\museum; Flags: ignoreversion
 Source: "{#Src}\Skins\piano.jpg"; DestDir: "{commonappdata}\Billet Audio\The Solution\Skins"; Components: places\piano; Flags: ignoreversion
+Source: "{#Src}\Skins\biolum.jpg"; DestDir: "{commonappdata}\Billet Audio\The Solution\Skins"; Components: consoles\biolum; Flags: ignoreversion
+Source: "{#Src}\Skins\abyssal.jpg"; DestDir: "{commonappdata}\Billet Audio\The Solution\Skins"; Components: consoles\abyssal; Flags: ignoreversion
+Source: "{#Src}\Skins\velocityod.jpg"; DestDir: "{commonappdata}\Billet Audio\The Solution\Skins"; Components: consoles\velocityod; Flags: ignoreversion
+Source: "{#Src}\Skins\hypercar.jpg"; DestDir: "{commonappdata}\Billet Audio\The Solution\Skins"; Components: consoles\hypercar; Flags: ignoreversion
 
 [Tasks]
 Name: "desktop"; Description: "Skin Editor shortcut on the desktop"; Components: editor
