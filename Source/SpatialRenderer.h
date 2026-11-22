@@ -37,8 +37,13 @@ namespace SolutionDSP
                 case CT::topRearLeft: az = -135; el = 45; return true;  case CT::topRearRight: az = 135; el = 45; return true;
                 case CT::topRearCentre: az = 180; el = 45; return true;
                 case CT::topMiddle: az = 0; el = 90; return true;
+                case CT::bottomFrontLeft: az = -45; el = -30; return true;  case CT::bottomFrontRight: az = 45; el = -30; return true;
+                case CT::bottomFrontCentre: az = 0; el = -30; return true;
+                case CT::bottomSideLeft: az = -90; el = -30; return true;  case CT::bottomSideRight: az = 90; el = -30; return true;
+                case CT::bottomRearLeft: az = -135; el = -30; return true; case CT::bottomRearCentre: az = 180; el = -30; return true;
+                case CT::bottomRearRight: az = 135; el = -30; return true;
                 case CT::LFE: case CT::LFE2: return false;
-                default: az = 0; return true;
+                default: az = 999; return true;          // unknown / discrete: placed by the caller
             }
         }
         static juce::String layoutName (const juce::AudioChannelSet& s)
@@ -53,11 +58,14 @@ namespace SolutionDSP
             layout = out; sampleRate = fs;
             ambiOrder = out.getAmbisonicOrder();
             n = std::min (maxCh, out.size());
+            int unknown = 0; for (int i = 0; i < n; ++i) { float a = 0, e = 0; if (speakerDirection (out.getTypeOfChannel (i), a, e) && a > 900) ++unknown; }
+            int u = 0;
             for (int i = 0; i < n; ++i)
             {
                 float az = 0, el = 0;
                 const auto t = out.getTypeOfChannel (i);
                 isLfe[(size_t) i] = ! speakerDirection (t, az, el) && ambiOrder < 0;
+                if (az > 900) { az = unknown == 1 ? 0.0f : -180.0f + 360.0f * (u + 0.5f) / unknown; ++u; }   // discrete channels: evenly round you (1 = front)
                 const float a = juce::degreesToRadians (az), e = juce::degreesToRadians (el);
                 dir[(size_t) i] = { std::sin (a) * std::cos (e), std::sin (e), std::cos (a) * std::cos (e) };
             }
@@ -152,16 +160,34 @@ namespace SolutionDSP
         {
             const double a = juce::degreesToRadians ((double) azDeg), e = juce::degreesToRadians ((double) elDeg);
             const double x = std::cos (a) * std::cos (e), y = std::sin (a) * std::cos (e), z = std::sin (e);
-            const double sh[16] = {
-                1.0,
-                y, z, x,
-                std::sqrt (3.0) * x * y, std::sqrt (3.0) * y * z, 0.5 * (3 * z * z - 1), std::sqrt (3.0) * x * z, std::sqrt (3.0) / 2 * (x * x - y * y),
-                std::sqrt (5.0 / 8) * y * (3 * x * x - y * y), std::sqrt (15.0) * x * y * z, std::sqrt (3.0 / 8) * y * (5 * z * z - 1), 0.5 * z * (5 * z * z - 3),
-                std::sqrt (3.0 / 8) * x * (5 * z * z - 1), std::sqrt (15.0) / 2 * z * (x * x - y * y), std::sqrt (5.0 / 8) * x * (x * x - 3 * y * y) };
+            juce::ignoreUnused (x, y);
             const int count = std::min (n, (ambiOrder + 1) * (ambiOrder + 1));
-            for (int i = 0; i < count && i < 16; ++i) g[(size_t) i] = (float) sh[i];
+            for (int l = 0; l <= ambiOrder; ++l)
+                for (int m = -l; m <= l; ++m)
+                {
+                    const int acn = l * l + l + m;
+                    if (acn < count) g[(size_t) acn] = (float) realSH (l, m, a, z);
+                }
         }
 
+        // Real spherical harmonic, SN3D normalised, no Condon-Shortley phase (AmbiX). a = azimuth (rad, + left), z = sin(elevation).
+        static double realSH (int l, int m, double a, double z)
+        {
+            const int am = std::abs (m);
+            // associated Legendre P_l^am(z) by the standard recursion (without the (-1)^m phase)
+            double pmm = 1.0; const double s = std::sqrt (std::max (0.0, 1.0 - z * z));
+            for (int i = 1; i <= am; ++i) pmm *= (2.0 * i - 1.0) * s;
+            double p = pmm;
+            if (l > am)
+            {
+                double pm1 = z * (2.0 * am + 1.0) * pmm;
+                if (l == am + 1) p = pm1;
+                else { double p0 = pmm; for (int ll = am + 2; ll <= l; ++ll) { const double pl = ((2.0 * ll - 1.0) * z * pm1 - (ll + am - 1.0) * p0) / (ll - am); p0 = pm1; pm1 = pl; } p = pm1; }
+            }
+            double ratio = 1.0; for (int k = l - am + 1; k <= l + am; ++k) ratio /= k;            // (l-|m|)! / (l+|m|)!
+            const double norm = std::sqrt ((m == 0 ? 1.0 : 2.0) * ratio);
+            return norm * p * (m >= 0 ? std::cos (m * a) : std::sin (am * a));
+        }
     private:
         juce::AudioChannelSet layout;
         double sampleRate = 48000.0;

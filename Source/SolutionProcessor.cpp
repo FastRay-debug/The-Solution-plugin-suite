@@ -1048,11 +1048,10 @@ bool SolutionAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 {
     // Stereo as always, plus surround / Dolby Atmos beds / ambisonics on the output (the module processes in
     // stereo and the Spatial Renderer places it at the 3D stage position). Input: mono, stereo or the same layout.
+    // Every layout the host offers: mono .. 64 channels (any surround / Atmos / speaker array), ambisonics up to 7th order.
     using CS = juce::AudioChannelSet;
     const auto out = layouts.getMainOutputChannelSet(), in = layouts.getMainInputChannelSet();
-    const bool outOk = out == CS::stereo() || out == CS::create5point1() || out == CS::create7point1() || out == CS::create5point1point2()
-                    || out == CS::create5point1point4() || out == CS::create7point1point2() || out == CS::create7point1point4() || out == CS::create9point1point6()
-                    || out == CS::ambisonic (1) || out == CS::ambisonic (2) || out == CS::ambisonic (3);
+    const bool outOk = ! out.isDisabled() && out.size() >= 1 && out.size() <= SolutionDSP::SpatialRenderer::maxCh && out.getAmbisonicOrder() <= 7;
     const bool inOk = in == CS::stereo() || in == CS::mono() || in == out;
     return outOk && inOk;
 }
@@ -1060,8 +1059,8 @@ bool SolutionAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     const int outCh = getMainBusNumOutputChannels(), inCh = getMainBusNumInputChannels(), len = buffer.getNumSamples();
-    if (outCh <= 2 && inCh == 2) { processStereoCore (buffer, midiMessages); return; }
-    if (outCh <= 2 && inCh == 1) { if (buffer.getNumChannels() > 1) buffer.copyFrom (1, 0, buffer, 0, 0, len); processStereoCore (buffer, midiMessages); return; }
+    if (outCh == 2 && inCh == 2) { processStereoCore (buffer, midiMessages); return; }
+    if (outCh == 2 && inCh == 1) { if (buffer.getNumChannels() > 1) buffer.copyFrom (1, 0, buffer, 0, 0, len); processStereoCore (buffer, midiMessages); return; }
     // Surround / Atmos / ambisonics: fold the input to stereo, process, then place it on the speakers.
     if (stereoBus.getNumSamples() < len) stereoBus.setSize (2, len, false, false, true);     // only if the host exceeds its announced block size
     const auto inSet = getChannelLayoutOfBus (true, 0);

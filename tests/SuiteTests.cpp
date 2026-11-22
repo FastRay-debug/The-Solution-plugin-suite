@@ -2471,6 +2471,25 @@ static void testSpatialOutput()
       for (int k = 0; k < 30; ++k) { b.clear(); for (int c = 0; c < 2; ++c) for (int i = 0; i < 512; ++i) b.setSample (c, i, (float) (0.2 * std::sin (2 * juce::MathConstants<double>::pi * 440 * (k * 512 + i) / 48000.0)));
         pr.first->processBlock (b, m); if (k > 20) for (int i = 0; i < 512; ++i) wy += b.getSample (0, i) * b.getSample (1, i); }
       EXPECT (wy < 0 && e[0] > 0, "3rd-order AmbiX: right-side source -> W and Y opposite (Y negative)"); }
+    // every layout the host can offer is accepted
+    { SolutionAudioProcessor p ("TheStage"); int ok = 0, total = 0;
+      for (auto out : { CS::mono(), CS::stereo(), CS::createLCR(), CS::createLCRS(), CS::quadraphonic(), CS::create5point0(), CS::create5point1(), CS::create6point0(), CS::create6point1(),
+                        CS::create7point0(), CS::create7point1(), CS::create7point0SDDS(), CS::create7point1SDDS(), CS::create5point0point2(), CS::create5point1point2(), CS::create5point0point4(),
+                        CS::create5point1point4(), CS::create7point0point2(), CS::create7point1point2(), CS::create7point0point4(), CS::create7point1point4(), CS::create7point0point6(), CS::create7point1point6(),
+                        CS::create9point0point4(), CS::create9point1point4(), CS::create9point0point6(), CS::create9point1point6(), CS::discreteChannels (24), CS::ambisonic (1), CS::ambisonic (5), CS::ambisonic (7) })
+      { juce::AudioProcessor::BusesLayout l; l.inputBuses.add (CS::stereo()); l.outputBuses.add (out); ++total; ok += p.checkBusesLayoutSupported (l) ? 1 : 0; }
+      EXPECT (ok == total, "all %d speaker layouts accepted (mono .. 9.1.6, SDDS, 24-ch discrete, ambisonics to 7th order) - %d ok", total, ok); }
+    // the general spherical-harmonic encoder matches the closed-form 3rd-order terms and is SN3D (W = 1)
+    { const double a = 0.7, e = 0.3, x = std::cos (a) * std::cos (e), y = std::sin (a) * std::cos (e), z = std::sin (e);
+      const double ref[16] = { 1.0, y, z, x, std::sqrt (3.0) * x * y, std::sqrt (3.0) * y * z, 0.5 * (3 * z * z - 1), std::sqrt (3.0) * x * z, std::sqrt (3.0) / 2 * (x * x - y * y),
+          std::sqrt (5.0 / 8) * y * (3 * x * x - y * y), std::sqrt (15.0) * x * y * z, std::sqrt (3.0 / 8) * y * (5 * z * z - 1), 0.5 * z * (5 * z * z - 3), std::sqrt (3.0 / 8) * x * (5 * z * z - 1), std::sqrt (15.0) / 2 * z * (x * x - y * y), std::sqrt (5.0 / 8) * x * (x * x - 3 * y * y) };
+      double worst = 0; for (int l = 0; l <= 3; ++l) for (int m = -l; m <= l; ++m) worst = std::max (worst, std::abs (SolutionDSP::SpatialRenderer::realSH (l, m, a, z) - ref[l * l + l + m]));
+      EXPECT (worst < 1e-9, "spherical harmonics match the reference to 3rd order (max error %.2g)", worst); }
+    // mono output and a 24-channel discrete array both play
+    runAt (CS::mono(), 0, 0, 0, 440, e);
+    EXPECT (e[0] > 1.0, "mono output plays the track");
+    runAt (CS::ambisonic (7), 30, 10, 0, 440, e);
+    EXPECT (e.size() == 64 && e[63] > 0.0, "7th-order ambisonics: all 64 channels carry the encoding");
     // a 5.1 bed track: its centre feeds the module (folded to stereo) and comes back out
     runAt (CS::create5point1(), 0, 0, 0, 440, e, nullptr, CS::create5point1());
     EXPECT (e[(size_t) idx (CS::create5point1(), CS::centre)] > 1.0, "5.1 in/out: bed input folds down, plays back out");

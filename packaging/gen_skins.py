@@ -36,8 +36,9 @@ CARS = [  # key, menu name, scene
  ("f40", "'89 Ferrari F40", "1989 Ferrari F40 in rosso red, rear wing, dramatic tunnel lights"),
  ("mclarenf1", "'94 McLaren F1", "1994 McLaren F1 in papaya orange, butterfly doors open, minimal dark studio"),
  ("supra94", "'94 Toyota Supra MK4", "1994 Supra MK4 in orange with a big rear wing, night parking garage, cyan lights"),
- ("cutlass70", "'70 Oldsmobile Cutlass 442", "1970 Oldsmobile Cutlass 442 in sebring yellow with twin black racing stripes running over the hood, roof and trunk, W-30 hood scoops, low front three-quarter, warm garage light"),
+ ("cutlass70", "'70 Cutlass 442 (Racing Stripes)", "1970 Oldsmobile Cutlass 442 in sebring yellow with twin black racing stripes running over the hood, roof and trunk, W-30 hood scoops, low front three-quarter, warm garage light"),
  ("deville67", "'67 Cadillac DeVille", "1967 Cadillac DeVille convertible in black cherry, long chrome lines, top down, evening boulevard lights"),
+ ("impala65", "'65 Impala Fastback", "1965 Chevrolet Impala SS sport coupe with the sloping fastback roofline, in deep regimental red, wide chrome grille, triple tail lights glowing, parked on a lamplit street at night"),
  ("mustang65", "'65 Mustang Fastback", "1965 Mustang fastback in candy apple red with white stripes, three-quarter rear, polished concrete floor"),
 ]
 PLACES = [

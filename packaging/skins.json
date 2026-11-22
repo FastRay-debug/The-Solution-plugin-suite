@@ -100,11 +100,15 @@
   "group": "Cars"
  },
  "cutlass70": {
-  "name": "'70 Oldsmobile Cutlass 442",
+  "name": "'70 Cutlass 442 (Racing Stripes)",
   "group": "Cars"
  },
  "deville67": {
   "name": "'67 Cadillac DeVille",
+  "group": "Cars"
+ },
+ "impala65": {
+  "name": "'65 Impala Fastback",
   "group": "Cars"
  },
  "mustang65": {
