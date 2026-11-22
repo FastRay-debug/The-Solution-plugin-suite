@@ -2049,6 +2049,59 @@ static void testAnchorCore()
       EXPECT (lo >= -1.0001f && hi <= 1.0001f, "curve %d stays within the ceiling", curve); }
 }
 
+
+static void testAetherCore()
+{
+    std::printf ("The Aether: particle cloud + delay (focus, soften, duck, tape)\n");
+    using SolutionDSP::AetherCore;
+    const double fs = 48000.0;
+    auto run = [&] (AetherCore& c, const AetherCore::Params& p, std::vector<float>& L, std::vector<float>& R) { for (size_t o = 0; o < L.size(); o += 512) c.process (L.data() + o, R.data() + o, (int) std::min<size_t> (512, L.size() - o), p); };
+    // neutral = untouched
+    { AetherCore c; c.prepare (fs, 512); AetherCore::Params p; std::vector<float> L (4800), R (4800); for (int i = 0; i < 4800; ++i) L[(size_t) i] = R[(size_t) i] = (float) std::sin (i * 0.05);
+      auto L0 = L; run (c, p, L, R); EXPECT (L == L0, "mixes at 0: bit-exact pass-through"); }
+    // echo lands where it should: free 250 ms, and 1/4 at 120 BPM = 500 ms
+    for (auto [ms, label] : { std::pair<double, const char*> { 250.0, "free 250 ms" }, { AetherCore::tempoMs (3, 120.0), "1/4 at 120 BPM" } })
+    { AetherCore c; c.prepare (fs, 512); AetherCore::Params p; p.dlyMix = 1.0f; p.fb = 0.0f; p.dlyMs = (float) ms;
+      std::vector<float> L (48000, 0.0f), R (48000, 0.0f); L[100] = R[100] = 1.0f; run (c, p, L, R);
+      int pk = 200; for (int i = 200; i < 48000; ++i) if (std::abs (L[(size_t) i]) > std::abs (L[(size_t) pk])) pk = i;
+      EXPECT (std::abs (pk - 100 - ms * 48.0) <= 2.0, "echo for %s at %.1f ms", label, (pk - 100) / 48.0); }
+    // focus + soften: the 3rd repeat of a click keeps much less top end than the 1st
+    { auto hfRatio = [&] (float focus, float soften) {
+        AetherCore c; c.prepare (fs, 512); AetherCore::Params p; p.dlyMix = 1.0f; p.fb = 0.7f; p.dlyMs = 200.0f; p.focus = focus; p.soften = soften;
+        std::vector<float> L (48000, 0.0f), R (48000, 0.0f); L[10] = R[10] = 1.0f; run (c, p, L, R);
+        auto hf = [&] (int start) { double e = 0, prev = 0; for (int i = start; i < start + 2400; ++i) { const double d = L[(size_t) i] - prev; prev = L[(size_t) i]; e += d * d; } return e; };
+        auto all = [&] (int start) { double e = 0; for (int i = start; i < start + 2400; ++i) e += L[(size_t) i] * L[(size_t) i]; return e; };
+        return (hf (9600 + 10 - 200) / all (9600 + 10 - 200)) / (hf (28800 + 10 - 200) / all (28800 + 10 - 200) + 1e-12); };
+      const double plain = hfRatio (0, 0), shaped = hfRatio (0.7f, 0.8f);
+      std::printf ("  top-end loss 1st -> 3rd repeat: x%.1f plain, x%.1f with focus+soften\n", plain, shaped);
+      EXPECT (shaped > plain * 3.0, "focus + soften darken the repeats"); }
+    // ducking: repeats are quieter while the input plays than after it stops
+    { AetherCore c; c.prepare (fs, 512); AetherCore::Params p; p.dlyMix = 1.0f; p.fb = 0.6f; p.dlyMs = 300.0f; p.duck = 1.0f;
+      std::vector<float> L (96000, 0.0f), R (96000, 0.0f);
+      for (int i = 0; i < 48000; ++i) L[(size_t) i] = R[(size_t) i] = (float) (0.3 * std::sin (2 * juce::MathConstants<double>::pi * 440 * i / fs));
+      auto dry = L; run (c, p, L, R);
+      double during = 0, after = 0; for (int i = 36000; i < 48000; ++i) during += std::pow (L[(size_t) i] - dry[(size_t) i], 2); for (int i = 60000; i < 72000; ++i) after += L[(size_t) i] * L[(size_t) i];
+      std::printf ("  ducked repeats while playing %.1f dB vs %.1f dB once you stop\n", 10 * std::log10 (during + 1e-12), 10 * std::log10 (after + 1e-12));
+      EXPECT (10 * std::log10 (after + 1e-12) - 10 * std::log10 (during + 1e-12) > 10.0, "repeats bloom after you stop playing"); }
+    // tape: harmonics in the loop
+    { auto h3 = [&] (float tape) { AetherCore c; c.prepare (fs, 512); AetherCore::Params p; p.dlyMix = 1.0f; p.fb = 0.8f; p.dlyMs = 100.0f; p.tape = tape;
+        std::vector<float> L (48000), R (48000); for (int i = 0; i < 48000; ++i) L[(size_t) i] = R[(size_t) i] = (float) (0.4 * std::sin (2 * juce::MathConstants<double>::pi * 300 * i / fs)); run (c, p, L, R);
+        return toneLevelDb (L.data() + 24000, 24000, 900, fs) - toneLevelDb (L.data() + 24000, 24000, 300, fs); };
+      const double clean = h3 (0), tape = h3 (1);
+      EXPECT (tape > clean + 15.0, "tape adds odd harmonics in the loop (3rd: %.1f -> %.1f dBc)", clean, tape); }
+    // cloud: keeps sounding after the input stops (from the buffer), frozen it holds; octave up puts energy at 2f
+    { auto cloudAfter = [&] (bool freeze, int pitch, double& octave) {
+        AetherCore c; c.prepare (fs, 512); AetherCore::Params p; p.cloudMix = 1.0f; p.scatter = 0.3f; p.freeze = false; p.pitch = pitch;
+        std::vector<float> L (48000 * 3, 0.0f), R (48000 * 3, 0.0f);
+        for (int i = 0; i < 48000; ++i) L[(size_t) i] = R[(size_t) i] = (float) (0.3 * std::sin (2 * juce::MathConstants<double>::pi * 220 * i / fs));
+        for (size_t o = 0; o < L.size(); o += 512) { p.freeze = freeze && o > 47000; c.process (L.data() + o, R.data() + o, (int) std::min<size_t> (512, L.size() - o), p); }
+        octave = toneLevelDb (L.data() + 30000, 16000, 440, fs);
+        double e = 0; for (int i = 48000 * 2 + 24000; i < 48000 * 3; ++i) e += L[(size_t) i] * L[(size_t) i]; return 10 * std::log10 (e / 24000 + 1e-20); };
+      double o1, o2; const double loose = cloudAfter (false, 0, o1), frozen = cloudAfter (true, 0, o2); double up; cloudAfter (false, 1, up); const double oct = up - o1;
+      std::printf ("  cloud 1.5 s after the input stops: %.1f dB free, %.1f dB frozen; 440 Hz %+.1f dB with octave-up grains\n", loose, frozen, oct);
+      EXPECT (frozen > -40.0 && frozen > loose + 10.0, "freeze holds the cloud"); EXPECT (oct > 15.0, "octave-up grains sound an octave up"); }
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2198,6 +2251,7 @@ int main()
     testAutoSafe();
     testBunkerCore();
     testAnchorCore();
+    testAetherCore();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

@@ -492,6 +492,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v23: The Aether - particle cloud + delay (both mixes 0 by default: the original Aether sound)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_cloud", 23 }, "Particle Cloud (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_x", 23 }, "Cloud Texture", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_y", 23 }, "Cloud Density", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_scatter", 23 }, "Cloud Scatter (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 60.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_spread", 23 }, "Cloud Spread (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 70.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "aether_pitch", 23 }, "Cloud Pitch", juce::StringArray { "Unison", "Octave Up", "Octave Down", "Fifth", "Shimmer" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "aether_freeze", 23 }, "Cloud Freeze", false));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_dly_mix", 23 }, "Delay Mix (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "aether_dly_time", 23 }, "Delay Time", juce::StringArray { "1/16", "1/8", "1/8 D", "1/4", "1/4 D", "1/2", "1 Bar", "Free" }, 2));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_dly_ms", 23 }, "Delay Free (ms)", juce::NormalisableRange<float> (10.0f, 2000.0f, 1.0f), 375.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_dly_fb", 23 }, "Delay Feedback (%)", juce::NormalisableRange<float> (0.0f, 95.0f, 0.1f), 35.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_dly_focus", 23 }, "Delay Focus (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_dly_soften", 23 }, "Delay Soften (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_dly_duck", 23 }, "Delay Duck (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_dly_tape", 23 }, "Delay Tape (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "aether_pingpong", 23 }, "Delay Ping-Pong", false));
     // --- v22: The Anchor clipper suite (off by default: the original Anchor sound, time-aligned)
     params.push_back (std::make_unique<juce::AudioParameterBool>   (juce::ParameterID { "anchor_on", 22 },      "Clipper Suite", false));
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "anchor_drive", 22 },   "Clip Drive (dB)",  juce::NormalisableRange<float> (0.0f, 24.0f, 0.1f), 0.0f));
@@ -662,6 +679,7 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     infraLift.prepare (sampleRate);
     bunkerCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     anchorCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    if (moduleId == SolutionDSP::ModuleId::Aether) aetherCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     dcGuardIn.prepare (sampleRate);
     voiceDetector.prepare (sampleRate);
     dialogueDucker.prepare (sampleRate);
@@ -994,6 +1012,7 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             hostPlaying.store (pos->getIsPlaying(), std::memory_order_relaxed); hostRecording.store (pos->getIsRecording(), std::memory_order_relaxed);
             if (auto ts = pos->getTimeInSeconds()) hostTimeSec.store (*ts, std::memory_order_relaxed);
             if (auto fr = pos->getFrameRate()) hostFps.store (fr->getEffectiveRate(), std::memory_order_relaxed);
+            if (auto bpm = pos->getBpm()) hostBpm.store (*bpm, std::memory_order_relaxed);
         }
     if (moodTap.isEnabled()) moodTap.push (dryCopy.getReadPointer (0), dryCopy.getReadPointer (1), numSamples);
     {   // Emotional resonance mapping: gentle offsets on drive, space and width (set by the mood analyser)
@@ -1100,6 +1119,22 @@ void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             anchorDistPct.store (anchorCore.getDistortionPct(), std::memory_order_relaxed);
             anchorCrestLost.store (anchorCore.getCrestLostDb(), std::memory_order_relaxed);
             anchorVerdict.store (ap.on ? anchorCore.verdict() : -1, std::memory_order_relaxed);
+        }
+        if (moduleId == SolutionDSP::ModuleId::Aether)
+        {
+            SolutionDSP::AetherCore::Params ap;
+            auto v = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
+            ap.cloudMix = v ("aether_cloud") / 100.0f; ap.x = v ("aether_x"); ap.y = v ("aether_y");
+            ap.scatter = v ("aether_scatter") / 100.0f; ap.spread = v ("aether_spread") / 100.0f; ap.pitch = (int) v ("aether_pitch"); ap.freeze = v ("aether_freeze") > 0.5f;
+            ap.dlyMix = v ("aether_dly_mix") / 100.0f; ap.fb = v ("aether_dly_fb") / 100.0f; ap.focus = v ("aether_dly_focus") / 100.0f;
+            ap.soften = v ("aether_dly_soften") / 100.0f; ap.duck = v ("aether_dly_duck") / 100.0f; ap.tape = v ("aether_dly_tape") / 100.0f; ap.pingPong = v ("aether_pingpong") > 0.5f;
+            const int div = (int) v ("aether_dly_time");
+            ap.dlyMs = div >= 7 ? v ("aether_dly_ms") : (float) SolutionDSP::AetherCore::tempoMs (div, hostBpm.load());
+            const int grp = (int) v ("link_group");
+            ap.sidechain = grp > 0 ? rackLinkBus->groupKey (grp, rackSlot) : 0.0f;          // Rack Link sidechain
+            aetherCore.process (buffer.getWritePointer (0), buffer.getWritePointer (1), numSamples, ap);
+            aetherGrains.store (aetherCore.activeGrains(), std::memory_order_relaxed);
+            aetherDuck.store (aetherCore.duckGain(), std::memory_order_relaxed);
         }
         if (moduleId == SolutionDSP::ModuleId::Bunker)
         {

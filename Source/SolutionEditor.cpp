@@ -1042,6 +1042,9 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("anchorDist", std::round (audioProcessor.anchorDistPct.load() * 10.0f) / 10.0f);
     payload->setProperty ("anchorCrest", std::round (audioProcessor.anchorCrestLost.load() * 10.0f) / 10.0f);
     payload->setProperty ("anchorVerdict", audioProcessor.anchorVerdict.load());
+    payload->setProperty ("aetherGrains", audioProcessor.aetherGrains.load());
+    payload->setProperty ("aetherDuck", std::round (audioProcessor.aetherDuck.load() * 100.0f) / 100.0f);
+    payload->setProperty ("bpm", audioProcessor.hostBpm.load());
     payload->setProperty ("bunkerShelf", std::round (audioProcessor.bunkerShelfDb.load() * 10.0f) / 10.0f);
     payload->setProperty ("autoSafe", std::round (audioProcessor.autoSafeHolding.load() * 100.0f));
     payload->setProperty ("dialogueCarveHz", std::round (audioProcessor.dialogueCarveHz.load()));

@@ -121,6 +121,9 @@
     #vanList { overflow-y: auto; flex: 1; columns: 2 420px; column-gap: 24px; }
     .van-row { display: grid; grid-template-columns: minmax(120px, 1.2fr) 1.4fr 90px; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px solid #161b22; font: 12px system-ui, sans-serif; color: #d1d5db; break-inside: avoid; }
     .van-row input[type=range] { width: 100%; } .van-val { font-family: monospace; font-weight: normal; text-align: right; color: #9ca3af; }
+    .bk-grid2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 6px; }
+    .bk-grid2 .bk-row { grid-template-columns: 30px minmax(0, 1fr) 32px; gap: 2px; font-size: 8px; min-width: 0; } .bk-grid2 .bk-row b { font-size: 8px; white-space: nowrap; } .bk-grid2 .bk-row input { min-width: 0; }
+    [data-panel="left"] { overflow-y: auto; scrollbar-width: thin; }
     .bk-row { display: grid; grid-template-columns: 40px 1fr 46px; gap: 4px; align-items: center; }
     .bk-row input { min-width: 30px; width: 100%; } .bk-row b { color: var(--gold); font-weight: normal; text-align: right; }
     .hist-row { display: grid; grid-template-columns: 88px 1fr auto; gap: 8px; align-items: center; padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; }
@@ -765,6 +768,16 @@
           <input type="range" min="0" max="12" step="0.1" data-sync="infra_lift_db" oninput="bind('infra_lift_db', +this.value, '', 1); document.getElementById('v-infra_lift_db').textContent = '+' + (+this.value).toFixed(1) + ' dB'" style="flex:1;min-width:40px;">
           <span id="v-infra_lift_db" style="min-width:44px;text-align:right;color:var(--gold);">+6.0 dB</span>
           <label style="display:flex;gap:2px;align-items:center;" data-tip="WIDE: let the lift's skirt also fill 15-30 Hz. Off = true infrasonics only (the original trick). Shift+I"><input type="checkbox" data-sync="infra_lift_wide" onchange="bind('infra_lift_wide', this.checked ? 1 : 0, '', 1)">WIDE</label>
+        </div>
+        <div id="aetherCore" style="display:none;flex-direction:column;gap:2px;font-size:9px;">
+          <div style="display:flex;justify-content:space-between;color:var(--gold);letter-spacing:.08em;"><span>✦ PARTICLE CLOUD</span><span id="aeGrains" style="color:var(--mute)"></span></div>
+          <canvas id="aeXY" width="190" height="80" style="width:100%;height:80px;border:1px solid var(--bezel);border-radius:4px;cursor:crosshair;background:#05070a;" data-tip="XY pad: left-right = grain size (texture), down-up = density. Drag it."></canvas>
+          <div style="display:flex;gap:3px;align-items:center;"><select data-sync="aether_pitch" onchange="bind('aether_pitch', +this.value, '', 1)" style="flex:1;font-size:9px;"><option value="0">Unison</option><option value="1">Octave Up</option><option value="2">Octave Down</option><option value="3">Fifth</option><option value="4">Shimmer</option></select><label data-tip="Hold the cloud: stop capturing new audio" style="display:flex;gap:2px;align-items:center;"><input type="checkbox" data-sync="aether_freeze" onchange="bind('aether_freeze', this.checked ? 1 : 0, '', 1)">FREEZE</label></div>
+          <div class="bk-grid2"><div class="bk-row" data-tip="How much of the particle cloud you hear"><span>CLOUD</span><input type="range" data-sync="aether_cloud" min="0" max="100" step="0.5" value="0" oninput="bind('aether_cloud', +this.value, '', 1); bkShow('aether_cloud', +this.value)" ondblclick="this.value=0; bind('aether_cloud', 0, '', 1); bkShow('aether_cloud', 0)"><b id="v-aether_cloud">0%</b></div><div class="bk-row" data-tip="How far back in time grains are taken (up to ~3 s)"><span>SCATTER</span><input type="range" data-sync="aether_scatter" min="0" max="100" step="1" value="60" oninput="bind('aether_scatter', +this.value, '', 1); bkShow('aether_scatter', +this.value)" ondblclick="this.value=60; bind('aether_scatter', 60, '', 1); bkShow('aether_scatter', 60)"><b id="v-aether_scatter">60%</b></div><div class="bk-row" data-tip="Stereo spread of the particles"><span>SPREAD</span><input type="range" data-sync="aether_spread" min="0" max="100" step="1" value="70" oninput="bind('aether_spread', +this.value, '', 1); bkShow('aether_spread', +this.value)" ondblclick="this.value=70; bind('aether_spread', 70, '', 1); bkShow('aether_spread', 70)"><b id="v-aether_spread">70%</b></div></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;margin-top:3px;"><span>◷ DELAY</span>
+            <select data-sync="aether_dly_time" onchange="bind('aether_dly_time', +this.value, '', 1)" style="font-size:9px;"><option value="0">1/16</option><option value="1">1/8</option><option value="2">1/8 D</option><option value="3">1/4</option><option value="4">1/4 D</option><option value="5">1/2</option><option value="6">1 Bar</option><option value="7">Free</option></select></div>
+          <div class="bk-grid2"><div class="bk-row" data-tip="Delay level"><span>DELAY</span><input type="range" data-sync="aether_dly_mix" min="0" max="100" step="0.5" value="0" oninput="bind('aether_dly_mix', +this.value, '', 1); bkShow('aether_dly_mix', +this.value)" ondblclick="this.value=0; bind('aether_dly_mix', 0, '', 1); bkShow('aether_dly_mix', 0)"><b id="v-aether_dly_mix">0%</b></div><div class="bk-row" data-tip="Delay time when set to Free"><span>FREE</span><input type="range" data-sync="aether_dly_ms" min="10" max="2000" step="1" value="375" oninput="bind('aether_dly_ms', +this.value, '', 1); bkShow('aether_dly_ms', +this.value)" ondblclick="this.value=375; bind('aether_dly_ms', 375, '', 1); bkShow('aether_dly_ms', 375)"><b id="v-aether_dly_ms">375 ms</b></div><div class="bk-row" data-tip="Feedback: how many repeats"><span>FDBK</span><input type="range" data-sync="aether_dly_fb" min="0" max="95" step="0.5" value="35" oninput="bind('aether_dly_fb', +this.value, '', 1); bkShow('aether_dly_fb', +this.value)" ondblclick="this.value=35; bind('aether_dly_fb', 35, '', 1); bkShow('aether_dly_fb', 35)"><b id="v-aether_dly_fb">35%</b></div><div class="bk-row" data-tip="Repeats narrow toward the mids, so they sit behind the dry sound"><span>FOCUS</span><input type="range" data-sync="aether_dly_focus" min="0" max="100" step="1" value="0" oninput="bind('aether_dly_focus', +this.value, '', 1); bkShow('aether_dly_focus', +this.value)" ondblclick="this.value=0; bind('aether_dly_focus', 0, '', 1); bkShow('aether_dly_focus', 0)"><b id="v-aether_dly_focus">0%</b></div><div class="bk-row" data-tip="Repeats get darker each time round"><span>SOFTEN</span><input type="range" data-sync="aether_dly_soften" min="0" max="100" step="1" value="0" oninput="bind('aether_dly_soften', +this.value, '', 1); bkShow('aether_dly_soften', +this.value)" ondblclick="this.value=0; bind('aether_dly_soften', 0, '', 1); bkShow('aether_dly_soften', 0)"><b id="v-aether_dly_soften">0%</b></div><div class="bk-row" data-tip="Repeats step aside while you play (and while the Rack Link sidechain plays), then bloom"><span>DUCK</span><input type="range" data-sync="aether_dly_duck" min="0" max="100" step="1" value="0" oninput="bind('aether_dly_duck', +this.value, '', 1); bkShow('aether_dly_duck', +this.value)" ondblclick="this.value=0; bind('aether_dly_duck', 0, '', 1); bkShow('aether_dly_duck', 0)"><b id="v-aether_dly_duck">0%</b></div><div class="bk-row" data-tip="Wow, flutter and saturation in the loop"><span>TAPE</span><input type="range" data-sync="aether_dly_tape" min="0" max="100" step="1" value="0" oninput="bind('aether_dly_tape', +this.value, '', 1); bkShow('aether_dly_tape', +this.value)" ondblclick="this.value=0; bind('aether_dly_tape', 0, '', 1); bkShow('aether_dly_tape', 0)"><b id="v-aether_dly_tape">0%</b></div></div>
+          <div style="display:flex;gap:6px;"><label data-tip="Repeats bounce left-right" style="display:flex;gap:2px;align-items:center;"><input type="checkbox" data-sync="aether_pingpong" onchange="bind('aether_pingpong', this.checked ? 1 : 0, '', 1)">PING-PONG</label><span id="aeDuck" style="margin-left:auto;color:var(--mute)"></span></div>
         </div>
         <div id="anchorCore" style="display:none;flex-direction:column;gap:2px;font-size:9px;">
           <div style="display:flex;justify-content:space-between;align-items:center;color:var(--gold);letter-spacing:.08em;">
@@ -2437,7 +2450,7 @@
         if (id === 'glue_amount') showValue(id, v, '%', 100);
         if (id === 'room_correct_amount') showValue(id, v, '%', 100);
         if (id === 'unmask_depth') showValue(id, v, ' dB', 1);
-        if ((id.startsWith('bunker_') || id.startsWith('anchor_')) && typeof bkShow === 'function') bkShow(id, v);
+        if (/^(bunker|anchor|aether)_/.test(id) && typeof bkShow === 'function') bkShow(id, v);
         if (id === 'transient_attack' || id === 'transient_sustain') document.getElementById('v-' + id).textContent = (v > 0 ? '+' : '') + Math.round(v) + '%';
         if (id === 'dialogue_duck_db') document.getElementById('v-dialogue_duck_db').textContent = (+v).toFixed(1) + ' dB';
         if (id === 'infra_lift_db') document.getElementById('v-infra_lift_db').textContent = '+' + (+v).toFixed(1) + ' dB';
@@ -2587,6 +2600,7 @@
           else { el.textContent = ''; el.style.background = 'none'; }
           document.getElementById('anDetail').textContent = V ? `distortion ${t.anchorDist.toFixed(1)}% · crest −${Math.max(0, t.anchorCrest).toFixed(1)} dB` : '';
         }
+        if (t.aetherDuck !== undefined && document.getElementById('aeDuck')) document.getElementById('aeDuck').textContent = (state.aether_dly_duck || 0) > 0 && (state.aether_dly_mix || 0) > 0 ? 'repeats ' + Math.round(t.aetherDuck * 100) + '%' : '';
         if (t.bunkerShelf !== undefined) { const el = document.getElementById('bkTamer'); if (el) el.textContent = state.bunker_dyn > 0 ? 'tamer ' + t.bunkerShelf.toFixed(1) + ' dB' : ''; }
         if (t.autoSafe !== undefined && t.autoSafe !== window._lastSafe) { window._lastSafe = t.autoSafe; updateSafeUi(t.autoSafe); }
         if (wizard && t.learnedCc !== undefined && t.learnedCc >= 0) { if (wizard._seen === undefined) wizard._seen = (wizard.lastCc ?? -1) + '|' + (t.learnSeq ?? 0); const sig = t.learnedCc + '|' + (t.learnSeq ?? 0); if (sig !== wizard._seen) { wizard._seen = sig; wizardSawCc(t.learnedCc, sig); } }
@@ -4341,9 +4355,36 @@
     // ---------- fullscreen panels ----------
     const IS_POPOUT = params.get('popout') === '1';
     if (/anchor/i.test(params.get('module') || '')) document.getElementById('anchorCore').style.display = 'flex';   // The Anchor only
+    if (/aether/i.test(params.get('module') || '')) { document.getElementById('aetherCore').style.display = 'flex'; startAetherPad(); }   // The Aether only
+    function startAetherPad() {
+      const cv = document.getElementById('aeXY'), parts = [];
+      const setXY = (e) => { const r = cv.getBoundingClientRect(); const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), y = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
+        bind('aether_x', x, '', 1); bind('aether_y', y, '', 1); state.aether_x = x; state.aether_y = y; };
+      let drag = false;
+      cv.addEventListener('mousedown', (e) => { drag = true; setXY(e); }); window.addEventListener('mousemove', (e) => { if (drag) setXY(e); }); window.addEventListener('mouseup', () => drag = false);
+      cv.addEventListener('keydown', (e) => { const d = e.shiftKey ? 0.01 : 0.05, k = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, d], ArrowDown: [0, -d] }[e.key]; if (!k) return;
+        e.preventDefault(); const x = Math.max(0, Math.min(1, (state.aether_x ?? 0.5) + k[0])), y = Math.max(0, Math.min(1, (state.aether_y ?? 0.5) + k[1])); bind('aether_x', x, '', 1); bind('aether_y', y, '', 1); state.aether_x = x; state.aether_y = y; });
+      cv.tabIndex = 0;
+      (function frame() {
+        const c = cv.getContext('2d'), W = cv.width, H = cv.height, x = state.aether_x ?? 0.5, y = state.aether_y ?? 0.5, live = (window._tele || {}).aetherGrains || 0, on = (state.aether_cloud || 0) > 0;
+        c.fillStyle = 'rgba(5,7,10,0.35)'; c.fillRect(0, 0, W, H);
+        // particles: count follows the real grain count, size follows the texture, spread follows SPREAD
+        const want = on ? Math.min(64, Math.max(live, 4)) : 0;
+        while (parts.length < want) parts.push({ x: x * W + (Math.random() - 0.5) * 60, y: H - y * H + (Math.random() - 0.5) * 30, vx: (Math.random() - 0.5) * 0.8, vy: -Math.random() * 0.5, life: 1 });
+        if (parts.length > want) parts.splice(0, parts.length - want);
+        const spread = (state.aether_spread ?? 70) / 100, col = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim() || '#d4af37';
+        parts.forEach(p => { p.x += p.vx * (1 + spread); p.y += p.vy; p.life -= 0.012; if (p.life <= 0) { p.x = x * W + (Math.random() - 0.5) * 70 * spread; p.y = H - y * H; p.life = 1; }
+          c.globalAlpha = p.life * 0.9; c.fillStyle = col; c.beginPath(); c.arc(p.x, p.y, 1 + x * 3.5 * p.life, 0, Math.PI * 2); c.fill(); });
+        c.globalAlpha = 1; c.strokeStyle = '#38bdf8'; c.beginPath(); c.arc(x * W, H - y * H, 6, 0, Math.PI * 2); c.stroke();
+        c.fillStyle = '#6b7280'; c.font = '8px monospace'; c.fillText('TEXTURE →', W - 52, H - 3); c.fillText('↑ DENSITY', 3, 9);
+        const g = document.getElementById('aeGrains'); if (g) g.textContent = on ? live + ' grains' + (state.aether_freeze > 0.5 ? ' · FROZEN' : '') : '';
+        requestAnimationFrame(frame);
+      })();
+    }
     if (/bunker/i.test(params.get('module') || '')) { document.getElementById('infraRow').style.display = 'flex'; document.getElementById('bunkerCore').style.display = 'flex'; }   // The Bunker only
     function bkShow(id, v) {
       const el = document.getElementById('v-' + id); if (!el) return;
+      if (id === 'aether_dly_ms') { el.textContent = Math.round(v) + ' ms'; return; }
       if (id === 'anchor_drive') { el.textContent = Math.round(Math.pow(10, v / 20) * 100) + '%'; return; }
       if (id === 'anchor_ceiling' || id === 'anchor_out') { el.textContent = (v > 0 ? '+' : '') + v.toFixed(1) + ' dB'; return; }
       el.textContent = /_hz$|_x1$/.test(id) ? Math.round(v) + ' Hz' : id === 'bunker_x2' ? (v / 1000).toFixed(1) + ' kHz' : Math.round(v) + '%';

@@ -35,6 +35,7 @@
 #include "MetadataExport.h"
 #include "BunkerCore.h"
 #include "AnchorCore.h"
+#include "AetherCore.h"
 #include <thread>
 #include <atomic>
 #include <array>
@@ -255,6 +256,10 @@ public:
     juce::var runToneAnalysisNow (float toneHz, float levelDb);  // blocking (tests, offline)
     SolutionDSP::BunkerCore bunkerCore;
     SolutionDSP::AnchorCore anchorCore;
+    SolutionDSP::AetherCore aetherCore;
+    std::atomic<int> aetherGrains { 0 };
+    std::atomic<float> aetherDuck { 1.0f };
+    std::atomic<double> hostBpm { 120.0 };
     std::atomic<float> anchorDistPct { 0.0f }, anchorCrestLost { 0.0f };
     std::atomic<int> anchorVerdict { -1 };
     std::atomic<float> bunkerShelfDb { 0.0f };                 // the dynamic low tamer's current dip
@@ -287,7 +292,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 22;  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 23;  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }
