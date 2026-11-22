@@ -13,7 +13,7 @@ STYLE = ("Ultra-detailed photorealistic image, 16:9.5 wide (1280x760 or larger, 
 CARS = [  # key, menu name, scene
  ("lincoln69", "'69 Lincoln Continental", "Front fascia of a 1969 Lincoln Continental in deep black paint, chrome grille and bumpers glowing under amber sodium light, low angle"),
  ("camaro71", "'71 Camaro (Orange)", "1971 Camaro in hugger orange, three-quarter front view in a dim garage, chrome glints"),
- ("mach1", "'70 Mustang Mach 1", "1970 Mustang Mach 1 in grabber blue, low front angle on wet asphalt at night"),
+ ("mach1", "'70 Mustang Mach 1", "1970 Mustang Mach 1 in grabber blue with black hood stripe and shaker scoop, low front angle on wet asphalt at night"),
  ("eviltwin", "'68 \"Evil Twin\"", "a menacing matte-black 1968 muscle car (Charger-style body) with red underglow in a dark warehouse"),
  ("eldorado59", "'59 Cadillac Eldorado", "1959 Cadillac Eldorado rear fins and twin bullet tail lights, turquoise paint, chrome, showroom lighting"),
  ("cuda70", "'70 HEMI 'Cuda", "1970 Plymouth 'Cuda in plum crazy purple, shaker hood scoop, close front three-quarter view, neon reflections"),
@@ -36,7 +36,7 @@ CARS = [  # key, menu name, scene
  ("f40", "'89 Ferrari F40", "1989 Ferrari F40 in rosso red, rear wing, dramatic tunnel lights"),
  ("mclarenf1", "'94 McLaren F1", "1994 McLaren F1 in papaya orange, butterfly doors open, minimal dark studio"),
  ("supra94", "'94 Toyota Supra MK4", "1994 Supra MK4 in orange with a big rear wing, night parking garage, cyan lights"),
- ("cutlass70", "'70 Oldsmobile Cutlass 442", "1970 Oldsmobile Cutlass 442 in sebring yellow with black stripes and hood louvres, low front three-quarter, warm garage light"),
+ ("cutlass70", "'70 Oldsmobile Cutlass 442", "1970 Oldsmobile Cutlass 442 in sebring yellow with twin black racing stripes running over the hood, roof and trunk, W-30 hood scoops, low front three-quarter, warm garage light"),
  ("deville67", "'67 Cadillac DeVille", "1967 Cadillac DeVille convertible in black cherry, long chrome lines, top down, evening boulevard lights"),
  ("mustang65", "'65 Mustang Fastback", "1965 Mustang fastback in candy apple red with white stripes, three-quarter rear, polished concrete floor"),
 ]

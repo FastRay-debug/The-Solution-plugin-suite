@@ -42,6 +42,7 @@
 #include "LandCore.h"
 #include "BridgeHost.h"
 #include "FoleySynth.h"
+#include "SpatialRenderer.h"
 #include <thread>
 #include <atomic>
 #include <array>
@@ -296,7 +297,10 @@ public:
     SolutionDSP::VoidCore voidCore;
     SolutionDSP::OrbitCore orbitCore;
     SolutionDSP::LandCore landCore;
-    SolutionDSP::FoleySynth foley;                             // The Aether: controls arrive from the video analysis in the UI
+    SolutionDSP::FoleySynth foley;
+    SolutionDSP::SpatialRenderer spatial;                      // surround / Atmos bed / ambisonic output
+    juce::AudioBuffer<float> stereoBus;
+    void processStereoCore (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages);                             // The Aether: controls arrive from the video analysis in the UI
     int bridgeLatencyNow = 0, bridgeGen = 0;
     long long scPos = 0, scFree = 0;                           // audio thread: sidechain timeline position
     juce::AudioBuffer<float> scBuf;
@@ -352,7 +356,7 @@ public:
 
     // Saved-state format version. Bump it and extend migrateState() whenever a
     // parameter is renamed, removed or changes range, so old sessions still load.
-    static constexpr int stateVersion = 31;  // v31: Foley from picture  // v30: sidechain over Rack Link  // v29: The Bridge plugin hosting  // v28: The Land outdoor acoustics  // v27: The Matrix modulation  // v26: The Orbit tube + Regen Throttle loop  // v25: The Void acoustic modeller  // v24: The Mosaic spectral morph  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
+    static constexpr int stateVersion = 32;  // v32: surround / Atmos / ambisonic output  // v31: Foley from picture  // v30: sidechain over Rack Link  // v29: The Bridge plugin hosting  // v28: The Land outdoor acoustics  // v27: The Matrix modulation  // v26: The Orbit tube + Regen Throttle loop  // v25: The Void acoustic modeller  // v24: The Mosaic spectral morph  // v23: The Aether particle cloud + delay  // v22: The Anchor clipper suite  // v21: The Bunker core (sub synth, dynamic lows, split-core M/S)  // v20: Auto Safe Mode  // v19: AI Analyze (cues, emotional resonance)  // v18: dialogue ducking + transient shaper, v17: lookahead limiter, v16: Infrasonic Lift, v15: stage creature, v14: DQS  // v12: Safe Bounce, v13: 3D stage (distance, motion)  // v7 115 Hz notch, v8 Pro Tricks, v9 listening rooms, v10 Unmask, v11 Auto-Align
 
     // UI-only settings (e.g. chosen skin) saved with the session. Message thread only.
     juce::String getUiProperty (const juce::String& key) const { return apvts.state.getProperty ("ui_" + key).toString(); }

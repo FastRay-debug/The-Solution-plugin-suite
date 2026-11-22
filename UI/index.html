@@ -881,6 +881,10 @@
 
     <div class="center-col">
       <div class="viewport" id="vp" data-panel="stage">
+        <div id="spkMap" style="display:none;position:absolute;right:8px;bottom:44px;z-index:6;background:rgba(5,7,10,0.85);border:1px solid var(--bezel);border-radius:6px;padding:4px;font-size:9px;" data-tip="Surround / Atmos output: each speaker lights up by how much of this track it plays. Move the sound on the stage (azimuth, elevation, width) to place it.">
+          <div style="display:flex;justify-content:space-between;gap:6px;color:var(--gold);letter-spacing:.06em;"><b id="spkName">7.1.4</b><span>LFE <input type="range" data-sync="spatial_lfe" min="0" max="1" step="0.01" value="0" style="width:50px;vertical-align:middle" oninput="bind('spatial_lfe', +this.value, '', 1)"></span></div>
+          <canvas id="spkCanvas" width="140" height="140" style="width:140px;height:140px;display:block;"></canvas>
+        </div>
         <div class="tach left"><div class="tach-needle" id="needleL"></div><div class="tach-lbl">IN / SUB</div></div>
         <div class="tach right"><div class="tach-needle" id="needleR"></div><div class="tach-lbl">OUT / AIR</div></div>
         <canvas id="glCanvas" style="position:absolute;pointer-events:none;display:none;"></canvas>
@@ -1056,7 +1060,7 @@
           <option value="f40">'89 Ferrari F40</option>
           <option value="mclarenf1">'94 McLaren F1</option>
           <option value="supra94">'94 Toyota Supra MK4</option>
-          <option value="cutlass70">'70 Oldsmobile Cutlass 442</option>
+          <option value="cutlass70">'70 Cutlass 442 (Racing Stripes)</option>
           <option value="deville67">'67 Cadillac DeVille</option>
           <option value="mustang65">'65 Mustang Fastback</option>
         </optgroup>
@@ -2709,6 +2713,7 @@
         else if (t.analysing) document.getElementById('captureStatus').textContent = 'Analysing measurement...';
         if (t.cvLfo !== undefined) document.getElementById('cvReadout').textContent = `CV LFO: ${t.cvLfo.toFixed(2)} · ENV: ${(t.envFollower || 0).toFixed(2)}`;
         if (t.learnedCc !== undefined && t.learnedCc >= 0) document.getElementById('midiStatus').textContent = 'CC: #' + t.learnedCc;
+        if (t.outLayout) drawSpeakers(t); else document.getElementById('spkMap').style.display = 'none';
         if (t.anchorVerdict !== undefined && document.getElementById('anVerdict')) {
           const V = [['CLEAN', '#4ade80'], ['GLUE', '#a3e635'], ['CRUNCH', '#fbbf24'], ['SQUASHED', '#f87171']][t.anchorVerdict];
           const el = document.getElementById('anVerdict');
@@ -4008,6 +4013,26 @@
       window.__JUCE__.backend.addEventListener('metaState', (d) => { metaData = Object.assign({}, metaData, d); if (!d.message) delete metaData.message; else metaData.message = d.message; if (aiTab === 'meta') renderMeta(); });
     }
 
+    // ===================== SURROUND / ATMOS SPEAKER MAP =====================
+    function drawSpeakers(t) {
+      const box = document.getElementById('spkMap'); box.style.display = 'block';
+      document.getElementById('spkName').textContent = (/point|\./.test(t.outLayout) && /4|6|2$/.test(t.outLayout) ? 'ATMOS BED ' : '') + t.outLayout;
+      const cv = document.getElementById('spkCanvas'), c = cv.getContext('2d'), W = cv.width, H = cv.height, cx = W / 2, cy = H / 2;
+      c.clearRect(0, 0, W, H);
+      c.strokeStyle = '#1f2937'; c.beginPath(); c.arc(cx, cy, 58, 0, 7); c.stroke(); c.beginPath(); c.arc(cx, cy, 32, 0, 7); c.stroke();
+      const gold = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim() || '#d4af37';
+      if (t.ambisonic) {           // ambisonics: no speakers - show the direction instead
+        const az = (state.stage_azimuth || 0) * Math.PI / 180; c.fillStyle = gold; c.beginPath(); c.arc(cx + Math.sin(az) * 50, cy - Math.cos(az) * 50, 6, 0, 7); c.fill();
+        c.fillStyle = '#9ca3af'; c.fillText((t.speakers || []).length + ' ambisonic channels', 6, H - 4); return;
+      }
+      (t.speakers || []).forEach(([name, az, el, lvl, lfe]) => {
+        let x, y; if (lfe) { x = cx + 44; y = cy + 50; } else { const r = el > 30 ? 32 : 58, a = az * Math.PI / 180; x = cx + Math.sin(a) * r; y = cy - Math.cos(a) * r; }
+        c.globalAlpha = 0.25 + 0.75 * Math.min(1, lvl * 1.4); c.fillStyle = lvl > 0.05 ? gold : '#475569';
+        if (lfe) c.fillRect(x - 6, y - 6, 12, 12); else { c.beginPath(); c.arc(x, y, el > 30 ? 5 : 6, 0, 7); c.fill(); }
+        c.globalAlpha = 1; c.fillStyle = '#9ca3af'; c.font = '7px monospace'; c.fillText(name, x - 6, y + 13);
+      });
+      c.fillStyle = '#e5e7eb'; c.beginPath(); c.moveTo(cx, cy - 6); c.lineTo(cx - 4, cy + 4); c.lineTo(cx + 4, cy + 4); c.fill();   // you
+    }
     // ===================== FOLEY FROM PICTURE (The Aether) =====================
     let foleyVid = null, foleyPrev = null, foleyAvg = 0.02, foleyCx = 0.5, foleyLast = 0, foleyStream = null;
     function foleyLoad(inp) {

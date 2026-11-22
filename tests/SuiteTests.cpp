@@ -2417,6 +2417,65 @@ static void testFoley()
     EXPECT (l1 > 1e-2, "a wet picture rains (%.3f)", l1);
 }
 
+
+static void testSpatialOutput()
+{
+    std::printf ("Surround / Atmos / ambisonic output: layouts, placement, energy, LFE, ambisonics\n");
+    using CS = juce::AudioChannelSet;
+    auto make = [] (CS in, CS out) { auto p = std::make_unique<SolutionAudioProcessor> ("TheStage"); juce::AudioProcessor::BusesLayout l; l.inputBuses.add (in); l.outputBuses.add (out);
+        const bool ok = p->setBusesLayout (l); p->prepareToPlay (48000.0, 512); return std::make_pair (std::move (p), ok); };
+    { juce::AudioProcessor::BusesLayout l; SolutionAudioProcessor p ("TheStage");
+      l.inputBuses.add (CS::stereo()); l.outputBuses.add (CS::create7point1point4()); const bool a = p.checkBusesLayoutSupported (l);
+      l.inputBuses.getReference (0) = CS::create5point1(); l.outputBuses.getReference (0) = CS::create5point1(); const bool b = p.checkBusesLayoutSupported (l);
+      l.outputBuses.getReference (0) = CS::create7point1point4(); const bool c = p.checkBusesLayoutSupported (l);
+      EXPECT (a && b && ! c, "stereo->7.1.4 and 5.1->5.1 accepted, 5.1->7.1.4 refused"); }
+    auto runAt = [&] (CS out, float az, float el, float width, float hz, std::vector<double>& energy, SolutionAudioProcessor** keep = nullptr, CS in = CS::stereo()) {
+        auto pr = make (in, out); auto& p = *pr.first;
+        setParam (p, "stage_azimuth", az); setParam (p, "stage_elevation", el); setParam (p, "stage_width", width); setParam (p, "global_mix", 0.0f);
+        const int ch = std::max (in.size(), out.size()); juce::AudioBuffer<float> b (ch, 512); juce::MidiBuffer m; energy.assign ((size_t) out.size(), 0.0);
+        for (int k = 0; k < 60; ++k)
+        {
+            b.clear();
+            for (int c = 0; c < in.size(); ++c) for (int i = 0; i < 512; ++i) b.setSample (c, i, (float) (0.2 * std::sin (2 * juce::MathConstants<double>::pi * hz * (k * 512 + i) / 48000.0)) * (in.size() > 2 && in.getTypeOfChannel (c) != CS::centre ? 0.0f : 1.0f));
+            p.processBlock (b, m);
+            if (k > 20) for (int c = 0; c < out.size(); ++c) for (int i = 0; i < 512; ++i) energy[(size_t) c] += b.getSample (c, i) * b.getSample (c, i);
+        }
+        if (keep) *keep = pr.first.release();
+        return pr.second; };
+    const auto bed = CS::create7point1point4();
+    auto idx = [&] (CS set, CS::ChannelType t) { return set.getChannelIndexForType (t); };
+    std::vector<double> e;
+    EXPECT (runAt (bed, 0, 0, 0, 440, e), "7.1.4 layout set");
+    const auto loudest = [&] { return (int) (std::max_element (e.begin(), e.end()) - e.begin()); };
+    EXPECT (loudest() == idx (bed, CS::centre), "front, narrow -> the centre speaker leads");
+    double total = 0; for (auto v : e) total += v;
+    std::vector<double> st; runAt (CS::stereo(), 0, 0, 0, 440, st); const double stTotal = st[0] + st[1];
+    EXPECT (std::abs (10 * std::log10 (total / stTotal)) < 1.0, "energy kept (%.2f dB vs stereo)", 10 * std::log10 (total / stTotal));
+    runAt (bed, 90, 0, 0, 440, e);
+    EXPECT (loudest() == idx (bed, CS::rightSurroundSide), "90 deg right -> right side speaker");
+    runAt (bed, 0, 70, 0, 440, e);
+    const double tops = e[(size_t) idx (bed, CS::topFrontLeft)] + e[(size_t) idx (bed, CS::topFrontRight)] + e[(size_t) idx (bed, CS::topRearLeft)] + e[(size_t) idx (bed, CS::topRearRight)];
+    EXPECT (tops > e[(size_t) idx (bed, CS::centre)] * 2, "raised high -> the height speakers carry it");
+    // LFE send: lows only
+    SolutionAudioProcessor* p = nullptr; runAt (bed, 0, 0, 1, 50, e, &p); delete p;
+    const double lfeOff = e[(size_t) idx (bed, CS::LFE)];
+    { auto pr = make (CS::stereo(), bed); setParam (*pr.first, "spatial_lfe", 1.0f); juce::AudioBuffer<float> b (12, 512); juce::MidiBuffer m; double lo = 0, hi = 0;
+      for (int pass = 0; pass < 2; ++pass) for (int k = 0; k < 40; ++k) { b.clear(); const double hz = pass ? 3000 : 50;
+        for (int c = 0; c < 2; ++c) for (int i = 0; i < 512; ++i) b.setSample (c, i, (float) (0.2 * std::sin (2 * juce::MathConstants<double>::pi * hz * (k * 512 + i) / 48000.0)));
+        pr.first->processBlock (b, m); if (k > 20) for (int i = 0; i < 512; ++i) (pass ? hi : lo) += std::pow (b.getSample (idx (bed, CS::LFE), i), 2); }
+      EXPECT (lfeOff == 0.0 && lo > hi * 100, "LFE send carries lows only (and nothing when off)"); }
+    // ambisonics (AmbiX ACN/SN3D): a source on the right gives negative Y (ACN 1); W carries everything
+    runAt (CS::ambisonic (3), 90, 0, 0, 440, e);
+    { auto pr = make (CS::stereo(), CS::ambisonic (3)); setParam (*pr.first, "stage_azimuth", 90.0f); setParam (*pr.first, "stage_width", 0.0f); setParam (*pr.first, "global_mix", 0.0f);
+      juce::AudioBuffer<float> b (16, 512); juce::MidiBuffer m; double wy = 0;
+      for (int k = 0; k < 30; ++k) { b.clear(); for (int c = 0; c < 2; ++c) for (int i = 0; i < 512; ++i) b.setSample (c, i, (float) (0.2 * std::sin (2 * juce::MathConstants<double>::pi * 440 * (k * 512 + i) / 48000.0)));
+        pr.first->processBlock (b, m); if (k > 20) for (int i = 0; i < 512; ++i) wy += b.getSample (0, i) * b.getSample (1, i); }
+      EXPECT (wy < 0 && e[0] > 0, "3rd-order AmbiX: right-side source -> W and Y opposite (Y negative)"); }
+    // a 5.1 bed track: its centre feeds the module (folded to stereo) and comes back out
+    runAt (CS::create5point1(), 0, 0, 0, 440, e, nullptr, CS::create5point1());
+    EXPECT (e[(size_t) idx (CS::create5point1(), CS::centre)] > 1.0, "5.1 in/out: bed input folds down, plays back out");
+}
+
 static void testAutoSafe()
 {
     std::printf ("Auto Safe Mode: extreme drive is eased back, distortion drops\n");
@@ -2576,6 +2635,7 @@ int main()
     testSidechainLink();
     testSkinStore();
     testFoley();
+    testSpatialOutput();
     testToneAnalyzer();
     testAiAnalyzeCinema();
     testDiagnostics();

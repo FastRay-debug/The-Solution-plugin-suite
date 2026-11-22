@@ -728,6 +728,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SolutionAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat>  (juce::ParameterID { "dqs_threshold", 14 }, "DQS CPU Threshold (%)", juce::NormalisableRange<float> (50.0f, 95.0f, 1.0f), 80.0f));
     // --- v18: real voice-activated dialogue ducking + transient shaper amounts
     params.push_back (std::make_unique<juce::AudioParameterBool>  (juce::ParameterID { "dialogue_source", 18 }, "This Track Is Dialogue", false));
+    // --- v32: surround / Atmos output - LFE send (off by default)
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "spatial_lfe", 32 }, "LFE Send", juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f));
     // --- v31: The Aether - Foley from picture (off by default)
     params.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "aether_foley", 31 }, "Foley From Picture (%)", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f));
     // --- v30: sidechain over Rack Link (any track sends, The Bridge feeds hosted plugins' sidechain input)
@@ -985,6 +987,8 @@ void SolutionAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     preparedBlockSize = samplesPerBlock;
     infraLift.prepare (sampleRate);
     bunkerCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
+    spatial.prepare (getChannelLayoutOfBus (false, 0), sampleRate);
+    stereoBus.setSize (2, juce::jmax (16, samplesPerBlock));
     anchorCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
     if (moduleId == SolutionDSP::ModuleId::Aether) { aetherCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock)); foley.prepare (sampleRate); }
     if (moduleId == SolutionDSP::ModuleId::Mosaic) mosaicCore.prepare (sampleRate, juce::jmax (16, samplesPerBlock));
@@ -1042,11 +1046,34 @@ void SolutionAudioProcessor::releaseResources()
 
 bool SolutionAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
-        && layouts.getMainInputChannelSet()  == juce::AudioChannelSet::stereo();
+    // Stereo as always, plus surround / Dolby Atmos beds / ambisonics on the output (the module processes in
+    // stereo and the Spatial Renderer places it at the 3D stage position). Input: mono, stereo or the same layout.
+    using CS = juce::AudioChannelSet;
+    const auto out = layouts.getMainOutputChannelSet(), in = layouts.getMainInputChannelSet();
+    const bool outOk = out == CS::stereo() || out == CS::create5point1() || out == CS::create7point1() || out == CS::create5point1point2()
+                    || out == CS::create5point1point4() || out == CS::create7point1point2() || out == CS::create7point1point4() || out == CS::create9point1point6()
+                    || out == CS::ambisonic (1) || out == CS::ambisonic (2) || out == CS::ambisonic (3);
+    const bool inOk = in == CS::stereo() || in == CS::mono() || in == out;
+    return outOk && inOk;
 }
 
 void SolutionAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    const int outCh = getMainBusNumOutputChannels(), inCh = getMainBusNumInputChannels(), len = buffer.getNumSamples();
+    if (outCh <= 2 && inCh == 2) { processStereoCore (buffer, midiMessages); return; }
+    if (outCh <= 2 && inCh == 1) { if (buffer.getNumChannels() > 1) buffer.copyFrom (1, 0, buffer, 0, 0, len); processStereoCore (buffer, midiMessages); return; }
+    // Surround / Atmos / ambisonics: fold the input to stereo, process, then place it on the speakers.
+    if (stereoBus.getNumSamples() < len) stereoBus.setSize (2, len, false, false, true);     // only if the host exceeds its announced block size
+    const auto inSet = getChannelLayoutOfBus (true, 0);
+    SolutionDSP::SpatialRenderer::downmix (buffer, inSet, stereoBus, len);
+    juce::AudioBuffer<float> st (stereoBus.getArrayOfWritePointers(), 2, len);
+    processStereoCore (st, midiMessages);
+    const bool moving = pv ("motion_on") > 0.5f;
+    const float az = moving ? animAz.load() : pv ("stage_azimuth"), el = moving ? animEl.load() : pv ("stage_elevation");
+    spatial.render (st.getReadPointer (0), st.getReadPointer (1), buffer, len, az, el, pv ("stage_width"), pv ("spatial_lfe"));
+}
+
+void SolutionAudioProcessor::processStereoCore (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
     if (offloadActive.load (std::memory_order_acquire))

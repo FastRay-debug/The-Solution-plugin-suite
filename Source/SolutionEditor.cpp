@@ -1172,6 +1172,19 @@ void SolutionAudioProcessorEditor::timerCallback()
     payload->setProperty ("aetherGrains", audioProcessor.aetherGrains.load());
     payload->setProperty ("aetherDuck", std::round (audioProcessor.aetherDuck.load() * 100.0f) / 100.0f);
     payload->setProperty ("bpm", audioProcessor.hostBpm.load());
+    if (audioProcessor.getMainBusNumOutputChannels() > 2)
+    {   // speaker map for the UI: name, angles and how much of this track each speaker is playing
+        const auto set = audioProcessor.getChannelLayoutOfBus (false, 0);
+        payload->setProperty ("outLayout", SolutionDSP::SpatialRenderer::layoutName (set));
+        juce::Array<juce::var> spk;
+        for (int c = 0; c < audioProcessor.spatial.numChannels(); ++c)
+        {
+            float az = 0, el = 0; audioProcessor.spatial.speakerAngles (c, az, el);
+            spk.add (juce::Array<juce::var> { juce::AudioChannelSet::getAbbreviatedChannelTypeName (set.getTypeOfChannel (c)), std::round (az), std::round (el),
+                                              std::round (audioProcessor.spatial.speakerLevel (c) * 100.0f) / 100.0f, audioProcessor.spatial.channelIsLfe (c) });
+        }
+        payload->setProperty ("speakers", spk); payload->setProperty ("ambisonic", audioProcessor.spatial.isAmbisonic());
+    }
     payload->setProperty ("hostTime", audioProcessor.hostTimeSec.load()); payload->setProperty ("hostPlaying", audioProcessor.hostPlaying.load());
     {   // The Matrix: live source values (for meters) and how much each of this track's controls is being moved
         juce::Array<juce::var> mv; auto& mb = audioProcessor.getRackBus().mod;
